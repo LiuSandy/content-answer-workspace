@@ -11,6 +11,8 @@ router = APIRouter(prefix="/api/config", tags=["config"])
 
 @router.get("")
 async def get_config() -> JSONResponse:
+    """返回前端初始化配置；这样工作台启动时能拿到默认主题和后端规范化后的工作流参数。"""
+
     load_env_file()
     return JSONResponse(
         {

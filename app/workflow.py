@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from .application.workflow_service import WorkflowService
 from .core.config import (
     COOKIE_PATH_DEFAULT,
+    DEFAULT_PLATFORM,
     ENV_PATH,
     OUTPUT_DIR,
     ROOT_DIR,
@@ -29,17 +31,10 @@ from .services.zhihu_service import (
     unique_by,
 )
 
+workflow_service = WorkflowService()
+
 
 async def run_workflow(options: dict | None = None):
-    options = options or {}
-    collected = await collect_questions(options)
-    config = collected.config
-    if options.get("skipAnswerGeneration") is True or config.skip_answer_generation:
-        return collected
+    """运行兼容旧入口的完整工作流；这样旧代码可以继续调用 run_workflow，同时实际逻辑交给新服务。"""
 
-    answered_items = []
-    for item in collected.items:
-        answer = await generate_answer(item, config.answer_style, config.cta_text, config.system_prompt)
-        answered_items.append(item.model_copy(update={"answer": answer}))
-
-    return collected.model_copy(update={"items": answered_items})
+    return await workflow_service.run(options)

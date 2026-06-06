@@ -1,0 +1,2 @@
+"""Platform collector strategies."""
+

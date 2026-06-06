@@ -1,20 +1,36 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import { apiGet, apiPost } from "@/lib/api";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import type {
-  CollectResponse,
-  ConfigResponse,
-  GenerateAllResponse,
+  CollectPayload,
+  GenerateAllPayload,
+  GenerateOnePayload,
+  Platform,
   QuestionItem,
-  SessionResponse,
+  SaveSessionPayload,
 } from "@/types/workflow";
 
-import { fallbackTopics, fallbackWorkflow } from "./defaults";
+import { defaultPlatform, fallbackTopics, fallbackWorkflow } from "./defaults";
+import {
+  collectWorkflow,
+  generateAllAnswers,
+  generateOneAnswer,
+  getLatestSession,
+  getWorkspaceConfig,
+  saveWorkspaceSession,
+} from "./workflow-api";
+
+function withPlatform<T extends { platform?: Platform }>(item: T, platform: Platform): T {
+  return {
+    ...item,
+    platform: item.platform ?? platform,
+  };
+}
 
 export function useWorkspace() {
   const {
+    selectedPlatform,
     presetTopics,
     selectedTopic,
     questions,
@@ -22,6 +38,7 @@ export function useWorkspace() {
     answerStyle,
     systemPrompt,
     maxPushCount,
+    setSelectedPlatform,
     setPresetTopics,
     setSelectedTopic,
     setQuestions,
@@ -38,16 +55,17 @@ export function useWorkspace() {
 
   const configQuery = useQuery({
     queryKey: ["workspace-config"],
-    queryFn: () => apiGet<ConfigResponse>("/api/config"),
+    queryFn: getWorkspaceConfig,
   });
 
   const sessionQuery = useQuery({
     queryKey: ["workspace-session"],
-    queryFn: () => apiGet<SessionResponse>("/api/session/latest"),
+    queryFn: getLatestSession,
   });
 
   useEffect(() => {
     if (configQuery.data) {
+      setSelectedPlatform(configQuery.data.workflow.platform ?? defaultPlatform);
       setPresetTopics(configQuery.data.topics);
       setAnswerStyle(configQuery.data.workflow.answerStyle);
       setSystemPrompt(configQuery.data.workflow.systemPrompt);
@@ -63,6 +81,7 @@ export function useWorkspace() {
     setAnswerStyle,
     setMaxPushCount,
     setPresetTopics,
+    setSelectedPlatform,
     setSelectedTopic,
     setStatusMessage,
     setSystemPrompt,
@@ -70,6 +89,7 @@ export function useWorkspace() {
 
   useEffect(() => {
     if (configQuery.isError) {
+      setSelectedPlatform(fallbackWorkflow.platform);
       setPresetTopics(fallbackTopics);
       setAnswerStyle(fallbackWorkflow.answerStyle);
       setSystemPrompt(fallbackWorkflow.systemPrompt);
@@ -85,6 +105,7 @@ export function useWorkspace() {
     setAnswerStyle,
     setMaxPushCount,
     setPresetTopics,
+    setSelectedPlatform,
     setSelectedTopic,
     setStatusMessage,
     setSystemPrompt,
@@ -95,6 +116,8 @@ export function useWorkspace() {
     if (!session) {
       return;
     }
+    const sessionPlatform = session.platform ?? selectedPlatform;
+    setSelectedPlatform(sessionPlatform);
     if (session.answerStyle) {
       setAnswerStyle(session.answerStyle);
     }
@@ -108,34 +131,41 @@ export function useWorkspace() {
       setSelectedTopic(session.topics[0]);
     }
     if (session.items?.length) {
-      setQuestions(session.items);
+      setQuestions(session.items.map((item) => withPlatform(item, sessionPlatform)));
       setStatusMessage("已恢复最近一次保存的会话。");
     }
   }, [
     sessionQuery.data,
+    selectedPlatform,
     setAnswerStyle,
     setMaxPushCount,
     setQuestions,
+    setSelectedPlatform,
     setSelectedTopic,
     setStatusMessage,
     setSystemPrompt,
   ]);
 
   const collectMutation = useMutation({
-    mutationFn: () =>
-      apiPost<CollectResponse>("/api/workflow/collect", {
+    mutationFn: () => {
+      const payload: CollectPayload = {
+        platform: selectedPlatform,
         topics: selectedTopic ? [selectedTopic] : [],
         maxPushCount,
         answerStyle,
         systemPrompt,
         skipAnswerGeneration: true,
-      }),
+      };
+      return collectWorkflow(payload);
+    },
     onMutate: () => {
       setIsCollecting(true);
       setStatusMessage("正在连接知乎并采集候选问题...");
     },
     onSuccess: (data) => {
-      setQuestions(data.items);
+      const responsePlatform = data.platform ?? data.config.platform ?? selectedPlatform;
+      setSelectedPlatform(responsePlatform);
+      setQuestions(data.items.map((item) => withPlatform(item, responsePlatform)));
       setStatusMessage(`采集完成，本次获取 ${data.items.length} 条问题。`);
     },
     onError: (error: Error) => {
@@ -147,20 +177,23 @@ export function useWorkspace() {
   });
 
   const generateAllMutation = useMutation({
-    mutationFn: () =>
-      apiPost<GenerateAllResponse>("/api/workflow/generate", {
+    mutationFn: () => {
+      const payload: GenerateAllPayload = {
+        platform: selectedPlatform,
         topics: selectedTopic ? [selectedTopic] : [],
-        items: questions,
+        items: questions.map((item) => withPlatform(item, selectedPlatform)),
         answerStyle,
         systemPrompt,
         maxPushCount,
-      }),
+      };
+      return generateAllAnswers(payload);
+    },
     onMutate: () => {
       setIsGeneratingAll(true);
       setStatusMessage("正在批量生成回答...");
     },
     onSuccess: (data) => {
-      setQuestions(data.items);
+      setQuestions(data.items.map((item) => withPlatform(item, selectedPlatform)));
       setStatusMessage(`已完成 ${data.items.length} 条回答生成。`);
     },
     onError: (error: Error) => {
@@ -172,12 +205,15 @@ export function useWorkspace() {
   });
 
   const generateOneMutation = useMutation({
-    mutationFn: (item: QuestionItem) =>
-      apiPost<{ answer: string }>("/api/workflow/generate-one", {
-        item,
+    mutationFn: (item: QuestionItem) => {
+      const payload: GenerateOnePayload = {
+        platform: selectedPlatform,
+        item: withPlatform(item, selectedPlatform),
         answerStyle,
         systemPrompt,
-      }),
+      };
+      return generateOneAnswer(payload);
+    },
     onSuccess: (data, item) => {
       setQuestionAnswer(item.id, data.answer);
       setStatusMessage(`已生成：${item.title}`);
@@ -188,15 +224,18 @@ export function useWorkspace() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      apiPost<{ filePath: string }>("/api/session/save", {
+    mutationFn: () => {
+      const payload: SaveSessionPayload = {
+        platform: selectedPlatform,
         topics: selectedTopic ? [selectedTopic] : [],
-        items: questions,
+        items: questions.map((item) => withPlatform(item, selectedPlatform)),
         answerStyle,
         systemPrompt,
         maxPushCount,
         savedAt: new Date().toISOString(),
-      }),
+      };
+      return saveWorkspaceSession(payload);
+    },
     onMutate: () => {
       setSaveState("saving");
       setStatusMessage("正在保存当前结果...");
@@ -212,6 +251,7 @@ export function useWorkspace() {
   });
 
   return {
+    selectedPlatform,
     presetTopics,
     selectedTopic,
     questions,
@@ -223,6 +263,7 @@ export function useWorkspace() {
     isCollecting: collectMutation.isPending,
     isGeneratingAll: generateAllMutation.isPending,
     collectingError: collectMutation.error,
+    selectPlatform: setSelectedPlatform,
     selectTopic: setSelectedTopic,
     setQuestions,
     selectQuestion,

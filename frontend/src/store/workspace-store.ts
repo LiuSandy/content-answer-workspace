@@ -1,10 +1,11 @@
 import { create } from "zustand";
 
-import type { QuestionItem, Topic } from "@/types/workflow";
+import { DEFAULT_PLATFORM, type Platform, type QuestionItem, type Topic } from "@/types/workflow";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 type WorkspaceState = {
+  selectedPlatform: Platform;
   presetTopics: Topic[];
   selectedTopic: Topic | null;
   questions: QuestionItem[];
@@ -16,6 +17,7 @@ type WorkspaceState = {
   isGeneratingAll: boolean;
   saveState: SaveState;
   statusMessage: string;
+  setSelectedPlatform: (platform: Platform) => void;
   setPresetTopics: (topics: Topic[]) => void;
   setSelectedTopic: (topic: Topic | null) => void;
   setQuestions: (questions: QuestionItem[]) => void;
@@ -32,6 +34,7 @@ type WorkspaceState = {
 };
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
+  selectedPlatform: DEFAULT_PLATFORM,
   presetTopics: [],
   selectedTopic: null,
   questions: [],
@@ -43,6 +46,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   isGeneratingAll: false,
   saveState: "idle",
   statusMessage: "正在初始化工作台...",
+  setSelectedPlatform: (selectedPlatform) => set({ selectedPlatform }),
   setPresetTopics: (topics) => set({ presetTopics: topics }),
   setSelectedTopic: (topic) => set({ selectedTopic: topic }),
   setQuestions: (questions) =>

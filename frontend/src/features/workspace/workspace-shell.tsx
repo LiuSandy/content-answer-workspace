@@ -2,6 +2,7 @@ import {
   ArrowUpRight,
   Bot,
   Check,
+  Copy,
   FileDown,
   LoaderCircle,
   MessageSquareQuote,
@@ -18,21 +19,26 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
+import { supportedPlatforms } from "./defaults";
 import { useWorkspace } from "./use-workspace";
 
 function TopicControlPanel() {
   const {
+    selectedPlatform,
     presetTopics,
     selectedTopic,
+    questions,
     maxPushCount,
     answerStyle,
     systemPrompt,
+    selectPlatform,
     selectTopic,
     setMaxPushCount,
     setAnswerStyle,
@@ -55,14 +61,15 @@ function TopicControlPanel() {
         </p>
 
         <div className="workspace-metrics" aria-label="当前工作概况">
+          <MetricCard
+            label="当前平台"
+            value={supportedPlatforms.find((item) => item.id === selectedPlatform)?.label ?? selectedPlatform}
+          />
           <MetricCard label="当前主题" value={selectedTopic?.name ?? "未选择"} />
           <MetricCard label="采集上限" value={`${maxPushCount} 条`} />
-          <MetricCard
-            label="保存能力"
-            value="支持本地保存"
-            tone="accent"
-          />
         </div>
+
+        <WorkspacePulsePanel questions={questions} />
       </div>
 
       <Card className="workspace-control-panel">
@@ -72,20 +79,43 @@ function TopicControlPanel() {
         </CardHeader>
         <CardContent className="grid gap-5">
           <div className="grid gap-2">
+            <Label htmlFor="platform-select">平台</Label>
+            <Select
+              value={selectedPlatform}
+              onValueChange={(value) => selectPlatform(value as typeof selectedPlatform)}
+            >
+              <SelectTrigger id="platform-select">
+                <SelectValue placeholder="选择平台" />
+              </SelectTrigger>
+              <SelectContent>
+                {supportedPlatforms.map((platform) => (
+                  <SelectItem key={platform.id} value={platform.id}>
+                    {platform.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
             <Label htmlFor="topic-select">主题</Label>
             <Select
-              id="topic-select"
               value={selectedTopic?.id ?? ""}
-              onChange={(event) => {
-                const topic = presetTopics.find((item) => item.id === event.target.value) ?? null;
+              onValueChange={(value) => {
+                const topic = presetTopics.find((item) => item.id === value) ?? null;
                 selectTopic(topic);
               }}
             >
-              {presetTopics.map((topic) => (
-                <option key={topic.id} value={topic.id}>
-                  {topic.name}
-                </option>
-              ))}
+              <SelectTrigger id="topic-select">
+                <SelectValue placeholder="选择主题" />
+              </SelectTrigger>
+              <SelectContent>
+                {presetTopics.map((topic) => (
+                  <SelectItem key={topic.id} value={topic.id}>
+                    {topic.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
 
@@ -165,9 +195,10 @@ function MetricCard({
   );
 }
 
-function StatusRail() {
+function WorkspacePulsePanel({ questions }: { questions: ReturnType<typeof useWorkspace>["questions"] }) {
   const statusMessage = useWorkspaceStore((state) => state.statusMessage);
   const saveState = useWorkspaceStore((state) => state.saveState);
+  const answeredCount = questions.filter((question) => question.answer?.trim()).length;
 
   const saveText =
     saveState === "saved"
@@ -179,23 +210,44 @@ function StatusRail() {
           : "未保存";
 
   return (
-    <section className="workspace-status-row">
-      <div className="workspace-status-card">
-        <div className="workspace-status-card__icon">
-          <MessageSquareQuote className="h-4 w-4" />
+    <section className="workspace-pulse-panel" aria-label="当前批次状态">
+      <div className="workspace-pulse-panel__header">
+        <div>
+          <div className="workspace-pulse-panel__eyebrow">当前批次</div>
+          <div className="workspace-pulse-panel__title">采集与回答状态</div>
         </div>
-        <div className="workspace-status-card__body">
-          <div className="workspace-status-card__label">实时状态</div>
-          <div className="workspace-status-card__value">{statusMessage}</div>
-        </div>
+        <Badge variant={saveState === "saved" ? "default" : "secondary"}>{saveText}</Badge>
       </div>
-      <div className="workspace-status-card workspace-status-card--compact">
-        <div className="workspace-status-card__icon">
-          <FileDown className="h-4 w-4" />
+
+      <div className="workspace-pulse-grid">
+        <div className="workspace-status-card workspace-status-card--wide">
+          <div className="workspace-status-card__icon">
+            <MessageSquareQuote className="h-4 w-4" />
+          </div>
+          <div className="workspace-status-card__body">
+            <div className="workspace-status-card__label">实时状态</div>
+            <div className="workspace-status-card__value">{statusMessage}</div>
+          </div>
         </div>
-        <div className="workspace-status-card__body">
-          <div className="workspace-status-card__label">本地结果</div>
-          <div className="workspace-status-card__value">{saveText}</div>
+
+        <div className="workspace-status-card">
+          <div className="workspace-status-card__icon">
+            <FileDown className="h-4 w-4" />
+          </div>
+          <div className="workspace-status-card__body">
+            <div className="workspace-status-card__label">问题池</div>
+            <div className="workspace-status-card__value">{questions.length} 条</div>
+          </div>
+        </div>
+
+        <div className="workspace-status-card">
+          <div className="workspace-status-card__icon">
+            <Check className="h-4 w-4" />
+          </div>
+          <div className="workspace-status-card__body">
+            <div className="workspace-status-card__label">已生成</div>
+            <div className="workspace-status-card__value">{answeredCount} 条</div>
+          </div>
         </div>
       </div>
     </section>
@@ -308,6 +360,16 @@ function AnswerColumn() {
   const { questions, selectedQuestionId, setQuestionAnswer, generateOneAnswer, isGeneratingOne, saveSession } =
     useWorkspace();
   const question = questions.find((item) => item.id === selectedQuestionId) ?? null;
+  const [isCopied, setIsCopied] = useState(false);
+
+  async function copyAnswer() {
+    if (!question?.answer?.trim()) {
+      return;
+    }
+    await navigator.clipboard.writeText(question.answer);
+    setIsCopied(true);
+    window.setTimeout(() => setIsCopied(false), 1200);
+  }
 
   return (
     <Card className="workspace-column workspace-column--editor">
@@ -330,7 +392,7 @@ function AnswerColumn() {
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              {question.answer?.trim() ? "重新生成" : "AI 自动回答"}
+              AI 生成
             </Button>
             <Button className="cursor-pointer" variant="outline" onClick={saveSession}>
               <Save className="h-4 w-4" />
@@ -381,23 +443,33 @@ function AnswerColumn() {
                     支持在线查看、编辑、重新生成，并可保存到本地。
                   </div>
                 </div>
-                <Button
-                  className="cursor-pointer"
-                  variant="ghost"
-                  onClick={() => generateOneAnswer(question)}
-                  disabled={isGeneratingOne(question.id)}
-                >
-                  <RefreshCcw className={cn("h-4 w-4", isGeneratingOne(question.id) && "animate-spin")} />
-                  再回答一次
-                </Button>
+                <div className="workspace-answer-editor__actions">
+                  <Button
+                    className="cursor-pointer"
+                    variant="outline"
+                    onClick={copyAnswer}
+                    disabled={!question.answer?.trim()}
+                  >
+                    {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {isCopied ? "已复制" : "复制"}
+                  </Button>
+                  <Button
+                    className="cursor-pointer"
+                    variant="ghost"
+                    onClick={() => generateOneAnswer(question)}
+                    disabled={isGeneratingOne(question.id)}
+                  >
+                    <RefreshCcw className={cn("h-4 w-4", isGeneratingOne(question.id) && "animate-spin")} />
+                    AI 生成
+                  </Button>
+                </div>
               </div>
 
-              <Textarea
-                rows={24}
+              <MarkdownEditor
                 className="workspace-answer-editor__textarea"
                 placeholder="点击上方按钮生成回答，或者直接手工编辑这里的内容。"
                 value={question.answer || ""}
-                onChange={(event) => setQuestionAnswer(question.id, event.target.value)}
+                onChange={(value) => setQuestionAnswer(question.id, value)}
               />
             </div>
           </div>
@@ -431,7 +503,6 @@ export function WorkspaceShell() {
       <div className="workspace-backdrop" />
       <main className="workspace-main">
         <TopicControlPanel />
-        <StatusRail />
 
         <section className="workspace-columns">
           <QuestionsColumn />

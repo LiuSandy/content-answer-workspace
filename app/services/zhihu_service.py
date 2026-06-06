@@ -4,6 +4,7 @@ import json
 import os
 import re
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +13,12 @@ import httpx
 from ..core.config import COOKIE_PATH_DEFAULT, get_default_topics, get_workflow_config, load_env_file
 from ..models import QuestionItem, Topic, WorkflowResult, ZhihuSearchResponse
 
+TOPIC_HINTS_PATH = Path(__file__).resolve().parent.parent / "core" / "topic_hints.json"
+
 
 def unique_by(items: list[Any], key_fn) -> list[Any]:
+    """按指定键去重并保持原顺序；这样采集结果可以稳定裁剪且不会重复展示同一问题。"""
+
     seen: set[str] = set()
     result: list[Any] = []
     for item in items:
@@ -26,6 +31,8 @@ def unique_by(items: list[Any], key_fn) -> list[Any]:
 
 
 def clean_text(value: Any) -> str:
+    """清理 HTML 和实体字符；这样知乎返回的标题、摘要和正文能变成适合展示与匹配的纯文本。"""
+
     text = str(value or "")
     text = re.sub(r"<[^>]+>", " ", text)
     text = (
@@ -38,44 +45,53 @@ def clean_text(value: Any) -> str:
 
 
 def get_zhihu_question_web_url(question_id: str) -> str:
+    """生成知乎问题网页链接；这样内部只存问题 id 时也能提供前端可打开的原始地址。"""
+
     return f"https://www.zhihu.com/question/{question_id}"
 
 
+@lru_cache(maxsize=1)
+def load_topic_hint_profiles() -> list[dict[str, Any]]:
+    """加载主题扩展词配置；这样匹配词可以通过配置维护，而不是继续写死在采集代码里。"""
+
+    try:
+        payload = json.loads(TOPIC_HINTS_PATH.read_text("utf-8"))
+    except FileNotFoundError:
+        return []
+    profiles = payload.get("profiles", [])
+    return profiles if isinstance(profiles, list) else []
+
+
+def get_topic_specific_hints(topic: Topic) -> list[str]:
+    """按主题匹配配置中的扩展词；这样新增主题规则只需要改配置文件而不需要增加 if/else。"""
+
+    topic_id = topic.id.lower()
+    topic_name = topic.name.lower()
+    hints: list[str] = []
+    for profile in load_topic_hint_profiles():
+        match = profile.get("match", {}) if isinstance(profile, dict) else {}
+        match_ids = [str(value).lower() for value in match.get("ids", [])]
+        match_names = [str(value).lower() for value in match.get("names", [])]
+        if any(value in topic_id for value in match_ids) or any(value in topic_name for value in match_names):
+            hints.extend(str(value).strip().lower() for value in profile.get("hints", []) if str(value).strip())
+    return hints
+
+
 def build_keyword_hints(topic: Topic) -> list[str]:
+    """为主题构建扩展匹配词；这样知乎搜索结果可以用更宽的语义范围过滤出相关问题。"""
+
     raw_tokens = [
         token.strip().lower()
         for source in [topic.name, *topic.keywords]
         for token in re.split(r"[,，/\s、]+", str(source))
         if token.strip()
     ]
-    topic_id = topic.id.lower()
-    topic_name = topic.name.lower()
-
-    if "algo" in topic_id or "算法" in topic_name or "数据结构" in topic_name:
-        topic_specific = [
-            "数据结构", "结构", "算法", "二叉树", "链表", "栈", "队列", "哈希", "哈希表",
-            "堆", "图", "并查集", "动态规划", "dp", "回溯", "贪心", "递归", "排序",
-            "查找", "时间复杂度", "空间复杂度", "复杂度", "leetcode", "刷题", "面试算法",
-        ]
-    elif "personal-site" in topic_id or "个人站点" in topic_name or "建站" in topic_name:
-        topic_specific = [
-            "个人网站", "个人站点", "独立站", "独立博客", "博客", "建站", "个人主页", "主页",
-            "网站设计", "网页设计", "作品集网站", "portfolio", "导航页", "展示页", "站点推荐",
-            "网站推荐", "站点展示", "好看的网站", "好看的个人网站", "好看的个人站点", "网站审美",
-            "网站案例", "个人品牌网站", "开发者主页", "十年前做个人网站", "大家的个人网站",
-            "有多少人有自己的个人网站",
-        ]
-    elif "podcast" in topic_id or "播客" in topic_name:
-        topic_specific = [
-            "播客", "podcast", "音频节目", "播客推荐", "播客创作", "做播客", "独立播客", "内容创作",
-        ]
-    else:
-        topic_specific = []
-
-    return unique_by(raw_tokens + topic_specific, lambda item: item)
+    return unique_by(raw_tokens + get_topic_specific_hints(topic), lambda item: item)
 
 
 def get_topic_preview(topic: Topic) -> Topic:
+    """返回带扩展词的主题视图；这样前端和采集流程都能看到后端实际使用的匹配依据。"""
+
     return Topic(
         id=topic.id,
         name=topic.name,
@@ -85,11 +101,15 @@ def get_topic_preview(topic: Topic) -> Topic:
 
 
 def question_matches_keyword(question: QuestionItem, keyword_hints: list[str]) -> bool:
+    """判断问题是否命中主题关键词；这样搜索接口混入的非相关内容可以在本地被过滤。"""
+
     haystack = clean_text(" ".join([question.title, question.excerpt, question.detail])).lower()
     return bool(haystack) and any(hint in haystack for hint in keyword_hints)
 
 
 def to_iso_time(value: Any) -> str | None:
+    """把知乎时间字段转成 ISO 字符串；这样前端展示和本地保存能使用统一时间格式。"""
+
     if value in (None, ""):
         return None
     try:
@@ -103,6 +123,8 @@ def to_iso_time(value: Any) -> str | None:
 
 
 def parse_json_response(response: httpx.Response, label: str) -> dict[str, Any]:
+    """安全解析 HTTP JSON 响应；这样知乎风控返回 HTML 时能给出可诊断错误而不是静默失败。"""
+
     content_type = response.headers.get("content-type", "")
     text = response.text
     if "application/json" not in content_type.lower():
@@ -120,6 +142,8 @@ def parse_json_response(response: httpx.Response, label: str) -> dict[str, Any]:
 
 
 def read_optional_file(file_path: Path) -> str | None:
+    """读取可选文本文件；这样 cookie 文件不存在时采集流程可以继续按无 cookie 模式尝试。"""
+
     try:
         return file_path.read_text("utf-8")
     except FileNotFoundError:
@@ -127,13 +151,39 @@ def read_optional_file(file_path: Path) -> str | None:
 
 
 def load_zhihu_cookie() -> str | None:
+    """加载知乎 cookie 内容；这样所有知乎请求都能复用统一的凭据读取规则。"""
+
     configured = os.getenv("ZHIHU_COOKIE_FILE", "").strip()
     cookie_path = Path(configured).resolve() if configured else COOKIE_PATH_DEFAULT
     content = read_optional_file(cookie_path)
     return content.strip() if content else None
 
 
+def get_zhihu_signature_header() -> str | None:
+    """读取知乎 x-zse-96 签名；这样采集前可以明确判断当前请求是否具备知乎接口所需凭据。"""
+
+    value = os.getenv("ZHIHU_X_ZSE_96", "").strip()
+    return value or None
+
+
+def ensure_zhihu_request_credentials(cookie: str | None, signature: str | None) -> None:
+    """校验知乎采集凭据；这样缺少 cookie 或签名时会返回可理解错误，而不是继续触发 400。"""
+
+    missing = []
+    if not cookie:
+        missing.append("ZHIHU_COOKIE_FILE")
+    if not signature:
+        missing.append("ZHIHU_X_ZSE_96")
+    if missing:
+        raise ValueError(
+            "知乎搜索接口需要有效的浏览器 Cookie 和 x-zse-96 签名；"
+            f"当前缺少：{', '.join(missing)}。请在 .env 中配置 ZHIHU_COOKIE_FILE 和 ZHIHU_X_ZSE_96 后重启后端。"
+        )
+
+
 def map_search_item(raw: dict[str, Any], topic_name: str) -> QuestionItem | None:
+    """把知乎原始搜索项映射为内部问题模型；这样外部响应结构变化不会直接污染工作流。"""
+
     object_data = raw.get("object") or {}
     if not isinstance(object_data, dict):
         return None
@@ -170,6 +220,8 @@ def map_search_item(raw: dict[str, Any], topic_name: str) -> QuestionItem | None
 
 
 async def fetch_question_details(item: QuestionItem, user_agent: str) -> QuestionItem:
+    """补抓知乎问题详情页信息；这样搜索结果缺失或不准的标题、时间和回答数可以被修正。"""
+
     cookie = load_zhihu_cookie()
     headers = {
         "User-Agent": user_agent,
@@ -200,11 +252,16 @@ async def fetch_question_details(item: QuestionItem, user_agent: str) -> Questio
 
 
 async def fetch_zhihu_results_for_topic(topic: Topic, user_agent: str) -> list[QuestionItem]:
+    """按单个主题请求知乎搜索接口；这样知乎平台策略可以复用完整的搜索、过滤和详情补全流程。"""
+
     cookie = load_zhihu_cookie()
-    query = httpx.QueryParams({"q": topic.name}).get("q")
-    url_base = os.getenv("ZHIHU_API_URL", "https://www.zhihu.com/api/v4/search_v3").strip()
-    referer = os.getenv("ZHIHU_REFERER", f"https://www.zhihu.com/search?type=content&q={query}").strip()
+    signature = get_zhihu_signature_header()
+    ensure_zhihu_request_credentials(cookie, signature)
+    url_base = os.getenv("ZHIHU_API_URL", "https://api.zhihu.com/search_v3").strip()
+    referer_query = httpx.QueryParams({"type": "content", "q": topic.name})
+    referer = os.getenv("ZHIHU_REFERER", f"https://www.zhihu.com/search?{referer_query}").strip()
     params = {
+        "advert_count": "0",
         "gk_version": "gz-gaokao",
         "t": "general",
         "q": topic.name,
@@ -225,8 +282,8 @@ async def fetch_zhihu_results_for_topic(topic: Topic, user_agent: str) -> list[Q
     }
     if os.getenv("ZHIHU_X_ZSE_93", "").strip():
         headers["x-zse-93"] = os.getenv("ZHIHU_X_ZSE_93", "").strip()
-    if os.getenv("ZHIHU_X_ZSE_96", "").strip():
-        headers["x-zse-96"] = os.getenv("ZHIHU_X_ZSE_96", "").strip()
+    if signature:
+        headers["x-zse-96"] = signature
     if cookie:
         headers["Cookie"] = cookie
 
@@ -234,7 +291,11 @@ async def fetch_zhihu_results_for_topic(topic: Topic, user_agent: str) -> list[Q
         response = await client.get(url_base, params=params, headers=headers)
 
     if response.status_code >= 400:
-        raise ValueError(f"Zhihu request failed: {response.status_code} {response.reason_phrase}")
+        preview = re.sub(r"\s+", " ", response.text[:300]).strip()
+        raise ValueError(
+            f"Zhihu request failed: {response.status_code} {response.reason_phrase}; "
+            f"url={response.url}; body={preview or 'empty'}"
+        )
 
     payload = ZhihuSearchResponse.model_validate(parse_json_response(response, "Zhihu API"))
     keyword_hints = build_keyword_hints(topic)
@@ -251,6 +312,8 @@ async def fetch_zhihu_results_for_topic(topic: Topic, user_agent: str) -> list[Q
 
 
 async def collect_questions(options: dict[str, Any] | None = None) -> WorkflowResult:
+    """执行旧版知乎采集流程；这样历史导入仍能工作，同时新架构可以逐步迁移到采集器策略。"""
+
     load_env_file()
     options = options or {}
     config = get_workflow_config(options)

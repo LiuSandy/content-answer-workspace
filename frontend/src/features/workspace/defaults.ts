@@ -1,4 +1,13 @@
-import type { Topic, WorkflowConfig } from "@/types/workflow";
+import { DEFAULT_PLATFORM, type Topic, type WorkflowConfig } from "@/types/workflow";
+
+export const supportedPlatforms = [
+  {
+    id: DEFAULT_PLATFORM,
+    label: "知乎",
+  },
+] as const;
+
+export const defaultPlatform = supportedPlatforms[0].id;
 
 export const fallbackTopics: Topic[] = [
   {
@@ -77,6 +86,7 @@ export const fallbackTopics: Topic[] = [
 ];
 
 export const fallbackWorkflow: WorkflowConfig = {
+  platform: defaultPlatform,
   maxPushCount: 10,
   sortModes: ["latest", "answer_count"],
   answerStyle: "像一个长期观察现实问题的人在认真表达判断，语言自然，有事实感、故事感和经历感，不要模板化，不要AI腔",

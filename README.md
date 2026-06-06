@@ -138,6 +138,39 @@ bun run build
 - `POST /api/generate-all`
 - `POST /api/save`
 
+## 一次性完整流程架构图
+
+```mermaid
+sequenceDiagram
+  participant U as 用户
+  participant F as 前端工作台
+  participant B as 后端 API
+  participant W as 工作流编排层
+  participant M as DeepSeek 模型
+  participant T as 平台采集工具
+  participant S as 本地保存
+
+  U->>F: 选择主题和采集参数
+  F->>B: 提交采集请求
+  B->>W: 创建采集任务
+  W->>M: 请求选择合适的采集函数
+  M->>W: function call: collect_zhihu_questions
+  W->>T: 执行知乎采集
+  T->>W: 返回问题列表
+  W->>F: 返回采集结果
+
+  U->>F: 选择某个问题生成回答
+  F->>B: 提交问题内容
+  B->>W: 创建回答生成任务
+  W->>M: 调用 DeepSeek 生成回答
+  M->>W: 返回回答正文
+  W->>F: 返回 AI 回答
+
+  U->>F: 编辑并保存
+  F->>B: 保存当前会话
+  B->>S: 写入本地结果
+```
+
 ## 当前状态
 
 已经完成：
