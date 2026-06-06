@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+from ...core.config import get_workflow_config, load_env_file
+from ...services.zhihu_service import get_default_topics, get_topic_preview
+
+router = APIRouter(prefix="/api/config", tags=["config"])
+
+
+@router.get("")
+async def get_config() -> JSONResponse:
+    load_env_file()
+    return JSONResponse(
+        {
+            "ok": True,
+            "data": {
+                "topics": [get_topic_preview(topic).model_dump(by_alias=True) for topic in get_default_topics()],
+                "workflow": get_workflow_config().model_dump(by_alias=True),
+            },
+        }
+    )
