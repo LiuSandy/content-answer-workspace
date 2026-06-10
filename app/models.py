@@ -12,6 +12,8 @@ class Topic(BaseModel):
     name: str
     keywords: list[str] = Field(default_factory=list)
     expanded_hints: list[str] = Field(default_factory=list, alias="expandedHints")
+    answer_style: str = Field(default="", alias="answerStyle")
+    system_prompt: str = Field(default="", alias="systemPrompt")
 
     model_config = {
         "populate_by_name": True,
@@ -26,6 +28,7 @@ class WorkflowConfig(BaseModel):
     sort_modes: list[str] = Field(alias="sortModes")
     answer_style: str = Field(alias="answerStyle")
     system_prompt: str = Field(alias="systemPrompt")
+    generation_prompt: str = Field(alias="generationPrompt")
     test_mode: bool = Field(alias="testMode")
     skip_answer_generation: bool = Field(alias="skipAnswerGeneration")
     user_agent: str = Field(alias="userAgent")
@@ -50,6 +53,8 @@ class QuestionItem(BaseModel):
     detail: str = ""
     topic: str
     answer: str = ""
+    images: list[str] = Field(default_factory=list)
+    image_prompts: list[str] = Field(default_factory=list, alias="imagePrompts")
 
     model_config = {
         "populate_by_name": True,
@@ -73,6 +78,7 @@ class SessionPayload(BaseModel):
     topics: list[Topic] = Field(default_factory=list)
     answer_style: str = Field(default="", alias="answerStyle")
     system_prompt: str = Field(default="", alias="systemPrompt")
+    generation_prompt: str = Field(default="", alias="generationPrompt")
     max_push_count: int | None = Field(default=None, alias="maxPushCount")
     items: list[QuestionItem] = Field(default_factory=list)
 
@@ -90,6 +96,7 @@ class RunPayload(BaseModel):
     skip_answer_generation: bool | None = Field(default=None, alias="skipAnswerGeneration")
     answer_style: str | None = Field(default=None, alias="answerStyle")
     system_prompt: str | None = Field(default=None, alias="systemPrompt")
+    generation_prompt: str | None = Field(default=None, alias="generationPrompt")
 
     model_config = {
         "populate_by_name": True,
@@ -103,6 +110,19 @@ class RegeneratePayload(BaseModel):
     item: QuestionItem
     answer_style: str | None = Field(default=None, alias="answerStyle")
     system_prompt: str | None = Field(default=None, alias="systemPrompt")
+    generation_prompt: str | None = Field(default=None, alias="generationPrompt")
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
+class ParseQuestionUrlPayload(BaseModel):
+    """表示前端通过问题链接直接导入题目的请求；定义成模型是为了统一校验平台、URL 和提示词覆盖参数。"""
+
+    platform: str = "zhihu"
+    url: str
+    topic: Topic | None = None
 
     model_config = {
         "populate_by_name": True,

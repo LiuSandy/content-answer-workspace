@@ -7,6 +7,8 @@ export type Topic = {
   name: string;
   keywords: string[];
   expandedHints?: string[];
+  answerStyle?: string;
+  systemPrompt?: string;
 };
 
 export type WorkflowConfig = {
@@ -15,6 +17,7 @@ export type WorkflowConfig = {
   sortModes: string[];
   answerStyle: string;
   systemPrompt: string;
+  generationPrompt: string;
   testMode: boolean;
   skipAnswerGeneration: boolean;
   userAgent: string;
@@ -33,6 +36,8 @@ export type QuestionItem = {
   detail: string;
   topic: string;
   answer: string;
+  images?: string[];
+  imagePrompts?: string[];
 };
 
 export type ConfigResponse = {
@@ -46,6 +51,7 @@ export type SessionResponse = {
     topics?: Topic[];
     answerStyle?: string;
     systemPrompt?: string;
+    generationPrompt?: string;
     maxPushCount?: number;
     items?: QuestionItem[];
   } | null;
@@ -58,6 +64,20 @@ export type CollectResponse = {
   items: QuestionItem[];
 };
 
+export type ParseQuestionUrlPayload = {
+  platform: Platform;
+  url: string;
+  topic?: Topic;
+};
+
+export type ParseQuestionUrlResponse = {
+  item: QuestionItem;
+};
+
+export type GenerateOneResponse = {
+  item: QuestionItem;
+};
+
 export type GenerateAllResponse = {
   items: QuestionItem[];
 };
@@ -68,6 +88,7 @@ export type CollectPayload = {
   maxPushCount: number;
   answerStyle: string;
   systemPrompt: string;
+  generationPrompt: string;
   skipAnswerGeneration: boolean;
 };
 
@@ -76,6 +97,7 @@ export type GenerateOnePayload = {
   item: QuestionItem;
   answerStyle: string;
   systemPrompt: string;
+  generationPrompt: string;
 };
 
 export type GenerateAllPayload = {
@@ -84,6 +106,7 @@ export type GenerateAllPayload = {
   items: QuestionItem[];
   answerStyle: string;
   systemPrompt: string;
+  generationPrompt: string;
   maxPushCount: number;
 };
 
@@ -93,6 +116,7 @@ export type SaveSessionPayload = {
   items: QuestionItem[];
   answerStyle: string;
   systemPrompt: string;
+  generationPrompt: string;
   maxPushCount: number;
   savedAt: string;
 };

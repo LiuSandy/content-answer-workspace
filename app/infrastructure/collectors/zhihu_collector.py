@@ -17,6 +17,6 @@ class ZhihuCollector(CollectorPort):
 
         items: list[QuestionItem] = []
         for topic in topics:
-            topic_items = await fetch_zhihu_results_for_topic(topic, config.user_agent)
+            topic_items = await fetch_zhihu_results_for_topic(topic, config.user_agent, config.max_push_count)
             items.extend(item.model_copy(update={"platform": self.platform}) for item in topic_items)
         return items

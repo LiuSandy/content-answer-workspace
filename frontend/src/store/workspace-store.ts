@@ -12,6 +12,7 @@ type WorkspaceState = {
   selectedQuestionId: string | null;
   answerStyle: string;
   systemPrompt: string;
+  generationPrompt: string;
   maxPushCount: number;
   isCollecting: boolean;
   isGeneratingAll: boolean;
@@ -20,12 +21,15 @@ type WorkspaceState = {
   setSelectedPlatform: (platform: Platform) => void;
   setPresetTopics: (topics: Topic[]) => void;
   setSelectedTopic: (topic: Topic | null) => void;
+  updateTopicPrompts: (topicId: string, prompts: { systemPrompt?: string; answerStyle?: string }) => void;
   setQuestions: (questions: QuestionItem[]) => void;
   setQuestionAnswer: (questionId: string, answer: string) => void;
+  setQuestionItem: (questionId: string, item: QuestionItem) => void;
   selectQuestion: (questionId: string | null) => void;
   updateQuestionAnswer: (questionId: string, answer: string) => void;
   setAnswerStyle: (value: string) => void;
   setSystemPrompt: (value: string) => void;
+  setGenerationPrompt: (value: string) => void;
   setMaxPushCount: (value: number) => void;
   setIsCollecting: (value: boolean) => void;
   setIsGeneratingAll: (value: boolean) => void;
@@ -41,6 +45,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   selectedQuestionId: null,
   answerStyle: "",
   systemPrompt: "",
+  generationPrompt: "",
   maxPushCount: 10,
   isCollecting: false,
   isGeneratingAll: false,
@@ -49,6 +54,27 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setSelectedPlatform: (selectedPlatform) => set({ selectedPlatform }),
   setPresetTopics: (topics) => set({ presetTopics: topics }),
   setSelectedTopic: (topic) => set({ selectedTopic: topic }),
+  updateTopicPrompts: (topicId, prompts) =>
+    set((state) => {
+      const presetTopics = state.presetTopics.map((topic) =>
+        topic.id === topicId
+          ? {
+              ...topic,
+              systemPrompt: prompts.systemPrompt ?? topic.systemPrompt,
+              answerStyle: prompts.answerStyle ?? topic.answerStyle,
+            }
+          : topic,
+      );
+      const selectedTopic =
+        state.selectedTopic?.id === topicId
+          ? {
+              ...state.selectedTopic,
+              systemPrompt: prompts.systemPrompt ?? state.selectedTopic.systemPrompt,
+              answerStyle: prompts.answerStyle ?? state.selectedTopic.answerStyle,
+            }
+          : state.selectedTopic;
+      return { presetTopics, selectedTopic };
+    }),
   setQuestions: (questions) =>
     set((state) => ({
       questions,
@@ -61,6 +87,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         question.id === questionId ? { ...question, answer } : question,
       ),
     })),
+  setQuestionItem: (questionId, item) =>
+    set((state) => ({
+      questions: state.questions.map((question) => (question.id === questionId ? item : question)),
+    })),
   selectQuestion: (selectedQuestionId) => set({ selectedQuestionId }),
   updateQuestionAnswer: (questionId, answer) =>
     set((state) => ({
@@ -70,6 +100,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     })),
   setAnswerStyle: (answerStyle) => set({ answerStyle }),
   setSystemPrompt: (systemPrompt) => set({ systemPrompt }),
+  setGenerationPrompt: (generationPrompt) => set({ generationPrompt }),
   setMaxPushCount: (maxPushCount) => set({ maxPushCount }),
   setIsCollecting: (isCollecting) => set({ isCollecting }),
   setIsGeneratingAll: (isGeneratingAll) => set({ isGeneratingAll }),

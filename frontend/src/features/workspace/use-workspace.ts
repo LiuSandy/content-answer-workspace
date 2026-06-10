@@ -1,14 +1,16 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { useWorkspaceStore } from "@/store/workspace-store";
 import type {
   CollectPayload,
   GenerateAllPayload,
   GenerateOnePayload,
+  ParseQuestionUrlPayload,
   Platform,
   QuestionItem,
   SaveSessionPayload,
+  Topic,
 } from "@/types/workflow";
 
 import { defaultPlatform, fallbackTopics, fallbackWorkflow } from "./defaults";
@@ -18,6 +20,7 @@ import {
   generateOneAnswer,
   getLatestSession,
   getWorkspaceConfig,
+  parseQuestionUrl,
   saveWorkspaceSession,
 } from "./workflow-api";
 
@@ -28,7 +31,37 @@ function withPlatform<T extends { platform?: Platform }>(item: T, platform: Plat
   };
 }
 
+function uniqueQuestionsById(items: QuestionItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.platform ?? "zhihu"}:${item.id}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function mergeTopics(currentTopics: Topic[], updatedTopics: Topic[]) {
+  const updatedMap = new Map(updatedTopics.map((topic) => [topic.id, topic]));
+  return [
+    ...currentTopics.map((topic) => updatedMap.get(topic.id) ?? topic),
+    ...updatedTopics.filter((topic) => !currentTopics.some((currentTopic) => currentTopic.id === topic.id)),
+  ];
+}
+
+function getTopicSystemPrompt(topic: Topic | null, fallback: string) {
+  return topic?.systemPrompt?.trim() ? topic.systemPrompt : fallback;
+}
+
+function getTopicAnswerStyle(topic: Topic | null, fallback: string) {
+  return topic?.answerStyle?.trim() ? topic.answerStyle : fallback;
+}
+
 export function useWorkspace() {
+  const hasHydratedConfig = useRef(false);
+  const hasHydratedSession = useRef(false);
   const {
     selectedPlatform,
     presetTopics,
@@ -37,15 +70,19 @@ export function useWorkspace() {
     selectedQuestionId,
     answerStyle,
     systemPrompt,
+    generationPrompt,
     maxPushCount,
     setSelectedPlatform,
     setPresetTopics,
     setSelectedTopic,
+    updateTopicPrompts,
     setQuestions,
     setQuestionAnswer,
+    setQuestionItem,
     selectQuestion,
     setAnswerStyle,
     setSystemPrompt,
+    setGenerationPrompt,
     setMaxPushCount,
     setIsCollecting,
     setIsGeneratingAll,
@@ -64,20 +101,20 @@ export function useWorkspace() {
   });
 
   useEffect(() => {
-    if (configQuery.data) {
+    if (configQuery.data && !hasHydratedConfig.current) {
+      hasHydratedConfig.current = true;
+      const initialTopic = configQuery.data.topics[0] ?? null;
       setSelectedPlatform(configQuery.data.workflow.platform ?? defaultPlatform);
       setPresetTopics(configQuery.data.topics);
-      setAnswerStyle(configQuery.data.workflow.answerStyle);
-      setSystemPrompt(configQuery.data.workflow.systemPrompt);
+      setAnswerStyle(getTopicAnswerStyle(initialTopic, configQuery.data.workflow.answerStyle));
+      setSystemPrompt(getTopicSystemPrompt(initialTopic, configQuery.data.workflow.systemPrompt));
+      setGenerationPrompt(configQuery.data.workflow.generationPrompt);
       setMaxPushCount(configQuery.data.workflow.maxPushCount);
-      if (!selectedTopic) {
-        setSelectedTopic(configQuery.data.topics[0] ?? null);
-      }
+      setSelectedTopic(initialTopic);
       setStatusMessage("配置加载完成，可以开始采集问题。");
     }
   }, [
     configQuery.data,
-    selectedTopic,
     setAnswerStyle,
     setMaxPushCount,
     setPresetTopics,
@@ -85,23 +122,32 @@ export function useWorkspace() {
     setSelectedTopic,
     setStatusMessage,
     setSystemPrompt,
+    setGenerationPrompt,
   ]);
 
   useEffect(() => {
-    if (configQuery.isError) {
+    if (!selectedTopic) {
+      return;
+    }
+    setSystemPrompt(getTopicSystemPrompt(selectedTopic, systemPrompt));
+    setAnswerStyle(getTopicAnswerStyle(selectedTopic, answerStyle));
+  }, [selectedTopic?.id, setAnswerStyle, setSystemPrompt]);
+
+  useEffect(() => {
+    if (configQuery.isError && !hasHydratedConfig.current) {
+      hasHydratedConfig.current = true;
+      const initialTopic = fallbackTopics[0] ?? null;
       setSelectedPlatform(fallbackWorkflow.platform);
       setPresetTopics(fallbackTopics);
-      setAnswerStyle(fallbackWorkflow.answerStyle);
-      setSystemPrompt(fallbackWorkflow.systemPrompt);
+      setAnswerStyle(getTopicAnswerStyle(initialTopic, fallbackWorkflow.answerStyle));
+      setSystemPrompt(getTopicSystemPrompt(initialTopic, fallbackWorkflow.systemPrompt));
+      setGenerationPrompt(fallbackWorkflow.generationPrompt);
       setMaxPushCount(fallbackWorkflow.maxPushCount);
-      if (!selectedTopic) {
-        setSelectedTopic(fallbackTopics[0] ?? null);
-      }
+      setSelectedTopic(initialTopic);
       setStatusMessage("配置接口加载失败，已回退到本地默认主题。");
     }
   }, [
     configQuery.isError,
-    selectedTopic,
     setAnswerStyle,
     setMaxPushCount,
     setPresetTopics,
@@ -109,26 +155,37 @@ export function useWorkspace() {
     setSelectedTopic,
     setStatusMessage,
     setSystemPrompt,
+    setGenerationPrompt,
   ]);
 
   useEffect(() => {
     const session = sessionQuery.data?.session;
-    if (!session) {
+    if (!session || hasHydratedSession.current) {
       return;
     }
+    hasHydratedSession.current = true;
     const sessionPlatform = session.platform ?? selectedPlatform;
+    const sessionTopics = session.topics ?? [];
+    const sessionSelectedTopic = sessionTopics[0] ?? null;
     setSelectedPlatform(sessionPlatform);
-    if (session.answerStyle) {
-      setAnswerStyle(session.answerStyle);
-    }
-    if (session.systemPrompt) {
-      setSystemPrompt(session.systemPrompt);
-    }
     if (session.maxPushCount) {
       setMaxPushCount(session.maxPushCount);
     }
-    if (session.topics?.length) {
-      setSelectedTopic(session.topics[0]);
+    if (session.generationPrompt) {
+      setGenerationPrompt(session.generationPrompt);
+    }
+    if (sessionTopics.length) {
+      setPresetTopics(sessionTopics);
+      setSelectedTopic(sessionSelectedTopic);
+      setAnswerStyle(getTopicAnswerStyle(sessionSelectedTopic, session.answerStyle ?? answerStyle));
+      setSystemPrompt(getTopicSystemPrompt(sessionSelectedTopic, session.systemPrompt ?? systemPrompt));
+    } else {
+      if (session.answerStyle) {
+        setAnswerStyle(session.answerStyle);
+      }
+      if (session.systemPrompt) {
+        setSystemPrompt(session.systemPrompt);
+      }
     }
     if (session.items?.length) {
       setQuestions(session.items.map((item) => withPlatform(item, sessionPlatform)));
@@ -139,34 +196,56 @@ export function useWorkspace() {
     selectedPlatform,
     setAnswerStyle,
     setMaxPushCount,
+    setPresetTopics,
     setQuestions,
     setSelectedPlatform,
     setSelectedTopic,
     setStatusMessage,
     setSystemPrompt,
+    setGenerationPrompt,
   ]);
 
   const collectMutation = useMutation({
     mutationFn: () => {
+      const currentSystemPrompt = getTopicSystemPrompt(selectedTopic, systemPrompt);
+      const currentAnswerStyle = getTopicAnswerStyle(selectedTopic, answerStyle);
       const payload: CollectPayload = {
         platform: selectedPlatform,
-        topics: selectedTopic ? [selectedTopic] : [],
+        topics: selectedTopic
+          ? [
+              {
+                ...selectedTopic,
+                systemPrompt: currentSystemPrompt,
+                answerStyle: currentAnswerStyle,
+              },
+            ]
+          : [],
         maxPushCount,
-        answerStyle,
-        systemPrompt,
+        answerStyle: currentAnswerStyle,
+        systemPrompt: currentSystemPrompt,
+        generationPrompt,
         skipAnswerGeneration: true,
       };
       return collectWorkflow(payload);
     },
     onMutate: () => {
       setIsCollecting(true);
-      setStatusMessage("正在连接知乎并采集候选问题...");
+      setStatusMessage("正在让 AI 扩展检索词，并连接知乎采集候选问题...");
     },
     onSuccess: (data) => {
       const responsePlatform = data.platform ?? data.config.platform ?? selectedPlatform;
       setSelectedPlatform(responsePlatform);
+      if (data.topics.length) {
+        setPresetTopics(mergeTopics(presetTopics, data.topics));
+        setSelectedTopic(data.topics[0] ?? null);
+      }
       setQuestions(data.items.map((item) => withPlatform(item, responsePlatform)));
-      setStatusMessage(`采集完成，本次获取 ${data.items.length} 条问题。`);
+      const retrievalCount = data.topics[0]?.expandedHints?.length ?? 0;
+      setStatusMessage(
+        retrievalCount
+          ? `采集完成，AI 生成 ${retrievalCount} 个检索词，聚合出 ${data.items.length} 条问题。`
+          : `采集完成，本次获取 ${data.items.length} 条问题。`,
+      );
     },
     onError: (error: Error) => {
       setStatusMessage(error.message);
@@ -176,14 +255,50 @@ export function useWorkspace() {
     },
   });
 
+  const importQuestionByUrlMutation = useMutation({
+    mutationFn: (url: string) => {
+      const payload: ParseQuestionUrlPayload = {
+        platform: selectedPlatform,
+        url,
+        topic: selectedTopic ?? undefined,
+      };
+      return parseQuestionUrl(payload);
+    },
+    onMutate: () => {
+      setStatusMessage("正在解析问题链接...");
+    },
+    onSuccess: (data) => {
+      const importedItem = withPlatform(data.item, selectedPlatform);
+      setQuestions(
+        uniqueQuestionsById([importedItem, ...questions.map((item) => withPlatform(item, selectedPlatform))]),
+      );
+      selectQuestion(importedItem.id);
+      setStatusMessage(`已导入问题：${importedItem.title}`);
+    },
+    onError: (error: Error) => {
+      setStatusMessage(error.message);
+    },
+  });
+
   const generateAllMutation = useMutation({
     mutationFn: () => {
+      const currentSystemPrompt = getTopicSystemPrompt(selectedTopic, systemPrompt);
+      const currentAnswerStyle = getTopicAnswerStyle(selectedTopic, answerStyle);
       const payload: GenerateAllPayload = {
         platform: selectedPlatform,
-        topics: selectedTopic ? [selectedTopic] : [],
+        topics: selectedTopic
+          ? [
+              {
+                ...selectedTopic,
+                systemPrompt: currentSystemPrompt,
+                answerStyle: currentAnswerStyle,
+              },
+            ]
+          : [],
         items: questions.map((item) => withPlatform(item, selectedPlatform)),
-        answerStyle,
-        systemPrompt,
+        answerStyle: currentAnswerStyle,
+        systemPrompt: currentSystemPrompt,
+        generationPrompt,
         maxPushCount,
       };
       return generateAllAnswers(payload);
@@ -206,16 +321,19 @@ export function useWorkspace() {
 
   const generateOneMutation = useMutation({
     mutationFn: (item: QuestionItem) => {
+      const currentSystemPrompt = getTopicSystemPrompt(selectedTopic, systemPrompt);
+      const currentAnswerStyle = getTopicAnswerStyle(selectedTopic, answerStyle);
       const payload: GenerateOnePayload = {
         platform: selectedPlatform,
         item: withPlatform(item, selectedPlatform),
-        answerStyle,
-        systemPrompt,
+        answerStyle: currentAnswerStyle,
+        systemPrompt: currentSystemPrompt,
+        generationPrompt,
       };
       return generateOneAnswer(payload);
     },
     onSuccess: (data, item) => {
-      setQuestionAnswer(item.id, data.answer);
+      setQuestionItem(item.id, withPlatform(data.item, selectedPlatform));
       setStatusMessage(`已生成：${item.title}`);
     },
     onError: (error: Error) => {
@@ -225,12 +343,21 @@ export function useWorkspace() {
 
   const saveMutation = useMutation({
     mutationFn: () => {
+      const currentSystemPrompt = getTopicSystemPrompt(selectedTopic, systemPrompt);
+      const currentAnswerStyle = getTopicAnswerStyle(selectedTopic, answerStyle);
       const payload: SaveSessionPayload = {
         platform: selectedPlatform,
-        topics: selectedTopic ? [selectedTopic] : [],
+        topics: presetTopics.map((topic) => ({
+          ...topic,
+          systemPrompt:
+            topic.id === selectedTopic?.id ? currentSystemPrompt : getTopicSystemPrompt(topic, currentSystemPrompt),
+          answerStyle:
+            topic.id === selectedTopic?.id ? currentAnswerStyle : getTopicAnswerStyle(topic, currentAnswerStyle),
+        })),
         items: questions.map((item) => withPlatform(item, selectedPlatform)),
-        answerStyle,
-        systemPrompt,
+        answerStyle: currentAnswerStyle,
+        systemPrompt: currentSystemPrompt,
+        generationPrompt,
         maxPushCount,
         savedAt: new Date().toISOString(),
       };
@@ -258,6 +385,7 @@ export function useWorkspace() {
     selectedQuestionId,
     answerStyle,
     systemPrompt,
+    generationPrompt,
     maxPushCount,
     isBootstrapping: configQuery.isLoading || sessionQuery.isLoading,
     isCollecting: collectMutation.isPending,
@@ -268,13 +396,26 @@ export function useWorkspace() {
     setQuestions,
     selectQuestion,
     setQuestionAnswer,
-    setAnswerStyle,
-    setSystemPrompt,
+    setAnswerStyle: (value: string) => {
+      setAnswerStyle(value);
+      if (selectedTopic) {
+        updateTopicPrompts(selectedTopic.id, { answerStyle: value });
+      }
+    },
+    setSystemPrompt: (value: string) => {
+      setSystemPrompt(value);
+      if (selectedTopic) {
+        updateTopicPrompts(selectedTopic.id, { systemPrompt: value });
+      }
+    },
     setMaxPushCount,
+    setGenerationPrompt,
     collectQuestions: () => collectMutation.mutate(),
+    importQuestionByUrl: (url: string) => importQuestionByUrlMutation.mutate(url),
     generateAllAnswers: () => generateAllMutation.mutate(),
     generateOneAnswer: (item: QuestionItem) => generateOneMutation.mutate(item),
     saveSession: () => saveMutation.mutate(),
     isGeneratingOne: (questionId: string) => generateOneMutation.isPending && generateOneMutation.variables?.id === questionId,
+    isImportingQuestionUrl: importQuestionByUrlMutation.isPending,
   };
 }

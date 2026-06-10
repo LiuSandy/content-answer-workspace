@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-import threading
-import webbrowser
 from pathlib import Path
 
 import uvicorn
@@ -14,7 +12,7 @@ from .api.routes.config import router as config_router
 from .api.routes.session import router as session_router
 from .api.routes.workflow import router as workflow_router
 from .application.workflow_service import WorkflowService
-from .core.config import load_env_file
+from .core.config import GENERATED_IMAGES_DIR, load_env_file
 from .models import RegeneratePayload, RunPayload, SessionPayload
 from .services.session_service import cookie_status, read_latest_session, save_session
 
@@ -23,6 +21,8 @@ FRONTEND_DIST_DIR = ROOT_DIR / "frontend" / "dist"
 
 app = FastAPI()
 workflow_service = WorkflowService()
+GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/generated-images", StaticFiles(directory=GENERATED_IMAGES_DIR), name="generated-images")
 
 
 @app.exception_handler(Exception)
@@ -88,8 +88,8 @@ async def legacy_regenerate(payload: RegeneratePayload) -> JSONResponse:
     """提供旧版单条重新生成接口兼容；这样历史按钮调用仍走统一 DeepSeek 生成逻辑。"""
 
     try:
-        answer = await workflow_service.generate_one(payload)
-        return JSONResponse({"answer": answer})
+        item = await workflow_service.generate_one(payload)
+        return JSONResponse({"item": item.model_dump(by_alias=True)})
     except Exception as error:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(error)) from error
 
@@ -131,23 +131,10 @@ else:
 
 
 def main() -> None:
-    """启动本地 FastAPI 服务；这样命令行运行模块时可以加载环境变量并打开工作台地址。"""
+    """启动本地 FastAPI 服务；这样命令行运行模块时可以加载环境变量并保持启动行为稳定可控。"""
 
     load_env_file()
     port = int(os.getenv("PORT", "3000"))
-    auto_open = os.getenv("AUTO_OPEN_BROWSER", "true").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    frontend_url = os.getenv("FRONTEND_URL", "http://127.0.0.1:5173").strip()
-    fallback_url = f"http://127.0.0.1:{port}"
-    url = frontend_url if os.getenv("USE_VITE_DEV_SERVER", "true").strip().lower() in {"1", "true", "yes", "on"} else fallback_url
-
-    if auto_open:
-        threading.Timer(1, lambda: webbrowser.open(url)).start()
-
     uvicorn.run("app.server:app", host="127.0.0.1", port=port, reload=False)
 
 

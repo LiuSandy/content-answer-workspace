@@ -4,9 +4,10 @@ from typing import Any
 
 from ..core.config import DEFAULT_PLATFORM, get_default_topics, get_workflow_config, load_env_file
 from ..infrastructure.collectors.factory import CollectorFactory
-from ..models import QuestionItem, RegeneratePayload, RunPayload, SessionPayload, Topic, WorkflowResult
-from ..services.answer_service import generate_answer
-from ..services.zhihu_service import get_topic_preview, unique_by
+from ..models import ParseQuestionUrlPayload, QuestionItem, RegeneratePayload, RunPayload, SessionPayload, Topic, WorkflowResult
+from ..services.answer_service import generate_answer, generate_answer_with_images
+from ..services.topic_expansion_service import expand_topic_for_collection
+from ..services.zhihu_service import fetch_zhihu_question_by_url, get_topic_preview, unique_by
 
 
 def normalize_platform(value: str | None) -> str:
@@ -34,15 +35,16 @@ class WorkflowService:
         platform = normalize_platform(options.get("platform"))
         config = get_workflow_config({**options, "platform": platform})
         topics = normalize_topics(options.get("topics"))
+        expanded_topics = [await expand_topic_for_collection(topic) for topic in topics]
         collector = CollectorFactory.create(platform)
-        items = await collector.collect(topics, config)
+        items = await collector.collect(expanded_topics, config)
         deduplicated = unique_by(items, lambda item: f"{item.platform}:{item.topic}:{item.id}")[: config.max_push_count]
         if not deduplicated:
             raise ValueError("No matching questions fetched")
-        return WorkflowResult(platform=platform, config=config, topics=topics, items=deduplicated)
+        return WorkflowResult(platform=platform, config=config, topics=expanded_topics, items=deduplicated)
 
-    async def generate_one(self, payload: RegeneratePayload) -> str:
-        """为前端指定的单个问题生成回答；这样单条生成能复用统一的平台和提示词配置解析。"""
+    async def generate_one(self, payload: RegeneratePayload) -> QuestionItem:
+        """为前端指定的单个问题生成回答和配图；这样单条生成能一次返回完整可展示的问题对象。"""
 
         load_env_file()
         platform = normalize_platform(payload.platform or payload.item.platform)
@@ -52,14 +54,35 @@ class WorkflowService:
                 "platform": platform,
                 "answerStyle": payload.answer_style,
                 "systemPrompt": payload.system_prompt,
+                "generationPrompt": payload.generation_prompt,
             }
         )
-        return await generate_answer(
+        answer, image_payload = await generate_answer_with_images(
             item,
             payload.answer_style or config.answer_style,
             config.cta_text,
             payload.system_prompt or config.system_prompt,
+            payload.generation_prompt or config.generation_prompt,
         )
+        return item.model_copy(
+            update={
+                "answer": answer,
+                "images": image_payload.get("images", []),
+                "image_prompts": image_payload.get("imagePrompts", []),
+            }
+        )
+
+    async def parse_question_url(self, payload: ParseQuestionUrlPayload) -> QuestionItem:
+        """按问题链接导入单个题目；这样用户可以跳过检索，直接把指定问题送入现有回答工作流。"""
+
+        load_env_file()
+        platform = normalize_platform(payload.platform)
+        if platform != "zhihu":
+            raise ValueError(f"当前仅支持知乎问题链接导入，暂不支持平台：{platform}")
+
+        config = get_workflow_config({"platform": platform})
+        item = await fetch_zhihu_question_by_url(payload.url, config.user_agent, "链接导入")
+        return item.model_copy(update={"platform": platform})
 
     async def generate_many(self, payload: SessionPayload) -> list[QuestionItem]:
         """批量生成前端提交问题的回答；这样批量入口不会重新采集，只处理用户确认的问题列表。"""
@@ -71,18 +94,28 @@ class WorkflowService:
                 "platform": platform,
                 "answerStyle": payload.answer_style,
                 "systemPrompt": payload.system_prompt,
+                "generationPrompt": payload.generation_prompt,
             }
         )
         items: list[QuestionItem] = []
         for item in payload.items:
             normalized_item = item.model_copy(update={"platform": normalize_platform(item.platform or platform)})
-            answer = await generate_answer(
+            answer, image_payload = await generate_answer_with_images(
                 normalized_item,
                 payload.answer_style or config.answer_style,
                 config.cta_text,
                 payload.system_prompt or config.system_prompt,
+                payload.generation_prompt or config.generation_prompt,
             )
-            items.append(normalized_item.model_copy(update={"answer": answer}))
+            items.append(
+                normalized_item.model_copy(
+                    update={
+                        "answer": answer,
+                        "images": image_payload.get("images", []),
+                        "image_prompts": image_payload.get("imagePrompts", []),
+                    }
+                )
+            )
         return items
 
     async def run(self, payload: RunPayload | dict[str, Any] | None = None) -> WorkflowResult:
@@ -95,13 +128,22 @@ class WorkflowService:
 
         answered_items: list[QuestionItem] = []
         for item in collected.items:
-            answer = await generate_answer(
+            answer, image_payload = await generate_answer_with_images(
                 item,
                 collected.config.answer_style,
                 collected.config.cta_text,
-                collected.config.system_prompt,
+                collected.topics[0].system_prompt if collected.topics else collected.config.system_prompt,
+                collected.config.generation_prompt,
             )
-            answered_items.append(item.model_copy(update={"answer": answer}))
+            answered_items.append(
+                item.model_copy(
+                    update={
+                        "answer": answer,
+                        "images": image_payload.get("images", []),
+                        "image_prompts": image_payload.get("imagePrompts", []),
+                    }
+                )
+            )
         return collected.model_copy(update={"items": answered_items})
 
     def _to_options(self, payload: RunPayload | dict[str, Any] | None) -> dict[str, Any]:

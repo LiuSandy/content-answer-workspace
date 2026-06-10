@@ -2,6 +2,8 @@ import {
   ArrowUpRight,
   Bot,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   FileDown,
   LoaderCircle,
@@ -12,7 +14,7 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,29 +22,78 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
+import {
+  NavigationMenu,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+} from "@/components/ui/navigation-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
-import { supportedPlatforms } from "./defaults";
+import { maxCollectCount, supportedPlatforms } from "./defaults";
 import { useWorkspace } from "./use-workspace";
 
-function TopicControlPanel() {
+function PromptConfigPanel() {
+  const { answerStyle, systemPrompt, generationPrompt, setAnswerStyle, setSystemPrompt, setGenerationPrompt } =
+    useWorkspace();
+
+  return (
+    <Card className="workspace-column workspace-column--config">
+      <CardHeader className="workspace-column__header">
+        <div className="space-y-1">
+          <CardTitle>提示词配置</CardTitle>
+          <CardDescription>这里的提示词在链接导入和自动采集两种模式下都要保留，并且可以继续编辑。</CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent className="workspace-column__content">
+        <div className="grid gap-2">
+          <Label htmlFor="topic-system-prompt">主题提示词</Label>
+          <Textarea
+            id="topic-system-prompt"
+            rows={8}
+            value={systemPrompt}
+            onChange={(event) => setSystemPrompt(event.target.value)}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="answer-style">主题回答风格提示</Label>
+          <Textarea
+            id="answer-style"
+            rows={5}
+            value={answerStyle}
+            onChange={(event) => setAnswerStyle(event.target.value)}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="generation-prompt">全局生成规则提示词</Label>
+          <Textarea
+            id="generation-prompt"
+            rows={12}
+            value={generationPrompt}
+            onChange={(event) => setGenerationPrompt(event.target.value)}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TopicControlPanel({ entryMode }: { entryMode: "import" | "collect" }) {
   const {
     selectedPlatform,
     presetTopics,
     selectedTopic,
     questions,
     maxPushCount,
-    answerStyle,
-    systemPrompt,
     selectPlatform,
     selectTopic,
     setMaxPushCount,
-    setAnswerStyle,
-    setSystemPrompt,
     collectQuestions,
     saveSession,
     isCollecting,
@@ -57,7 +108,7 @@ function TopicControlPanel() {
         </div>
         <h1 className="workspace-title">先找准问题，再写出像真人的回答。</h1>
         <p className="workspace-copy">
-          页面只保留一条主链路：选择主题、采集问题、逐条生成与编辑回答、保存本地结果。
+          现在有两条清晰入口：先支持直接导入指定问题链接，其次支持按主题自动采集，再进入统一回答流程。
         </p>
 
         <div className="workspace-metrics" aria-label="当前工作概况">
@@ -69,13 +120,19 @@ function TopicControlPanel() {
           <MetricCard label="采集上限" value={`${maxPushCount} 条`} />
         </div>
 
-        <WorkspacePulsePanel questions={questions} />
+        <WorkspacePulsePanel questions={questions} selectedTopic={selectedTopic} />
       </div>
 
       <Card className="workspace-control-panel">
         <CardHeader className="space-y-2">
-          <CardTitle className="text-[1.05rem]">开始一次采集</CardTitle>
-          <CardDescription>主题单选，采集和回答都围绕当前主题展开。</CardDescription>
+          <CardTitle className="text-[1.05rem]">
+            {entryMode === "import" ? "链接导入" : "自动采集"}
+          </CardTitle>
+          <CardDescription>
+            {entryMode === "import"
+              ? "粘贴知乎问题链接，直接把指定题目导入当前问题池。"
+              : "主题单选，采集和回答都围绕当前主题展开。"}
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
           <div className="grid gap-2">
@@ -97,81 +154,104 @@ function TopicControlPanel() {
             </Select>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="topic-select">主题</Label>
-            <Select
-              value={selectedTopic?.id ?? ""}
-              onValueChange={(value) => {
-                const topic = presetTopics.find((item) => item.id === value) ?? null;
-                selectTopic(topic);
-              }}
-            >
-              <SelectTrigger id="topic-select">
-                <SelectValue placeholder="选择主题" />
-              </SelectTrigger>
-              <SelectContent>
-                {presetTopics.map((topic) => (
-                  <SelectItem key={topic.id} value={topic.id}>
-                    {topic.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {entryMode === "import" ? (
+            <section className="workspace-entry-panel">
+              <div className="grid gap-2">
+                <Label htmlFor="question-url">问题链接</Label>
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <Input
+                    id="question-url"
+                    value={questionUrl}
+                    onChange={(event) => setQuestionUrl(event.target.value)}
+                    placeholder="目前仅支持知乎问题链接，例如 https://www.zhihu.com/question/..."
+                  />
+                  <Button
+                    className="cursor-pointer"
+                    disabled={!questionUrl.trim() || isImportingQuestionUrl}
+                    onClick={() => importQuestionByUrl(questionUrl.trim())}
+                  >
+                    {isImportingQuestionUrl ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ArrowUpRight className="h-4 w-4" />
+                    )}
+                    {isImportingQuestionUrl ? "解析中" : "导入问题"}
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  适合已经明确目标题目的场景，导入后会直接进入当前问题池。
+                </p>
+              </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="push-count">采集数量上限</Label>
-            <Input
-              id="push-count"
-              type="number"
-              min={1}
-              max={10}
-              value={maxPushCount}
-              onChange={(event) => setMaxPushCount(Number(event.target.value) || 1)}
-            />
-          </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button className="cursor-pointer" variant="outline" onClick={saveSession}>
+                  <Save className="h-4 w-4" />
+                  保存当前结果
+                </Button>
+              </div>
+            </section>
+          ) : (
+            <>
+              <div className="grid gap-2">
+                <Label htmlFor="topic-select">主题</Label>
+                <Select
+                  value={selectedTopic?.id ?? ""}
+                  onValueChange={(value) => {
+                    const topic = presetTopics.find((item) => item.id === value) ?? null;
+                    selectTopic(topic);
+                  }}
+                >
+                  <SelectTrigger id="topic-select">
+                    <SelectValue placeholder="选择主题" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {presetTopics.map((topic) => (
+                      <SelectItem key={topic.id} value={topic.id}>
+                        {topic.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="grid gap-2">
-            <Label>系统扩展匹配词</Label>
-            <div className="workspace-chip-cloud">
-              {(selectedTopic?.expandedHints ?? []).length ? (
-                (selectedTopic?.expandedHints ?? []).map((hint) => <Badge key={hint}>{hint}</Badge>)
-              ) : (
-                <span className="text-sm text-muted-foreground">当前主题还没有扩展词。</span>
-              )}
-            </div>
-          </div>
+              <div className="grid gap-2">
+                <Label htmlFor="push-count">采集数量上限</Label>
+                <Input
+                  id="push-count"
+                  type="number"
+                  min={1}
+                  max={maxCollectCount}
+                  value={maxPushCount}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value) || 1;
+                    setMaxPushCount(Math.min(maxCollectCount, Math.max(1, nextValue)));
+                  }}
+                />
+              </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Button className="cursor-pointer" onClick={collectQuestions} disabled={isCollecting}>
-              {isCollecting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              {isCollecting ? "正在采集" : "开始采集问题"}
-            </Button>
-            <Button className="cursor-pointer" variant="outline" onClick={saveSession}>
-              <Save className="h-4 w-4" />
-              保存当前结果
-            </Button>
-          </div>
+              <div className="grid gap-2">
+                <Label>系统扩展匹配词</Label>
+                <div className="workspace-chip-cloud">
+                  {(selectedTopic?.expandedHints ?? []).length ? (
+                    (selectedTopic?.expandedHints ?? []).map((hint) => <Badge key={hint}>{hint}</Badge>)
+                  ) : (
+                    <span className="text-sm text-muted-foreground">当前主题还没有扩展词。</span>
+                  )}
+                </div>
+              </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="system-prompt">系统提示词</Label>
-            <Textarea
-              id="system-prompt"
-              rows={8}
-              value={systemPrompt}
-              onChange={(event) => setSystemPrompt(event.target.value)}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="answer-style">回答风格提示</Label>
-            <Textarea
-              id="answer-style"
-              rows={5}
-              value={answerStyle}
-              onChange={(event) => setAnswerStyle(event.target.value)}
-            />
-          </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button className="cursor-pointer" onClick={collectQuestions} disabled={isCollecting}>
+                  {isCollecting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  {isCollecting ? "正在采集" : "开始采集问题"}
+                </Button>
+                <Button className="cursor-pointer" variant="outline" onClick={saveSession}>
+                  <Save className="h-4 w-4" />
+                  保存当前结果
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </section>
@@ -195,10 +275,17 @@ function MetricCard({
   );
 }
 
-function WorkspacePulsePanel({ questions }: { questions: ReturnType<typeof useWorkspace>["questions"] }) {
+function WorkspacePulsePanel({
+  questions,
+  selectedTopic,
+}: {
+  questions: ReturnType<typeof useWorkspace>["questions"];
+  selectedTopic: ReturnType<typeof useWorkspace>["selectedTopic"];
+}) {
   const statusMessage = useWorkspaceStore((state) => state.statusMessage);
   const saveState = useWorkspaceStore((state) => state.saveState);
   const answeredCount = questions.filter((question) => question.answer?.trim()).length;
+  const retrievalKeywords = selectedTopic?.expandedHints ?? [];
 
   const saveText =
     saveState === "saved"
@@ -250,6 +337,17 @@ function WorkspacePulsePanel({ questions }: { questions: ReturnType<typeof useWo
           </div>
         </div>
       </div>
+
+      <div className="mt-4 grid gap-2">
+        <div className="workspace-pulse-panel__eyebrow">本次检索关键词</div>
+        <div className="workspace-chip-cloud">
+          {retrievalKeywords.length ? (
+            retrievalKeywords.map((keyword) => <Badge key={keyword}>{keyword}</Badge>)
+          ) : (
+            <span className="text-sm text-muted-foreground">发起采集后，这里会显示本次实际使用的关键词。</span>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -257,6 +355,8 @@ function WorkspacePulsePanel({ questions }: { questions: ReturnType<typeof useWo
 function QuestionsColumn() {
   const { questions, selectedQuestionId, selectQuestion, isCollecting } = useWorkspace();
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const deferredQuery = useDeferredValue(query);
 
   const filteredQuestions = useMemo(() => {
@@ -269,6 +369,23 @@ function QuestionsColumn() {
       return haystack.includes(keyword);
     });
   }, [questions, deferredQuery]);
+  const totalPages = Math.max(1, Math.ceil(filteredQuestions.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageEnd = pageStart + pageSize;
+  const pagedQuestions = filteredQuestions.slice(pageStart, pageEnd);
+  const visibleStart = filteredQuestions.length ? pageStart + 1 : 0;
+  const visibleEnd = Math.min(pageEnd, filteredQuestions.length);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [deferredQuery, questions.length]);
 
   return (
     <Card className="workspace-column workspace-column--list">
@@ -295,7 +412,7 @@ function QuestionsColumn() {
               <div>
                 <div className="workspace-loading-panel__title">正在采集站点问题</div>
                 <div className="workspace-loading-panel__copy">
-                  正在根据当前主题检索题目、整理链接并过滤结果，请稍候。
+                  正在扩展相近主题、批量检索知乎题目，并聚合去重结果，请稍候。
                 </div>
               </div>
             </div>
@@ -310,7 +427,7 @@ function QuestionsColumn() {
                 description="先在上方选择主题并发起采集。"
               />
             ) : (
-              filteredQuestions.map((question) => {
+              pagedQuestions.map((question) => {
                 const isActive = selectedQuestionId === question.id;
                 const hasAnswer = Boolean(question.answer?.trim());
 
@@ -351,6 +468,55 @@ function QuestionsColumn() {
             )}
           </div>
         </ScrollArea>
+
+        <div className="workspace-pagination" aria-label="问题池分页">
+          <div className="workspace-pagination__summary">
+            {filteredQuestions.length ? `${visibleStart}-${visibleEnd} / ${filteredQuestions.length}` : "0 / 0"}
+          </div>
+          <div className="workspace-pagination__controls">
+            <Select
+              value={String(pageSize)}
+              onValueChange={(value) => {
+                setPageSize(Number(value));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-9 w-[104px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 50].map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    每页 {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              className="cursor-pointer"
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              disabled={currentPage <= 1}
+              aria-label="上一页"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Badge variant="secondary">
+              {currentPage} / {totalPages}
+            </Badge>
+            <Button
+              className="cursor-pointer"
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              disabled={currentPage >= totalPages}
+              aria-label="下一页"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
@@ -465,6 +631,25 @@ function AnswerColumn() {
                 </div>
               </div>
 
+              {question.images?.length ? (
+                <div className="workspace-answer-images">
+                  {question.images.map((imageUrl, index) => (
+                    <figure key={`${question.id}-image-${index}`} className="workspace-answer-image-card">
+                      <img
+                        className="workspace-answer-image"
+                        src={imageUrl}
+                        alt={question.imagePrompts?.[index] || `${question.title} 配图 ${index + 1}`}
+                      />
+                      {question.imagePrompts?.[index] ? (
+                        <figcaption className="workspace-answer-image-caption">
+                          {question.imagePrompts[index]}
+                        </figcaption>
+                      ) : null}
+                    </figure>
+                  ))}
+                </div>
+              ) : null}
+
               <MarkdownEditor
                 className="workspace-answer-editor__textarea"
                 placeholder="点击上方按钮生成回答，或者直接手工编辑这里的内容。"
@@ -474,6 +659,79 @@ function AnswerColumn() {
             </div>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ImportControlCard() {
+  const {
+    selectedPlatform,
+    saveSession,
+    importQuestionByUrl,
+    isImportingQuestionUrl,
+    selectPlatform,
+  } = useWorkspace();
+  const [questionUrl, setQuestionUrl] = useState("");
+
+  return (
+    <Card className="workspace-column workspace-column--import">
+      <CardHeader className="workspace-column__header">
+        <div className="space-y-1">
+          <CardTitle>链接导入</CardTitle>
+          <CardDescription>粘贴问题链接，导入成功后直接在左侧回答工作区查看和生成内容。</CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent className="workspace-column__content">
+        <div className="grid gap-2">
+          <Label htmlFor="import-platform-select">平台</Label>
+          <Select
+            value={selectedPlatform}
+            onValueChange={(value) => selectPlatform(value as typeof selectedPlatform)}
+          >
+            <SelectTrigger id="import-platform-select">
+              <SelectValue placeholder="选择平台" />
+            </SelectTrigger>
+            <SelectContent>
+              {supportedPlatforms.map((platform) => (
+                <SelectItem key={platform.id} value={platform.id}>
+                  {platform.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <section className="workspace-entry-panel">
+          <div className="grid gap-2">
+            <Label htmlFor="question-url">问题链接</Label>
+            <div className="grid gap-3">
+              <Input
+                id="question-url"
+                value={questionUrl}
+                onChange={(event) => setQuestionUrl(event.target.value)}
+                placeholder="目前仅支持知乎问题链接，例如 https://www.zhihu.com/question/..."
+              />
+              <Button
+                className="cursor-pointer"
+                disabled={!questionUrl.trim() || isImportingQuestionUrl}
+                onClick={() => importQuestionByUrl(questionUrl.trim())}
+              >
+                {isImportingQuestionUrl ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowUpRight className="h-4 w-4" />
+                )}
+                {isImportingQuestionUrl ? "解析中" : "导入问题"}
+              </Button>
+            </div>
+          </div>
+
+          <Button className="cursor-pointer" variant="outline" onClick={saveSession}>
+            <Save className="h-4 w-4" />
+            保存当前结果
+          </Button>
+        </section>
       </CardContent>
     </Card>
   );
@@ -498,16 +756,71 @@ function EmptyState({
 }
 
 export function WorkspaceShell() {
+  const [entryMode, setEntryMode] = useState<"import" | "collect">("import");
+
   return (
     <div className="workspace-page">
       <div className="workspace-backdrop" />
       <main className="workspace-main">
-        <TopicControlPanel />
-
-        <section className="workspace-columns">
-          <QuestionsColumn />
-          <AnswerColumn />
+        <section className="workspace-topbar" aria-label="页面导航">
+          <div className="workspace-topbar__brand">
+            <div className="workspace-topbar__title">内容回答工作台</div>
+            <div className="workspace-topbar__copy">先选择问题来源，再进入对应流程。</div>
+          </div>
+          <NavigationMenu className="workspace-mode-menu" viewport={false}>
+            <NavigationMenuList className="workspace-mode-menu__list">
+              <NavigationMenuItem>
+                <NavigationMenuLink asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "workspace-mode-menu__trigger",
+                      entryMode === "import" && "workspace-mode-menu__trigger--active",
+                    )}
+                    onClick={() => setEntryMode("import")}
+                    aria-current={entryMode === "import" ? "page" : undefined}
+                  >
+                    链接导入
+                  </button>
+                </NavigationMenuLink>
+              </NavigationMenuItem>
+              <NavigationMenuItem>
+                <NavigationMenuLink asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "workspace-mode-menu__trigger",
+                      entryMode === "collect" && "workspace-mode-menu__trigger--active",
+                    )}
+                    onClick={() => setEntryMode("collect")}
+                    aria-current={entryMode === "collect" ? "page" : undefined}
+                  >
+                    自动采集
+                  </button>
+                </NavigationMenuLink>
+              </NavigationMenuItem>
+            </NavigationMenuList>
+          </NavigationMenu>
         </section>
+
+        {entryMode === "import" ? (
+          <section className="workspace-import-layout">
+            <AnswerColumn />
+            <div className="workspace-import-side">
+              <ImportControlCard />
+              <PromptConfigPanel />
+            </div>
+          </section>
+        ) : (
+          <>
+            <TopicControlPanel entryMode={entryMode} />
+            <section className="workspace-columns workspace-columns--collect">
+              <QuestionsColumn />
+              <AnswerColumn />
+              <PromptConfigPanel />
+            </section>
+          </>
+        )}
       </main>
     </div>
   );

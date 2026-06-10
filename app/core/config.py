@@ -7,13 +7,15 @@ from typing import Any
 from dotenv import load_dotenv
 
 from ..models import Topic, WorkflowConfig
-from .prompts import DEFAULT_ANSWER_STYLE, DEFAULT_SYSTEM_PROMPT
+from .prompts import DEFAULT_ANSWER_STYLE, DEFAULT_SYSTEM_PROMPT, GLOBAL_GENERATION_PROMPT, TOPIC_PROMPT_PRESETS
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 ENV_PATH = ROOT_DIR / ".env"
 OUTPUT_DIR = ROOT_DIR / "output"
+GENERATED_IMAGES_DIR = ROOT_DIR / "generated-images"
 COOKIE_PATH_DEFAULT = ROOT_DIR / ".secrets" / "zhihu.cookie"
 DEFAULT_PLATFORM = "zhihu"
+MAX_PUSH_COUNT_LIMIT = 100
 
 
 def load_env_file() -> None:
@@ -51,9 +53,27 @@ def get_default_topics() -> list[Topic]:
     """提供后端默认主题；这样当前前端不传主题或恢复失败时仍能按知乎默认场景运行。"""
 
     return [
-        Topic(id="algo", name="数据结构与算法", keywords=["数据结构", "算法", "二叉树", "链表", "动态规划", "leetcode"]),
-        Topic(id="personal-site", name="个人站点", keywords=["个人站点", "独立站", "博客", "建站", "个人主页"]),
-        Topic(id="podcast", name="播客", keywords=["播客", "podcast", "音频节目", "内容创作"]),
+        Topic(
+            id="algo",
+            name="数据结构与算法",
+            keywords=["数据结构", "算法", "二叉树", "链表", "动态规划", "leetcode"],
+            answerStyle=TOPIC_PROMPT_PRESETS["algo"]["answer_style"],
+            systemPrompt=TOPIC_PROMPT_PRESETS["algo"]["system_prompt"],
+        ),
+        Topic(
+            id="personal-site",
+            name="个人站点",
+            keywords=["个人站点", "独立站", "博客", "建站", "个人主页"],
+            answerStyle=TOPIC_PROMPT_PRESETS["personal-site"]["answer_style"],
+            systemPrompt=TOPIC_PROMPT_PRESETS["personal-site"]["system_prompt"],
+        ),
+        Topic(
+            id="podcast",
+            name="播客",
+            keywords=["播客", "podcast", "音频节目", "内容创作"],
+            answerStyle=TOPIC_PROMPT_PRESETS["podcast"]["answer_style"],
+            systemPrompt=TOPIC_PROMPT_PRESETS["podcast"]["system_prompt"],
+        ),
     ]
 
 
@@ -62,7 +82,10 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
 
     overrides = overrides or {}
     platform = str(overrides.get("platform") or os.getenv("DEFAULT_PLATFORM", DEFAULT_PLATFORM)).strip().lower()
-    max_push_count = min(parse_positive_int(overrides.get("maxPushCount", os.getenv("MAX_PUSH_COUNT")), 10), 10)
+    max_push_count = min(
+        parse_positive_int(overrides.get("maxPushCount", os.getenv("MAX_PUSH_COUNT")), 10),
+        MAX_PUSH_COUNT_LIMIT,
+    )
     sort_modes = [
         part.strip()
         for part in str(overrides.get("sortModes", os.getenv("SORT_MODES", "latest,answer_count"))).split(",")
@@ -70,6 +93,7 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
     ]
     answer_style = overrides.get("answerStyle") or os.getenv("ANSWER_STYLE", DEFAULT_ANSWER_STYLE)
     system_prompt = overrides.get("systemPrompt") or os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
+    generation_prompt = overrides.get("generationPrompt") or os.getenv("GENERATION_PROMPT", GLOBAL_GENERATION_PROMPT)
     test_mode = is_truthy(overrides.get("testMode", os.getenv("TEST_MODE", "true")))
     skip_answer_generation = is_truthy(
         overrides.get("skipAnswerGeneration", os.getenv("SKIP_ANSWER_GENERATION", "false"))
@@ -91,6 +115,7 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
         sortModes=sort_modes,
         answerStyle=answer_style,
         systemPrompt=system_prompt,
+        generationPrompt=generation_prompt,
         testMode=test_mode,
         skipAnswerGeneration=skip_answer_generation,
         userAgent=user_agent,

@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>工作台模式设计稿</title>
+    <style>
+      :root {
+        --bg: #f3f4f6;
+        --sidebar: #fbfbfc;
+        --panel: rgba(255, 255, 255, 0.96);
+        --panel-strong: #ffffff;
+        --line: rgba(15, 23, 42, 0.08);
+        --line-strong: rgba(15, 23, 42, 0.14);
+        --text: #0f172a;
+        --muted: #64748b;
+        --primary: #111827;
+        --primary-soft: rgba(17, 24, 39, 0.08);
+        --shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+        --radius: 16px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      .page {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 248px minmax(0, 1fr);
+      }
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        padding: 24px 18px;
+        border-right: 1px solid var(--line);
+        background: var(--sidebar);
+      }
+
+      .sidebar-brand {
+        display: grid;
+        gap: 6px;
+        padding: 10px 12px;
+      }
+
+      .sidebar-brand strong {
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .sidebar-brand span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .menu-group {
+        display: grid;
+        gap: 8px;
+      }
+
+      .menu-title {
+        padding: 0 12px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .menu {
+        display: grid;
+        gap: 6px;
+      }
+
+      .menu-item {
+        display: grid;
+        gap: 4px;
+        width: 100%;
+        padding: 12px;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 12px;
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+        transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+      }
+
+      .menu-item strong {
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .menu-item span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .menu-item.active {
+        border-color: var(--line-strong);
+        background: var(--panel-strong);
+        box-shadow: var(--shadow);
+      }
+
+      .content {
+        padding: 24px;
+      }
+
+      .layout {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: minmax(0, 1fr) 380px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 22px 24px 0;
+      }
+
+      .panel-title {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 760;
+      }
+
+      .panel-copy {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .panel-body {
+        padding: 22px 24px 24px;
+      }
+
+      .fields {
+        display: grid;
+        gap: 18px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .label {
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .input,
+      .textarea,
+      .fake-select {
+        width: 100%;
+        border: 1px solid var(--line-strong);
+        border-radius: 12px;
+        background: var(--panel-strong);
+        color: var(--text);
+      }
+
+      .input,
+      .fake-select {
+        min-height: 52px;
+        padding: 14px 16px;
+        font-size: 15px;
+      }
+
+      .textarea {
+        min-height: 128px;
+        padding: 14px 16px;
+        font-size: 14px;
+        line-height: 1.75;
+      }
+
+      .fake-select::after {
+        content: "▾";
+        float: right;
+        opacity: 0.48;
+      }
+
+      .tip {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.68;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 48px;
+        padding: 0 18px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .btn.primary {
+        background: var(--primary);
+        color: white;
+      }
+
+      .btn.secondary {
+        border-color: var(--line-strong);
+        background: #ffffff;
+        color: var(--text);
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: var(--primary-soft);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .result-card,
+      .hint-card {
+        padding: 16px 18px;
+        border: 1px dashed rgba(15, 23, 42, 0.16);
+        border-radius: 16px;
+        background: rgba(248, 250, 252, 0.92);
+      }
+
+      .result-card strong,
+      .hint-card strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 15px;
+      }
+
+      .result-card p,
+      .hint-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.72;
+      }
+
+      .config-stack {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+      }
+
+      .mode-screen {
+        display: none;
+      }
+
+      .mode-screen.active {
+        display: block;
+      }
+
+      @media (max-width: 1180px) {
+        .page {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <strong>内容回答工作台</strong>
+          <span>先决定问题来源，再进入对应页面。菜单就是工作模式，不是装饰说明。</span>
+        </div>
+
+        <div class="menu-group">
+          <div class="menu-title">工作菜单</div>
+          <nav class="menu" aria-label="工作模式">
+            <button class="menu-item active" data-mode="import" type="button">
+              <strong>链接导入</strong>
+              <span>粘贴问题 URL，直接解析并进入回答流程</span>
+            </button>
+            <button class="menu-item" data-mode="collect" type="button">
+              <strong>自动采集</strong>
+              <span>选择主题后批量扩展检索词并采集问题</span>
+            </button>
+          </nav>
+        </div>
+      </aside>
+
+      <section class="content">
+        <section class="layout">
+          <section class="mode-screen active" id="mode-import">
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2 class="panel-title">链接导入</h2>
+                  <p class="panel-copy">这里只做一件事：接收问题链接，解析问题本身，然后送去回答。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="fields">
+                  <div class="field">
+                    <div class="label">平台</div>
+                    <div class="fake-select">知乎</div>
+                  </div>
+
+                  <div class="field">
+                    <div class="label">问题链接</div>
+                    <div class="input">https://www.zhihu.com/question/xxxxxxxxx</div>
+                    <div class="tip">这里不展示主题、采集数量、检索词，因为用户已经明确指定了要回答的目标问题。</div>
+                  </div>
+
+                  <div class="actions">
+                    <div class="btn primary">导入问题</div>
+                    <div class="btn secondary">保存当前结果</div>
+                  </div>
+
+                  <div class="result-card">
+                    <strong>导入结果预览</strong>
+                    <p>解析完成后，直接展示问题标题、链接、摘要、回答数、更新时间，并放入问题池等待 AI 生成回答。</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="mode-screen" id="mode-collect">
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2 class="panel-title">自动采集</h2>
+                  <p class="panel-copy">这个页面只负责批量找题，所以主题、数量、检索词全部放在这里，边界更清楚。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="fields">
+                  <div class="field">
+                    <div class="label">平台</div>
+                    <div class="fake-select">知乎</div>
+                  </div>
+
+                  <div class="field">
+                    <div class="label">主题</div>
+                    <div class="fake-select">个人站点</div>
+                  </div>
+
+                  <div class="field">
+                    <div class="label">采集数量上限</div>
+                    <div class="input">30</div>
+                  </div>
+
+                  <div class="field">
+                    <div class="label">AI 扩展后的检索词</div>
+                    <div class="chips">
+                      <span class="chip">个人站点</span>
+                      <span class="chip">独立站</span>
+                      <span class="chip">个人博客</span>
+                      <span class="chip">作品集网站</span>
+                      <span class="chip">开发者主页</span>
+                    </div>
+                  </div>
+
+                  <div class="actions">
+                    <div class="btn primary">开始采集问题</div>
+                    <div class="btn secondary">保存当前结果</div>
+                  </div>
+
+                  <div class="hint-card">
+                    <strong>采集页职责</strong>
+                    <p>先选主题，再让 AI 扩展检索词，批量检索后聚合问题池。这个页面解决的是“找什么题”，不是“回答哪一道题”。</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside class="config-stack">
+            <div class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2 class="panel-title">回答配置</h2>
+                  <p class="panel-copy">回答配置独立于问题来源，两种模式共用，所以固定留在右侧。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="fields">
+                  <div class="field">
+                    <div class="label">主题提示词</div>
+                    <div class="textarea">当前主题的系统提示词。切换主题时变化，决定回答关注什么重点。</div>
+                  </div>
+                  <div class="field">
+                    <div class="label">主题回答风格</div>
+                    <div class="textarea">短回答、结构清晰、有依据、有配图建议、不编造资料。</div>
+                  </div>
+                  <div class="field">
+                    <div class="label">全局生成规则</div>
+                    <div class="textarea">统一的 Markdown 结构、字数、引用规则、配图建议规则等，对所有模式生效。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const menuItems = document.querySelectorAll(".menu-item");
+      const screens = {
+        import: document.getElementById("mode-import"),
+        collect: document.getElementById("mode-collect"),
+      };
+
+      for (const item of menuItems) {
+        item.addEventListener("click", () => {
+          const nextMode = item.dataset.mode;
+          for (const menuItem of menuItems) {
+            menuItem.classList.toggle("active", menuItem === item);
+          }
+          for (const [mode, screen] of Object.entries(screens)) {
+            screen.classList.toggle("active", mode === nextMode);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

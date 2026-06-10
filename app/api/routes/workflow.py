@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from ...application.workflow_service import WorkflowService
-from ...models import RegeneratePayload, RunPayload, SessionPayload
+from ...models import ParseQuestionUrlPayload, RegeneratePayload, RunPayload, SessionPayload
 
 router = APIRouter(prefix="/api/workflow", tags=["workflow"])
 workflow_service = WorkflowService()
@@ -26,10 +26,10 @@ async def generate_one(payload: RegeneratePayload) -> JSONResponse:
     """接收单条回答生成请求；这样前端选中的问题可以被直接交给统一生成用例处理。"""
 
     try:
-        answer = await workflow_service.generate_one(payload)
+        item = await workflow_service.generate_one(payload)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    return JSONResponse({"ok": True, "data": {"answer": answer}})
+    return JSONResponse({"ok": True, "data": {"item": item.model_dump(by_alias=True)}})
 
 
 @router.post("/generate")
@@ -41,3 +41,14 @@ async def generate(payload: SessionPayload) -> JSONResponse:
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return JSONResponse({"ok": True, "data": {"items": [item.model_dump(by_alias=True) for item in items]}})
+
+
+@router.post("/parse-question-url")
+async def parse_question_url(payload: ParseQuestionUrlPayload) -> JSONResponse:
+    """接收前端粘贴的问题链接；这样用户可以直接导入单个知乎问题而不必先做批量采集。"""
+
+    try:
+        item = await workflow_service.parse_question_url(payload)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return JSONResponse({"ok": True, "data": {"item": item.model_dump(by_alias=True)}})

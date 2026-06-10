@@ -6,6 +6,9 @@ import type {
   GenerateAllPayload,
   GenerateAllResponse,
   GenerateOnePayload,
+  GenerateOneResponse,
+  ParseQuestionUrlPayload,
+  ParseQuestionUrlResponse,
   SaveSessionPayload,
   SessionResponse,
 } from "@/types/workflow";
@@ -22,8 +25,12 @@ export function collectWorkflow(payload: CollectPayload) {
   return apiPost<CollectResponse>("/api/workflow/collect", payload);
 }
 
+export function parseQuestionUrl(payload: ParseQuestionUrlPayload) {
+  return apiPost<ParseQuestionUrlResponse>("/api/workflow/parse-question-url", payload);
+}
+
 export function generateOneAnswer(payload: GenerateOnePayload) {
-  return apiPost<{ answer: string }>("/api/workflow/generate-one", payload);
+  return apiPost<GenerateOneResponse>("/api/workflow/generate-one", payload);
 }
 
 export function generateAllAnswers(payload: GenerateAllPayload) {
