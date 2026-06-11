@@ -1,3 +1,4 @@
+import { useWorkspaceStore } from "@/store/workspace-store";
 import {
   ArrowUpRight,
   Bot,
@@ -5,9 +6,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  ExternalLink,
   FileDown,
+  Layers,
   LoaderCircle,
-  MessageSquareQuote,
+  Maximize2,
   RefreshCcw,
   Save,
   Search,
@@ -17,7 +20,14 @@ import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
@@ -28,6 +38,7 @@ import {
 } from "@/components/ui/navigation-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -47,22 +58,28 @@ const topNavItems: Array<{ id: EntryMode; label: string }> = [
   { id: "collect", label: "主题采集" },
 ];
 
+// ──────────────────────────────────────────────────────────
+// Topbar
+// ──────────────────────────────────────────────────────────
+
 function WorkspaceTopbar() {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
-      <div className="mx-auto flex h-[56px] w-full max-w-[1800px] items-center gap-8 px-4 sm:px-6 lg:px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-[11px] font-extrabold tracking-tight text-white shadow-[0_8px_16px_rgba(37,99,235,0.16)]">
+      <div className="mx-auto flex h-[52px] w-full max-w-[1800px] items-center gap-6 px-5">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-slate-900 text-[10px] font-bold tracking-tight text-white">
             CW
           </div>
           <div className="leading-none">
-            <div className="text-[15px] font-extrabold tracking-tight text-slate-900">内容工作台</div>
-            <div className="mt-0.5 text-[10px] font-semibold text-slate-500">Research and Answers</div>
+            <div className="text-[13px] font-semibold text-slate-900">内容工作台</div>
+            <div className="mt-[1px] text-[10px] font-medium text-slate-400">Content Workspace</div>
           </div>
         </div>
 
-        <NavigationMenu className="flex-1">
-          <NavigationMenuList className="gap-8">
+        <Separator orientation="vertical" className="h-4" />
+
+        <NavigationMenu>
+          <NavigationMenuList className="gap-0">
             {topNavItems.map((item) => (
               <NavigationMenuItem key={item.id}>
                 <NavLink
@@ -70,8 +87,8 @@ function WorkspaceTopbar() {
                   end
                   className={({ isActive }) =>
                     cn(
-                      "inline-flex h-8 shrink-0 items-center whitespace-nowrap border-b-2 border-transparent px-0 text-[14px] font-semibold text-slate-500 transition-colors hover:text-blue-700",
-                      isActive && "border-blue-600 font-extrabold text-blue-700",
+                      "inline-flex h-[52px] items-center border-b-2 border-transparent px-3 text-[13px] font-medium text-slate-500 transition-all hover:text-slate-800",
+                      isActive && "border-slate-900 font-semibold text-slate-900",
                     )
                   }
                 >
@@ -86,57 +103,182 @@ function WorkspaceTopbar() {
   );
 }
 
-function SectionCard({
-  title,
-  description,
+// ──────────────────────────────────────────────────────────
+// Shared: Section panel header (no card, just a labeled area)
+// ──────────────────────────────────────────────────────────
+
+function PanelSection({
+  label,
   action,
   children,
   className,
 }: {
-  title: string;
-  description?: string;
+  label: string;
   action?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
 }) {
   return (
-    <Card className={cn("overflow-hidden rounded-xl border-slate-200/80 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.05)]", className)}>
-      <CardHeader className="flex-row items-start justify-between gap-3 border-b border-slate-200/70 px-5 py-4">
-        <div className="space-y-1">
-          <CardTitle className="text-[0.9rem] font-extrabold tracking-tight text-slate-900">{title}</CardTitle>
-          {description ? <CardDescription className="text-[0.76rem] leading-5 text-slate-500">{description}</CardDescription> : null}
-        </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </CardHeader>
-      <CardContent className="px-5 py-4">{children}</CardContent>
-    </Card>
-  );
-}
-
-function MetricTile({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
-      <div className="flex items-start justify-between gap-2.5">
-        <div className="space-y-0.5">
-          <div className="text-[0.72rem] font-semibold text-slate-500">{label}</div>
-          <div className="text-[0.94rem] font-extrabold tracking-tight text-slate-900">{value}</div>
-        </div>
-        {icon ? <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm">{icon}</div> : null}
+    <div className={cn("space-y-2", className)}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+        {action}
       </div>
+      {children}
     </div>
   );
 }
 
-function StatusRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+// ──────────────────────────────────────────────────────────
+// Shared: Status dot indicator (inline status bar)
+// ──────────────────────────────────────────────────────────
+
+type StatusLevel = "idle" | "running" | "done" | "warn" | "error";
+
+function StatusDot({
+  label,
+  status,
+  value,
+}: {
+  label: string;
+  status: StatusLevel;
+  value: string;
+}) {
+  const dotClass: Record<StatusLevel, string> = {
+    idle: "bg-slate-300",
+    running: "bg-blue-500 animate-pulse",
+    done: "bg-emerald-500",
+    warn: "bg-amber-400",
+    error: "bg-red-500",
+  };
+  const valueClass: Record<StatusLevel, string> = {
+    idle: "text-slate-400",
+    running: "text-blue-600",
+    done: "text-emerald-600",
+    warn: "text-amber-600",
+    error: "text-red-600",
+  };
+
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2 text-sm">
-      <span className="text-slate-600">{label}</span>
-      <span className={cn("font-semibold text-slate-900", valueClassName)}>{value}</span>
+    <div className="flex items-center gap-1.5">
+      <span className={cn("h-[6px] w-[6px] rounded-full shrink-0", dotClass[status])} />
+      <span className="text-[11px] font-medium text-slate-500">{label}</span>
+      <span className={cn("text-[11px] font-semibold", valueClass[status])}>{value}</span>
     </div>
   );
 }
 
-function PromptConfigSection({
+// ──────────────────────────────────────────────────────────
+// Full-screen prompt editor dialog
+// ──────────────────────────────────────────────────────────
+
+function PromptExpandDialog({
+  open,
+  onOpenChange,
+  label,
+  value,
+  onChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[80vh] max-w-3xl flex-col gap-0 p-0">
+        <DialogHeader className="border-b border-slate-200 px-5 py-4">
+          <DialogTitle className="text-[14px] font-semibold text-slate-800">
+            编辑 · {label}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-hidden p-4">
+          <Textarea
+            autoFocus
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="h-full min-h-0 resize-none rounded-md border-slate-200 bg-white text-[13px] leading-relaxed shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
+          />
+        </div>
+        <DialogFooter className="border-t border-slate-200 px-5 py-3">
+          <span className="mr-auto text-[11px] text-slate-400">
+            {value.length} 字符
+          </span>
+          <Button
+            size="sm"
+            className="h-8 rounded-md bg-slate-900 px-4 text-[12px] font-medium hover:bg-slate-800"
+            onClick={() => onOpenChange(false)}
+          >
+            完成
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Prompt field with expand button
+// ──────────────────────────────────────────────────────────
+
+function PromptField({
+  id,
+  label,
+  value,
+  onChange,
+  rows = 4,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows?: number;
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label htmlFor={id} className="text-[11px] font-medium text-slate-600">
+            {label}
+          </Label>
+          <button
+            type="button"
+            title="全屏编辑"
+            onClick={() => setDialogOpen(true)}
+            className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+          >
+            <Maximize2 className="h-3 w-3" />
+            全屏
+          </button>
+        </div>
+        <Textarea
+          id={id}
+          rows={rows}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="resize-none rounded-md border-slate-200 bg-white text-[12px] leading-relaxed shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
+        />
+      </div>
+
+      <PromptExpandDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        label={label}
+        value={value}
+        onChange={onChange}
+      />
+    </>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Prompt config (left panel reusable)
+// ──────────────────────────────────────────────────────────
+
+function PromptConfigPanel({
   answerStyle,
   systemPrompt,
   generationPrompt,
@@ -152,118 +294,37 @@ function PromptConfigSection({
   onGenerationPromptChange: (value: string) => void;
 }) {
   return (
-    <SectionCard
-      title="提示词配置"
-      description="主题提示词、回答风格和全局生成规则。"
-      className="h-full"
-    >
+    <PanelSection label="提示词配置">
       <div className="space-y-3">
-        <div className="space-y-2">
-          <Label htmlFor="topic-system-prompt" className="text-[0.82rem] font-semibold text-slate-700">
-            主题提示词
-          </Label>
-          <Textarea
-            id="topic-system-prompt"
-            rows={6}
-            value={systemPrompt}
-            onChange={(event) => onSystemPromptChange(event.target.value)}
-            className="min-h-[128px] rounded-xl border-slate-200 bg-white text-sm shadow-none"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="answer-style" className="text-[0.82rem] font-semibold text-slate-700">
-            回答风格
-          </Label>
-          <Textarea
-            id="answer-style"
-            rows={4}
-            value={answerStyle}
-            onChange={(event) => onAnswerStyleChange(event.target.value)}
-            className="min-h-[96px] rounded-xl border-slate-200 bg-white text-sm shadow-none"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="generation-prompt" className="text-[0.82rem] font-semibold text-slate-700">
-            全局生成规则
-          </Label>
-          <Textarea
-            id="generation-prompt"
-            rows={8}
-            value={generationPrompt}
-            onChange={(event) => onGenerationPromptChange(event.target.value)}
-            className="min-h-[156px] rounded-xl border-slate-200 bg-white text-sm shadow-none"
-          />
-        </div>
+        <PromptField
+          id="topic-system-prompt"
+          label="主题提示词"
+          value={systemPrompt}
+          onChange={onSystemPromptChange}
+          rows={5}
+        />
+        <PromptField
+          id="answer-style"
+          label="回答风格"
+          value={answerStyle}
+          onChange={onAnswerStyleChange}
+          rows={3}
+        />
+        <PromptField
+          id="generation-prompt"
+          label="全局生成规则"
+          value={generationPrompt}
+          onChange={onGenerationPromptChange}
+          rows={6}
+        />
       </div>
-    </SectionCard>
+    </PanelSection>
   );
 }
 
-function WorkspacePulsePanel({
-  questions,
-  selectedTopicName,
-  keywords,
-  saveState,
-  statusMessage,
-}: {
-  questions: WorkspaceState["questions"];
-  selectedTopicName: string;
-  keywords: string[];
-  saveState: "idle" | "saving" | "saved" | "error";
-  statusMessage: string;
-}) {
-  const answeredCount = questions.filter((question) => question.answer?.trim()).length;
-  const saveText =
-    saveState === "saved"
-      ? "已保存"
-      : saveState === "saving"
-        ? "保存中"
-        : saveState === "error"
-          ? "保存失败"
-          : "未保存";
-
-  return (
-    <SectionCard title="当前批次" description="采集与回答状态。">
-      <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <MetricTile label="实时状态" value={saveText} icon={<MessageSquareQuote className="h-4 w-4" />} />
-          <MetricTile label="问题池" value={`${questions.length} 条`} icon={<FileDown className="h-4 w-4" />} />
-          <MetricTile label="已生成" value={`${answeredCount} 条`} icon={<Check className="h-4 w-4" />} />
-        </div>
-
-        <div className="space-y-2">
-          <div className="text-sm font-semibold text-slate-500">实时状态</div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm leading-6 text-slate-700">
-            {statusMessage}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="text-sm font-semibold text-slate-500">本次检索关键词</div>
-          <div className="flex flex-wrap gap-1.5">
-            {keywords.length ? (
-              keywords.map((keyword) => (
-                <Badge key={keyword} variant="outline" className="rounded-full border-slate-200 bg-white px-2.5 py-0.5 text-slate-700">
-                  {keyword}
-                </Badge>
-              ))
-            ) : (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-500">
-                发起采集后，这里会显示本次实际使用的关键词。
-              </div>
-            )}
-          </div>
-        </div>
-
-        {selectedTopicName ? (
-          <StatusRow label="当前主题" value={selectedTopicName} />
-        ) : null}
-      </div>
-    </SectionCard>
-  );
-}
+// ──────────────────────────────────────────────────────────
+// Question row (collect page)
+// ──────────────────────────────────────────────────────────
 
 function QuestionRow({
   question,
@@ -279,55 +340,72 @@ function QuestionRow({
   const generated = Boolean(question.answer?.trim());
 
   return (
-    <Button
-      variant="ghost"
+    <button
+      type="button"
       onClick={() => onSelect(question.id)}
       className={cn(
-        "h-auto w-full justify-start rounded-xl border border-slate-200 bg-white p-3.5 text-left shadow-none transition-all hover:border-slate-300 hover:bg-slate-50",
-        active && "border-blue-500 bg-blue-50/60 shadow-sm hover:bg-blue-50/60",
+        "w-full rounded-md border bg-white px-3 py-2.5 text-left transition-all hover:border-slate-300 hover:bg-slate-50/70",
+        active
+          ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-500/20 hover:bg-blue-50/40"
+          : "border-slate-200",
       )}
     >
-      <div className="flex w-full items-start justify-between gap-4">
-        <div className="min-w-0 flex-1 space-y-2.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={generated ? "default" : "secondary"} className="rounded-full px-2.5 py-1">
-              {generated ? "已生成" : "未生成"}
-            </Badge>
-            <span className="text-xs font-semibold text-slate-500">
-              {question.platform ?? "zhihu"} / {question.answerCount} 个回答
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={cn(
+                "inline-flex items-center rounded-[4px] px-1.5 py-[1px] text-[10px] font-semibold",
+                generated
+                  ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                  : "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+              )}
+            >
+              {generated ? "已生成" : "待生成"}
             </span>
-            {question.updatedTime ? <span className="text-xs font-semibold text-slate-400">{question.updatedTime}</span> : null}
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="line-clamp-2 text-[0.94rem] font-extrabold leading-6 text-slate-900">{question.title}</div>
-            {question.excerpt ? <div className="line-clamp-2 text-sm leading-6 text-slate-500">{question.excerpt}</div> : null}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="rounded-full border-slate-200 bg-slate-50 text-slate-600">
-              {question.topic || "未分类"}
-            </Badge>
-            {question.url ? (
-              <Badge variant="outline" className="rounded-full border-slate-200 bg-slate-50 text-slate-600">
-                原始链接
-              </Badge>
+            <span className="text-[11px] text-slate-400">
+              {question.platform ?? "zhihu"} · {question.answerCount} 个回答
+            </span>
+            {question.updatedTime ? (
+              <span className="text-[11px] text-slate-400">{question.updatedTime}</span>
             ) : null}
           </div>
+
+          <div className="line-clamp-2 text-[13px] font-semibold leading-[1.5] text-slate-800">
+            {question.title}
+          </div>
+
+          {question.excerpt ? (
+            <div className="line-clamp-1 text-[12px] text-slate-500">{question.excerpt}</div>
+          ) : null}
+
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-[4px] bg-slate-100 px-1.5 py-[1px] text-[10px] font-medium text-slate-500">
+              {question.topic || "未分类"}
+            </span>
+            {isGenerating && (
+              <span className="flex items-center gap-1 text-[11px] font-medium text-blue-600">
+                <LoaderCircle className="h-3 w-3 animate-spin" />
+                生成中
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          {isGenerating ? (
-            <Badge variant="secondary" className="rounded-full">
-              生成中
-            </Badge>
-          ) : null}
-          <span className={cn("inline-flex h-2.5 w-2.5 rounded-full", generated ? "bg-emerald-500" : "bg-amber-400")} />
-        </div>
+        <span
+          className={cn(
+            "mt-1 h-[7px] w-[7px] shrink-0 rounded-full",
+            generated ? "bg-emerald-400" : "bg-amber-300",
+          )}
+        />
       </div>
-    </Button>
+    </button>
   );
 }
+
+// ──────────────────────────────────────────────────────────
+// Questions panel (collect page middle column)
+// ──────────────────────────────────────────────────────────
 
 function QuestionsPanel({
   questions,
@@ -349,11 +427,9 @@ function QuestionsPanel({
 
   const filteredQuestions = useMemo(() => {
     const keyword = deferredQuery.trim().toLowerCase();
-    if (!keyword) {
-      return questions;
-    }
-    return questions.filter((question) => {
-      const haystack = `${question.title} ${question.excerpt} ${question.topic}`.toLowerCase();
+    if (!keyword) return questions;
+    return questions.filter((q) => {
+      const haystack = `${q.title} ${q.excerpt} ${q.topic}`.toLowerCase();
       return haystack.includes(keyword);
     });
   }, [questions, deferredQuery]);
@@ -367,115 +443,110 @@ function QuestionsPanel({
   const visibleEnd = Math.min(pageEnd, filteredQuestions.length);
 
   return (
-    <SectionCard
-      title="问题研究结果"
-      description="搜索、筛选并选择当前要处理的问题。"
-      action={<Button variant="outline" className="rounded-full border-slate-200 bg-white px-4 text-sm font-semibold">导出结果</Button>}
-      className="min-h-0"
-    >
-      <div className="space-y-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <PanelSection
+        label={`问题列表 ${questions.length ? `(${questions.length})` : ""}`}
+        action={
+          <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px] text-slate-500 hover:text-slate-700">
+            <FileDown className="h-3 w-3" />
+            导出
+          </Button>
+        }
+      >
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <Input
               value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => { setQuery(e.target.value); setPage(1); }}
               placeholder="搜索标题、摘要、关键词"
-              className="h-9 rounded-xl border-slate-200 bg-white pl-9 shadow-none"
+              className="h-8 rounded-md border-slate-200 bg-white pl-8 text-[12px] shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" className="rounded-full border-slate-200 bg-white px-3.5 font-semibold">
-              全部
-            </Button>
-            <Button variant="outline" className="rounded-full border-slate-200 bg-white px-3.5 font-semibold">
-              未生成
-            </Button>
-            <Button variant="outline" className="rounded-full border-slate-200 bg-white px-3.5 font-semibold">
-              已生成
-            </Button>
+          <div className="flex gap-1">
+            {["全部", "未生成", "已生成"].map((label) => (
+              <button
+                key={label}
+                type="button"
+                className="rounded-[4px] bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-200 first:bg-slate-800 first:text-white"
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
+      </PanelSection>
 
-        <ScrollArea className="h-[calc(100vh-460px)] min-h-[460px] pr-3">
-          <div className="space-y-3">
-            {isCollecting && !questions.length ? (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-500">
-                正在采集问题，完成后结果会显示在这里。
-              </div>
-            ) : pagedQuestions.length ? (
-              pagedQuestions.map((question) => (
-                <QuestionRow
-                  key={question.id}
-                  question={question}
-                  active={question.id === selectedQuestionId}
-                  onSelect={(questionId) => selectQuestion(questionId)}
-                  isGenerating={isGeneratingOne(question.id)}
-                />
-              ))
-            ) : (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-500">
-                没有匹配的问题结果。
-              </div>
-            )}
-          </div>
-        </ScrollArea>
+      <ScrollArea className="flex-1 pr-1" style={{ height: "calc(100vh - 400px)", minHeight: "360px" }}>
+        <div className="space-y-2">
+          {isCollecting && !questions.length ? (
+            <EmptySlot message="正在采集问题，完成后结果将显示在这里。" />
+          ) : pagedQuestions.length ? (
+            pagedQuestions.map((q) => (
+              <QuestionRow
+                key={q.id}
+                question={q}
+                active={q.id === selectedQuestionId}
+                onSelect={selectQuestion}
+                isGenerating={isGeneratingOne(q.id)}
+              />
+            ))
+          ) : (
+            <EmptySlot message="没有匹配的问题结果。" />
+          )}
+        </div>
+      </ScrollArea>
 
-        <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm font-semibold text-slate-500">
-            {filteredQuestions.length ? `${visibleStart}-${visibleEnd} / ${filteredQuestions.length}` : "0 / 0"}
-          </div>
-          <div className="flex items-center gap-2">
-            <Select
-              value={String(pageSize)}
-              onValueChange={(value) => {
-                setPageSize(Number(value));
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="h-10 w-[112px] rounded-xl border-slate-200 bg-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[10, 20, 50].map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    每页 {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setPage((value) => Math.max(1, value - 1))}
-              disabled={currentPage <= 1}
-              aria-label="上一页"
-              className="rounded-xl border-slate-200 bg-white"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Badge variant="secondary" className="rounded-full px-2.5 py-1">
-              {currentPage} / {totalPages}
-            </Badge>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-              disabled={currentPage >= totalPages}
-              aria-label="下一页"
-              className="rounded-xl border-slate-200 bg-white"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+      <div className="flex items-center justify-between gap-2 border-t border-slate-200 pt-2">
+        <span className="text-[11px] text-slate-400">
+          {filteredQuestions.length ? `${visibleStart}–${visibleEnd} / ${filteredQuestions.length}` : "0 / 0"}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <Select
+            value={String(pageSize)}
+            onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}
+          >
+            <SelectTrigger className="h-7 w-[90px] rounded-md border-slate-200 bg-white text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[10, 20, 50].map((s) => (
+                <SelectItem key={s} value={String(s)} className="text-[12px]">
+                  每页 {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage <= 1}
+            className="h-7 w-7 rounded-md border-slate-200 bg-white"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <span className="min-w-[36px] text-center text-[11px] font-medium text-slate-500">
+            {currentPage}/{totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages}
+            className="h-7 w-7 rounded-md border-slate-200 bg-white"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
-    </SectionCard>
+    </div>
   );
 }
+
+// ──────────────────────────────────────────────────────────
+// Answer panel (shared between pages)
+// ──────────────────────────────────────────────────────────
 
 function QuestionBrief({
   question,
@@ -485,26 +556,28 @@ function QuestionBrief({
   onOpenSource: () => void;
 }) {
   return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge className="rounded-full px-2.5 py-0.5">{question.topic || "知乎题目"}</Badge>
-        <Badge variant="outline" className="rounded-full border-slate-200 bg-white px-2.5 py-0.5 text-slate-600">
-          {question.answerCount} 个回答
-        </Badge>
-        <Badge variant="outline" className="rounded-full border-slate-200 bg-white px-2.5 py-0.5 text-slate-600">
-          {question.updatedTime || "未知时间"}
-        </Badge>
+    <div className="rounded-md border border-slate-200 bg-slate-50/60 px-3.5 py-3">
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <span className="rounded-[4px] bg-blue-50 px-1.5 py-[1px] text-[10px] font-semibold text-blue-700 ring-1 ring-blue-200">
+          {question.topic || "知乎题目"}
+        </span>
+        <span className="text-[11px] text-slate-400">{question.answerCount} 个回答</span>
+        {question.updatedTime ? (
+          <span className="text-[11px] text-slate-400">{question.updatedTime}</span>
+        ) : null}
+        <button
+          type="button"
+          onClick={onOpenSource}
+          className="ml-auto flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+        >
+          打开原链接
+          <ExternalLink className="h-3 w-3" />
+        </button>
       </div>
-
-      <div className="space-y-3">
-        <div className="text-[0.94rem] font-extrabold leading-snug tracking-tight text-slate-900">{question.title}</div>
-        {question.excerpt ? <div className="text-[0.84rem] leading-6 text-slate-600">{question.excerpt}</div> : null}
-      </div>
-
-      <Button variant="outline" className="rounded-full border-slate-200 bg-white font-semibold text-slate-700" onClick={onOpenSource}>
-        打开原链接
-        <ArrowUpRight className="h-4 w-4" />
-      </Button>
+      <div className="text-[14px] font-semibold leading-snug text-slate-900">{question.title}</div>
+      {question.excerpt ? (
+        <p className="mt-1.5 text-[12px] leading-relaxed text-slate-500">{question.excerpt}</p>
+      ) : null}
     </div>
   );
 }
@@ -523,104 +596,116 @@ function AnswerPanel({
   const [isCopied, setIsCopied] = useState(false);
 
   async function copyAnswer() {
-    if (!question?.answer?.trim()) {
-      return;
-    }
+    if (!question?.answer?.trim()) return;
     await navigator.clipboard.writeText(question.answer);
     setIsCopied(true);
-    window.setTimeout(() => setIsCopied(false), 1200);
+    window.setTimeout(() => setIsCopied(false), 1500);
   }
 
   return (
-    <SectionCard
-      title="回答工作区"
-      description="选中一个问题后，再决定是自动生成还是继续手工修改。"
-      action={
-        question ? (
-          <div className="flex flex-wrap gap-2">
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <PanelSection label="回答工作区" className="flex-1" />
+        {question && (
+          <div className="flex shrink-0 items-center gap-1.5">
             <Button
-              variant="secondary"
-              className="rounded-full px-4 font-semibold"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 rounded-md border-slate-200 px-2.5 text-[12px] font-medium"
+              onClick={copyAnswer}
+              disabled={!question.answer?.trim()}
+            >
+              {isCopied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+              {isCopied ? "已复制" : "复制"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 rounded-md border-slate-200 px-2.5 text-[12px] font-medium"
               onClick={() => onGenerateOne(question)}
             >
-              <Sparkles className="h-4 w-4" />
+              <RefreshCcw className="h-3 w-3" />
+              重新生成
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 gap-1.5 rounded-md bg-slate-900 px-3 text-[12px] font-medium hover:bg-slate-800"
+              onClick={() => onGenerateOne(question)}
+            >
+              <Sparkles className="h-3 w-3" />
               AI 生成
             </Button>
-            <Button variant="outline" className="rounded-full border-slate-200 bg-white px-4 font-semibold" onClick={onSave}>
-              <Save className="h-4 w-4" />
-              保存
-            </Button>
           </div>
-        ) : null
-      }
-      className="min-h-0"
-    >
+        )}
+      </div>
+
       {!question ? (
-        <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-5 text-center">
-          <Bot className="h-10 w-10 text-slate-400" />
-          <div className="space-y-1.5">
-            <div className="text-[1rem] font-extrabold text-slate-900">先选中一个问题</div>
-            <div className="max-w-md text-sm leading-7 text-slate-500">
-              左侧问题池选择题目后，这里才会进入回答编辑状态。
-            </div>
+        <div className="flex min-h-[400px] flex-col items-center justify-center gap-3 rounded-md border border-dashed border-slate-200 bg-slate-50/50">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+            <Bot className="h-5 w-5 text-slate-400" />
+          </div>
+          <div className="text-center">
+            <div className="text-[13px] font-semibold text-slate-700">未选中问题</div>
+            <div className="mt-1 text-[12px] text-slate-400">从左侧问题列表选择一个题目</div>
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <QuestionBrief question={question} onOpenSource={() => window.open(question.url, "_blank", "noreferrer")} />
 
-          <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2.5">
-              <div>
-                <div className="text-sm font-semibold text-slate-500">回答正文</div>
-                <div className="mt-1 text-[0.84rem] leading-6 text-slate-500">支持在线查看、编辑、重新生成，并可保存到本地。</div>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <Button variant="outline" className="rounded-full border-slate-200 bg-white px-3.5 font-semibold" onClick={copyAnswer} disabled={!question.answer?.trim()}>
-                  {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  {isCopied ? "已复制" : "复制"}
-                </Button>
-                <Button variant="ghost" className="rounded-full px-3.5 font-semibold text-slate-700" onClick={() => onGenerateOne(question)}>
-                  <RefreshCcw className="h-4 w-4" />
-                  AI 生成
-                </Button>
-              </div>
+          {question.images?.length ? (
+            <div className="grid gap-2 md:grid-cols-2">
+              {question.images.map((imgUrl, i) => (
+                <figure
+                  key={`${question.id}-img-${i}`}
+                  className="overflow-hidden rounded-md border border-slate-200 bg-slate-50"
+                >
+                  <img
+                    className="h-40 w-full object-cover"
+                    src={imgUrl}
+                    alt={question.imagePrompts?.[i] || `${question.title} 配图 ${i + 1}`}
+                  />
+                  {question.imagePrompts?.[i] ? (
+                    <figcaption className="border-t border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-500">
+                      {question.imagePrompts[i]}
+                    </figcaption>
+                  ) : null}
+                </figure>
+              ))}
             </div>
+          ) : null}
 
-            {question.images?.length ? (
-              <div className="grid gap-2.5 md:grid-cols-2">
-                {question.images.map((imageUrl, index) => (
-                  <figure key={`${question.id}-image-${index}`} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                    <img
-                      className="h-44 w-full object-cover"
-                      src={imageUrl}
-                      alt={question.imagePrompts?.[index] || `${question.title} 配图 ${index + 1}`}
-                    />
-                    {question.imagePrompts?.[index] ? (
-                      <figcaption className="border-t border-slate-200 px-3 py-2 text-[0.72rem] leading-5 text-slate-500">
-                        {question.imagePrompts[index]}
-                      </figcaption>
-                    ) : null}
-                  </figure>
-                ))}
-              </div>
-            ) : null}
-
-            <MarkdownEditor
-              className="min-h-[320px] rounded-xl border border-slate-200 bg-white"
-              placeholder="点击上方按钮生成回答，或者直接手工编辑这里的内容。"
-              value={question.answer || ""}
-              onChange={(value) => setQuestionAnswer(question.id, value)}
-            />
-          </div>
+          <MarkdownEditor
+            className="min-h-[320px] rounded-md border border-slate-200 bg-white"
+            placeholder="点击 AI 生成 按钮自动撰写，或直接手工编辑内容。"
+            value={question.answer || ""}
+            onChange={(v) => setQuestionAnswer(question.id, v)}
+          />
         </div>
       )}
-    </SectionCard>
+    </div>
   );
 }
 
+// ──────────────────────────────────────────────────────────
+// Empty slot
+// ──────────────────────────────────────────────────────────
+
+function EmptySlot({ message }: { message: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50/60 px-3 py-3.5 text-[12px] text-slate-400">
+      {message}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Collect Page
+// ──────────────────────────────────────────────────────────
+
 function CollectPage() {
   const workspace = useWorkspaceOutlet();
+  const { saveState, statusMessage } = useWorkspaceStore();
   const {
     selectedPlatform,
     presetTopics,
@@ -642,167 +727,214 @@ function CollectPage() {
     isGeneratingOne,
   } = workspace;
 
-  const currentQuestion = questions.find((item) => item.id === selectedQuestionId) ?? null;
+  const currentQuestion = questions.find((q) => q.id === selectedQuestionId) ?? null;
   const collectKeywords = selectedTopic?.expandedHints ?? [];
+  const answeredCount = questions.filter((q) => q.answer?.trim()).length;
 
   return (
-    <section className="space-y-4">
-      <Card className="overflow-hidden rounded-xl border-slate-200/80 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
-        <CardHeader className="border-b border-slate-200/70 px-6 py-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-            <div className="space-y-2">
-              <CardTitle className="text-[1.25rem] font-extrabold tracking-tight text-slate-900">主题采集工作台</CardTitle>
-              <CardDescription className="max-w-3xl text-[0.8rem] leading-6 text-slate-500">
-                按主题采集问题，筛选候选题目，并批量生成或编辑回答。
-              </CardDescription>
-            </div>
-            <Badge className="rounded-full px-2.5 py-1 text-[0.72rem] font-semibold">{questions.length} 个问题</Badge>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/60 px-5 py-3.5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100">
+            <Layers className="h-3.5 w-3.5 text-slate-600" />
           </div>
-        </CardHeader>
+          <div>
+            <span className="text-[14px] font-semibold text-slate-800">主题采集工作台</span>
+            <span className="ml-2 text-[12px] text-slate-400">按主题采集问题，筛选并批量生成回答</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {questions.length > 0 && (
+            <span className="text-[12px] font-medium text-slate-500">
+              {answeredCount}/{questions.length} 已生成
+            </span>
+          )}
+          <Badge variant="secondary" className="rounded-[6px] px-2 py-0.5 text-[11px] font-semibold">
+            {questions.length} 个问题
+          </Badge>
+        </div>
+      </div>
 
-        <CardContent className="p-0">
-          <div className="border-b border-slate-200/70 bg-slate-50/80 px-6 py-4">
-            <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.6fr)_220px_180px_auto_auto]">
-              <div className="space-y-2">
-                <Label className="text-[0.82rem] font-semibold text-slate-700">主题</Label>
-                <Select
-                  value={selectedTopic?.id ?? ""}
-                  onValueChange={(value) => {
-                    const topic = presetTopics.find((item) => item.id === value) ?? null;
-                    selectTopic(topic);
-                  }}
-                >
-                  <SelectTrigger className="h-9 rounded-xl border-slate-200 bg-white px-3.5">
-                    <SelectValue placeholder="选择主题" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {presetTopics.map((topic) => (
-                      <SelectItem key={topic.id} value={topic.id}>
-                        {topic.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-[0.82rem] font-semibold text-slate-700">平台</Label>
-                <Select value={selectedPlatform} onValueChange={(value) => selectPlatform(value as typeof selectedPlatform)}>
-                  <SelectTrigger className="h-9 rounded-xl border-slate-200 bg-white px-3.5">
-                    <SelectValue placeholder="选择平台" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {supportedPlatforms.map((platform) => (
-                      <SelectItem key={platform.id} value={platform.id}>
-                        {platform.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-[0.82rem] font-semibold text-slate-700">采集上限</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={maxCollectCount}
-                  value={maxPushCount}
-                  onChange={(event) => {
-                    const nextValue = Number(event.target.value) || 1;
-                    setMaxPushCount(Math.min(maxCollectCount, Math.max(1, nextValue)));
-                  }}
-                  className="h-9 rounded-xl border-slate-200 bg-white px-3.5"
-                />
-              </div>
-
-              <div className="flex items-end">
-                <Button
-                  className="h-9 w-full rounded-xl px-4 text-sm font-semibold xl:w-auto"
-                  onClick={collectQuestions}
-                  disabled={isCollecting}
-                >
-                  {isCollecting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                  {isCollecting ? "正在采集" : "开始采集"}
-                </Button>
-              </div>
-
-              <div className="flex items-end">
-                <Button variant="outline" className="h-9 w-full rounded-xl border-slate-200 bg-white px-4 text-sm font-semibold xl:w-auto" onClick={saveSession}>
-                  <Save className="h-4 w-4" />
-                  保存当前结果
-                </Button>
-              </div>
-            </div>
+      {/* Action bar */}
+      <div className="border-b border-slate-200 bg-white px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Label className="shrink-0 text-[11px] font-medium text-slate-500">主题</Label>
+            <Select
+              value={selectedTopic?.id ?? ""}
+              onValueChange={(v) => {
+                const t = presetTopics.find((item) => item.id === v) ?? null;
+                selectTopic(t);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[180px] rounded-md border-slate-200 bg-white text-[12px]">
+                <SelectValue placeholder="选择主题" />
+              </SelectTrigger>
+              <SelectContent>
+                {presetTopics.map((t) => (
+                  <SelectItem key={t.id} value={t.id} className="text-[12px]">
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="grid gap-4 p-6 xl:grid-cols-[320px_minmax(0,1.25fr)_minmax(0,1fr)]">
-            <div className="space-y-4">
-              <WorkspacePulsePanel
-                questions={questions}
-                selectedTopicName={selectedTopic?.name ?? ""}
-                keywords={collectKeywords}
-                saveState={workspace.saveState}
-                statusMessage={workspace.statusMessage}
-              />
+          <div className="flex items-center gap-1.5">
+            <Label className="shrink-0 text-[11px] font-medium text-slate-500">平台</Label>
+            <Select value={selectedPlatform} onValueChange={(v) => selectPlatform(v as typeof selectedPlatform)}>
+              <SelectTrigger className="h-8 w-[120px] rounded-md border-slate-200 bg-white text-[12px]">
+                <SelectValue placeholder="选择平台" />
+              </SelectTrigger>
+              <SelectContent>
+                {supportedPlatforms.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-[12px]">
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-              <SectionCard title="筛选条件" description="仅保留当前工作流需要的核心筛选项。">
-                <div className="space-y-1.5">
-                  <StatusRow label="仅看未生成" value="18 条" />
-                  <StatusRow label="回答数高于 20" value="11 条" />
-                  <StatusRow label="最近 30 天更新" value="9 条" />
-                </div>
-              </SectionCard>
-
-              <SectionCard title="扩展检索词" description="当前主题自动扩展出的检索词。">
-                <div className="flex flex-wrap gap-1.5">
-                  {collectKeywords.length ? (
-                    collectKeywords.map((keyword) => (
-                      <Badge key={keyword} variant="outline" className="rounded-full border-slate-200 bg-white px-2.5 py-0.5 text-slate-700">
-                        {keyword}
-                      </Badge>
-                    ))
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-500">
-                      当前主题还没有扩展词。
-                    </div>
-                  )}
-                </div>
-              </SectionCard>
-
-              <PromptConfigSection
-                answerStyle={answerStyle}
-                systemPrompt={systemPrompt}
-                generationPrompt={generationPrompt}
-                onAnswerStyleChange={workspace.setAnswerStyle}
-                onSystemPromptChange={workspace.setSystemPrompt}
-                onGenerationPromptChange={workspace.setGenerationPrompt}
-              />
-            </div>
-
-            <QuestionsPanel
-              questions={questions}
-              selectedQuestionId={selectedQuestionId}
-              selectQuestion={workspace.selectQuestion}
-              isCollecting={isCollecting}
-              isGeneratingOne={isGeneratingOne}
-            />
-
-            <AnswerPanel
-              question={currentQuestion}
-              onGenerateOne={generateOneAnswer}
-              onSave={saveSession}
-              setQuestionAnswer={setQuestionAnswer}
+          <div className="flex items-center gap-1.5">
+            <Label className="shrink-0 text-[11px] font-medium text-slate-500">上限</Label>
+            <Input
+              type="number"
+              min={1}
+              max={maxCollectCount}
+              value={maxPushCount}
+              onChange={(e) => {
+                const v = Number(e.target.value) || 1;
+                setMaxPushCount(Math.min(maxCollectCount, Math.max(1, v)));
+              }}
+              className="h-8 w-[72px] rounded-md border-slate-200 bg-white text-[12px] shadow-none"
             />
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="flex-1" />
+
+          <Button
+            size="sm"
+            className="h-8 gap-1.5 rounded-md bg-slate-900 px-3.5 text-[12px] font-medium hover:bg-slate-800"
+            onClick={collectQuestions}
+            disabled={isCollecting}
+          >
+            {isCollecting ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Search className="h-3.5 w-3.5" />
+            )}
+            {isCollecting ? "采集中…" : "开始采集"}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-md border-slate-200 px-3 text-[12px] font-medium"
+            onClick={saveSession}
+          >
+            <Save className="h-3.5 w-3.5" />
+            保存结果
+          </Button>
+        </div>
+
+        {/* Inline status row */}
+        {(questions.length > 0 || isCollecting) && (
+          <div className="mt-2 flex flex-wrap items-center gap-4">
+            <StatusDot
+              label="采集"
+              status={isCollecting ? "running" : questions.length > 0 ? "done" : "idle"}
+              value={isCollecting ? "进行中" : questions.length > 0 ? `${questions.length} 条` : "待执行"}
+            />
+            <StatusDot
+              label="已生成"
+              status={answeredCount === questions.length && questions.length > 0 ? "done" : answeredCount > 0 ? "warn" : "idle"}
+              value={questions.length > 0 ? `${answeredCount}/${questions.length}` : "—"}
+            />
+            <StatusDot
+              label="保存"
+              status={saveState === "saved" ? "done" : saveState === "saving" ? "running" : saveState === "error" ? "error" : "idle"}
+              value={saveState === "saved" ? "已保存" : saveState === "saving" ? "保存中" : "未保存"}
+            />
+            {statusMessage && (
+              <span className="ml-auto text-[11px] text-slate-400">{statusMessage}</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Three-column body */}
+      <div className="grid xl:grid-cols-[280px_minmax(0,1.3fr)_minmax(0,1fr)]">
+        {/* Left: config */}
+        <div className="border-r border-slate-200 p-4">
+          <div className="space-y-5">
+            {collectKeywords.length > 0 && (
+              <PanelSection label="扩展检索词">
+                <div className="flex flex-wrap gap-1">
+                  {collectKeywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="rounded-[4px] bg-slate-100 px-1.5 py-[2px] text-[11px] font-medium text-slate-600"
+                    >
+                      {kw}
+                    </span>
+                  ))}
+                </div>
+              </PanelSection>
+            )}
+
+            {selectedTopic?.name && (
+              <PanelSection label="当前主题">
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <span className="text-[13px] font-semibold text-slate-800">{selectedTopic.name}</span>
+                </div>
+              </PanelSection>
+            )}
+
+            <PromptConfigPanel
+              answerStyle={answerStyle}
+              systemPrompt={systemPrompt}
+              generationPrompt={generationPrompt}
+              onAnswerStyleChange={workspace.setAnswerStyle}
+              onSystemPromptChange={workspace.setSystemPrompt}
+              onGenerationPromptChange={workspace.setGenerationPrompt}
+            />
+          </div>
+        </div>
+
+        {/* Middle: question list */}
+        <div className="border-r border-slate-200 p-4">
+          <QuestionsPanel
+            questions={questions}
+            selectedQuestionId={selectedQuestionId}
+            selectQuestion={workspace.selectQuestion}
+            isCollecting={isCollecting}
+            isGeneratingOne={isGeneratingOne}
+          />
+        </div>
+
+        {/* Right: answer workspace */}
+        <div className="p-4">
+          <AnswerPanel
+            question={currentQuestion}
+            onGenerateOne={generateOneAnswer}
+            onSave={saveSession}
+            setQuestionAnswer={setQuestionAnswer}
+          />
+        </div>
+      </div>
     </section>
   );
 }
 
+// ──────────────────────────────────────────────────────────
+// Import Page
+// ──────────────────────────────────────────────────────────
+
 function ImportPage() {
   const workspace = useWorkspaceOutlet();
+  const { saveState, statusMessage } = useWorkspaceStore();
   const {
     selectedPlatform,
     questions,
@@ -819,138 +951,180 @@ function ImportPage() {
     setAnswerStyle,
     setSystemPrompt,
     setGenerationPrompt,
-    statusMessage,
-    saveState,
   } = workspace;
   const [questionUrl, setQuestionUrl] = useState("");
-  const currentQuestion = questions.find((item) => item.id === selectedQuestionId) ?? null;
+  const currentQuestion = questions.find((q) => q.id === selectedQuestionId) ?? null;
+
+  const urlStatus: StatusLevel = isImportingQuestionUrl ? "running" : currentQuestion ? "done" : "idle";
+  const answerStatus: StatusLevel = currentQuestion?.answer?.trim() ? "done" : isImportingQuestionUrl ? "idle" : currentQuestion ? "warn" : "idle";
+  const saveStatus: StatusLevel = saveState === "saved" ? "done" : saveState === "saving" ? "running" : saveState === "error" ? "error" : "idle";
 
   return (
-    <section className="space-y-4">
-      <Card className="overflow-hidden rounded-xl border-slate-200/80 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
-        <CardHeader className="border-b border-slate-200/70 px-6 py-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-            <div className="space-y-2">
-              <CardTitle className="text-[1.25rem] font-extrabold tracking-tight text-slate-900">URL 导入回答工作台</CardTitle>
-              <CardDescription className="max-w-3xl text-[0.8rem] leading-6 text-slate-500">
-                粘贴问题链接，解析单题信息，并直接生成和编辑回答。
-              </CardDescription>
-            </div>
-            <Badge className="rounded-full px-2.5 py-1 text-[0.72rem] font-semibold">最近导入 {questions.length} 条</Badge>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/60 px-5 py-3.5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100">
+            <ArrowUpRight className="h-3.5 w-3.5 text-slate-600" />
           </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          <div className="border-b border-slate-200/70 bg-slate-50/80 px-6 py-4">
-            <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.8fr)_220px_auto_auto]">
-              <div className="space-y-2">
-                <Label className="text-[0.82rem] font-semibold text-slate-700">问题链接</Label>
-                <Input
-                  value={questionUrl}
-                  onChange={(event) => setQuestionUrl(event.target.value)}
-                  placeholder="目前仅支持知乎问题链接，例如 https://www.zhihu.com/question/..."
-                  className="h-9 rounded-xl border-slate-200 bg-white px-3.5"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-[0.82rem] font-semibold text-slate-700">平台</Label>
-                <Select value={selectedPlatform} onValueChange={(value) => selectPlatform(value as typeof selectedPlatform)}>
-                  <SelectTrigger className="h-9 rounded-xl border-slate-200 bg-white px-3.5">
-                    <SelectValue placeholder="选择平台" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {supportedPlatforms.map((platform) => (
-                      <SelectItem key={platform.id} value={platform.id}>
-                        {platform.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-end">
-                <Button
-                  className="h-9 w-full rounded-xl px-4 text-sm font-semibold xl:w-auto"
-                  disabled={!questionUrl.trim() || isImportingQuestionUrl}
-                  onClick={() => importQuestionByUrl(questionUrl.trim())}
-                >
-                  {isImportingQuestionUrl ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
-                  {isImportingQuestionUrl ? "解析中" : "导入问题"}
-                </Button>
-              </div>
-
-              <div className="flex items-end">
-                <Button variant="outline" className="h-9 w-full rounded-xl border-slate-200 bg-white px-4 text-sm font-semibold xl:w-auto" onClick={saveSession}>
-                  <Save className="h-4 w-4" />
-                  保存当前结果
-                </Button>
-              </div>
-            </div>
+          <div>
+            <span className="text-[14px] font-semibold text-slate-800">URL 导入回答</span>
+            <span className="ml-2 text-[12px] text-slate-400">粘贴问题链接，解析单题信息，生成并编辑回答</span>
           </div>
+        </div>
+        <Badge variant="secondary" className="rounded-[6px] px-2 py-0.5 text-[11px] font-semibold">
+          最近导入 {questions.length} 条
+        </Badge>
+      </div>
 
-          <div className="grid gap-4 p-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <div className="space-y-4">
-              <SectionCard title="当前状态" description="链接解析、回答生成和本地保存。">
-                <div className="space-y-2">
-                  <StatusRow label="URL 解析" value={isImportingQuestionUrl ? "进行中" : "待检查"} valueClassName={isImportingQuestionUrl ? "text-blue-700" : "text-amber-600"} />
-                  <StatusRow label="回答生成" value={currentQuestion?.answer?.trim() ? "已完成" : "待执行"} valueClassName={currentQuestion?.answer?.trim() ? "text-emerald-600" : "text-amber-600"} />
-                  <StatusRow label="本地保存" value={saveState === "saved" ? "已保存" : "未保存"} valueClassName={saveState === "saved" ? "text-emerald-600" : "text-rose-600"} />
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-[0.84rem] leading-6 text-slate-600">
-                    {statusMessage}
-                  </div>
-                </div>
-              </SectionCard>
+      {/* Action bar */}
+      <div className="border-b border-slate-200 bg-white px-5 py-3">
+        <div className="flex items-center gap-2">
+          <Input
+            value={questionUrl}
+            onChange={(e) => setQuestionUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && questionUrl.trim() && !isImportingQuestionUrl) {
+                importQuestionByUrl(questionUrl.trim());
+              }
+            }}
+            placeholder="粘贴知乎问题链接，例如 https://www.zhihu.com/question/..."
+            className="h-8 flex-1 rounded-md border-slate-200 bg-white text-[12px] shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
+          />
+          <Select value={selectedPlatform} onValueChange={(v) => selectPlatform(v as typeof selectedPlatform)}>
+            <SelectTrigger className="h-8 w-[100px] rounded-md border-slate-200 bg-white text-[12px]">
+              <SelectValue placeholder="平台" />
+            </SelectTrigger>
+            <SelectContent>
+              {supportedPlatforms.map((p) => (
+                <SelectItem key={p.id} value={p.id} className="text-[12px]">
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            className="h-8 gap-1.5 rounded-md bg-slate-900 px-3.5 text-[12px] font-medium hover:bg-slate-800"
+            disabled={!questionUrl.trim() || isImportingQuestionUrl}
+            onClick={() => importQuestionByUrl(questionUrl.trim())}
+          >
+            {isImportingQuestionUrl ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            )}
+            {isImportingQuestionUrl ? "解析中…" : "导入问题"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-md border-slate-200 px-3 text-[12px] font-medium"
+            onClick={saveSession}
+          >
+            <Save className="h-3.5 w-3.5" />
+            保存
+          </Button>
+        </div>
 
-              <SectionCard title="最近导入历史" description="最近进入问题池的链接。">
-                <div className="space-y-3">
-                  {questions.slice(0, 3).length ? (
-                    questions.slice(0, 3).map((item) => (
-                      <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-3.5">
-                        <div className="line-clamp-2 text-[0.9rem] font-bold leading-6 text-slate-900">{item.title}</div>
-                        <div className="mt-1.5 text-[0.72rem] leading-5 text-slate-500">
-                          {item.platform ?? "zhihu"} · {item.updatedTime || "未知时间"} · {item.answer?.trim() ? "已生成回答" : "未生成"}
-                        </div>
+        {/* Inline status — moved from left panel */}
+        <div className="mt-2 flex flex-wrap items-center gap-4">
+          <StatusDot label="URL 解析" status={urlStatus} value={isImportingQuestionUrl ? "解析中" : currentQuestion ? "已完成" : "待检查"} />
+          <StatusDot label="回答生成" status={answerStatus} value={currentQuestion?.answer?.trim() ? "已完成" : "待执行"} />
+          <StatusDot label="本地保存" status={saveStatus} value={saveState === "saved" ? "已保存" : saveState === "saving" ? "保存中" : "未保存"} />
+          {statusMessage && (
+            <span className="ml-auto text-[11px] text-slate-400">{statusMessage}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Two-column body: left = config, right = answer */}
+      <div className="grid xl:grid-cols-[320px_minmax(0,1fr)]">
+        {/* Left: config params only */}
+        <div className="border-r border-slate-200 p-4">
+          <div className="space-y-5">
+            {/* Recent imports */}
+            <PanelSection label="最近导入">
+              {questions.length > 0 ? (
+                <div className="space-y-1.5">
+                  {questions.slice(0, 5).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => workspace.selectQuestion(item.id)}
+                      className={cn(
+                        "group w-full rounded-md border px-3 py-2 text-left transition-colors hover:bg-slate-50",
+                        item.id === selectedQuestionId
+                          ? "border-blue-400 bg-blue-50/40"
+                          : "border-slate-200 bg-white",
+                      )}
+                    >
+                      <div className="line-clamp-1 text-[12px] font-medium text-slate-800">
+                        {item.title}
                       </div>
-                    ))
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-500">
-                      还没有导入记录。
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "inline-block h-[5px] w-[5px] rounded-full",
+                            item.answer?.trim() ? "bg-emerald-400" : "bg-amber-300",
+                          )}
+                        />
+                        <span className="text-[10px] text-slate-400">
+                          {item.platform ?? "zhihu"} · {item.answer?.trim() ? "已生成回答" : "未生成"}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                  {questions.length > 5 && (
+                    <div className="text-[11px] text-slate-400">
+                      另有 {questions.length - 5} 条导入记录
                     </div>
                   )}
                 </div>
-              </SectionCard>
+              ) : (
+                <EmptySlot message="暂无导入记录。粘贴问题链接后开始。" />
+              )}
+            </PanelSection>
 
-              <PromptConfigSection
-                answerStyle={answerStyle}
-                systemPrompt={systemPrompt}
-                generationPrompt={generationPrompt}
-                onAnswerStyleChange={setAnswerStyle}
-                onSystemPromptChange={setSystemPrompt}
-                onGenerationPromptChange={setGenerationPrompt}
-              />
-            </div>
+            <Separator className="bg-slate-100" />
 
-            <AnswerPanel
-              question={currentQuestion}
-              onGenerateOne={generateOneAnswer}
-              onSave={saveSession}
-              setQuestionAnswer={setQuestionAnswer}
+            {/* Prompt config */}
+            <PromptConfigPanel
+              answerStyle={answerStyle}
+              systemPrompt={systemPrompt}
+              generationPrompt={generationPrompt}
+              onAnswerStyleChange={setAnswerStyle}
+              onSystemPromptChange={setSystemPrompt}
+              onGenerationPromptChange={setGenerationPrompt}
             />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Right: answer workspace */}
+        <div className="p-4">
+          <AnswerPanel
+            question={currentQuestion}
+            onGenerateOne={generateOneAnswer}
+            onSave={saveSession}
+            setQuestionAnswer={setQuestionAnswer}
+          />
+        </div>
+      </div>
     </section>
   );
 }
+
+// ──────────────────────────────────────────────────────────
+// Layout root
+// ──────────────────────────────────────────────────────────
 
 export function WorkspaceLayout() {
   const workspace = useWorkspace();
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#fbfdff_0%,#f4f7fb_100%)] text-slate-900">
+    <div className="min-h-screen bg-[#EFF2F7] text-slate-900">
       <WorkspaceTopbar />
-      <main className="mx-auto w-full max-w-[1800px] px-4 pb-4 pt-4 sm:px-6 lg:px-6">
+      <main className="mx-auto w-full max-w-[1800px] px-4 pb-6 pt-4 sm:px-5">
         <Outlet context={workspace} />
       </main>
     </div>
