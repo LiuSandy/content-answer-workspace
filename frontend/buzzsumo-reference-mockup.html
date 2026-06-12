@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>内容工作台</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --panel: rgba(255, 255, 255, 0.96);
+        --panel-soft: #f8fbff;
+        --line: #d9e1ec;
+        --line-strong: #c3cfdd;
+        --text: #112033;
+        --muted: #64758a;
+        --blue: #2563eb;
+        --blue-deep: #1d4ed8;
+        --blue-soft: #eaf1ff;
+        --green: #159a72;
+        --amber: #c97a13;
+        --red: #d74f57;
+        --shadow: 0 20px 44px rgba(15, 30, 62, 0.08);
+        --radius-xl: 24px;
+        --radius-lg: 20px;
+        --radius-md: 16px;
+        --radius-sm: 12px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          "IBM Plex Sans",
+          "Segoe UI",
+          sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 22%),
+          linear-gradient(180deg, #f9fbff 0%, var(--bg) 100%);
+      }
+
+      .shell {
+        min-height: 100vh;
+        padding: 0 0 24px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: flex-start;
+        gap: 58px;
+        width: 100%;
+        padding: 16px 24px 0 18px;
+        border-bottom: 1px solid #d7ddeb;
+        background: #fff;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: flex-start;
+        gap: 14px;
+        min-width: 0;
+        padding-top: 2px;
+      }
+
+      .brand-mark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 84px;
+        height: 84px;
+        border-radius: 26px;
+        background: linear-gradient(180deg, #2f6cf6 0%, #2154d8 100%);
+        color: #fff;
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: 0;
+        flex: none;
+      }
+
+      .brand-copy {
+        display: grid;
+        gap: 4px;
+        padding-top: 6px;
+      }
+
+      .brand-title {
+        margin: 0;
+        font-size: 32px;
+        font-weight: 800;
+        line-height: 1;
+        color: #0f172a;
+      }
+
+      .brand-subtitle {
+        margin: 0;
+        color: #64748b;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+
+      .topnav {
+        display: inline-flex;
+        align-items: center;
+        gap: 46px;
+        flex: 1;
+        justify-content: flex-start;
+        min-width: 0;
+        padding-top: 23px;
+      }
+
+      .topnav-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0;
+        border-radius: 0;
+        color: #667085;
+        text-decoration: none;
+        font-size: 19px;
+        font-weight: 700;
+        white-space: nowrap;
+        transition: color 180ms ease;
+        position: relative;
+      }
+
+      .topnav-link:hover {
+        color: #1d4ed8;
+      }
+
+      .topnav-link.active {
+        color: #1d4ed8;
+        font-weight: 800;
+      }
+
+      .topnav-link.active::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -18px;
+        height: 4px;
+        border-radius: 999px;
+        background: #2457e6;
+      }
+
+      .app-page {
+        display: none;
+      }
+
+      .app-page.active {
+        display: block;
+      }
+
+      .pages {
+        margin-top: 22px;
+      }
+
+      .page-card {
+        border: 1px solid rgba(207, 216, 229, 0.82);
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .page-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 24px 24px 18px;
+        border-bottom: 1px solid #e9eef5;
+      }
+
+      .page-title {
+        margin: 0;
+        font-size: 24px;
+      }
+
+      .page-copy {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.65;
+      }
+
+      .search-bar {
+        display: grid;
+        grid-template-columns: 1.7fr 0.75fr 0.6fr auto auto;
+        gap: 12px;
+        padding: 18px 24px 22px;
+        border-bottom: 1px solid #e9eef5;
+        background: linear-gradient(180deg, rgba(250, 252, 255, 0.95), rgba(246, 250, 255, 0.95));
+      }
+
+      .input,
+      .static {
+        min-height: 56px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #fff;
+      }
+
+      .input {
+        width: 100%;
+        padding: 0 16px;
+        color: var(--text);
+        font-size: 15px;
+      }
+
+      .input::placeholder {
+        color: #8f9daf;
+      }
+
+      .static {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 16px;
+      }
+
+      .static-label {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #7e8ca0;
+      }
+
+      .static-value {
+        margin-top: 4px;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .btn-primary,
+      .btn-secondary,
+      .btn-ghost {
+        appearance: none;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .btn-primary {
+        border: 0;
+        padding: 0 18px;
+        background: linear-gradient(135deg, var(--blue) 0%, var(--blue-deep) 100%);
+        color: #fff;
+        box-shadow: 0 12px 28px rgba(37, 99, 235, 0.24);
+      }
+
+      .btn-secondary {
+        border: 1px solid var(--line);
+        padding: 0 18px;
+        background: #fff;
+        color: var(--text);
+      }
+
+      .btn-ghost {
+        border: 1px solid var(--line);
+        padding: 10px 12px;
+        background: #fff;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .layout-three {
+        display: grid;
+        grid-template-columns: 300px minmax(400px, 0.95fr) minmax(430px, 1.1fr);
+        gap: 18px;
+        padding: 20px 24px 24px;
+      }
+
+      .layout-two {
+        display: grid;
+        grid-template-columns: 320px minmax(620px, 1fr);
+        gap: 18px;
+        padding: 20px 24px 24px;
+      }
+
+      .panel {
+        border: 1px solid #dfe6f0;
+        border-radius: 22px;
+        background: var(--panel);
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 20px 20px 14px;
+        border-bottom: 1px solid #ebeff5;
+      }
+
+      .panel-kicker {
+        margin: 0 0 6px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue);
+      }
+
+      .panel-title {
+        margin: 0;
+        font-size: 19px;
+      }
+
+      .panel-copy {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .panel-body {
+        padding: 18px 20px 20px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .metric {
+        padding: 14px;
+        border: 1px solid #e3e9f2;
+        border-radius: 16px;
+        background: var(--panel-soft);
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .metric-value {
+        margin-top: 8px;
+        font-size: 26px;
+        font-weight: 800;
+      }
+
+      .block {
+        padding: 16px;
+        border: 1px solid #e3e9f2;
+        border-radius: 18px;
+        background: #fff;
+      }
+
+      .block h4 {
+        margin: 0 0 12px;
+        font-size: 14px;
+      }
+
+      .rows {
+        display: grid;
+        gap: 10px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: #f8fbff;
+        font-size: 13px;
+      }
+
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 10px;
+        border-radius: 999px;
+        background: var(--blue-soft);
+        color: var(--blue-deep);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .toolbar .input {
+        min-height: 44px;
+      }
+
+      .toolbar-actions {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .item {
+        padding: 16px;
+        border: 1px solid #e3e9f2;
+        border-radius: 18px;
+        background: #fff;
+      }
+
+      .item.active {
+        border-color: #9ab7ff;
+        background: linear-gradient(180deg, #f9fbff 0%, #f0f6ff 100%);
+        box-shadow: 0 12px 24px rgba(37, 99, 235, 0.1);
+      }
+
+      .item-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+
+      .state {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .state.generated {
+        background: #eafaf4;
+        color: var(--green);
+      }
+
+      .state.pending {
+        background: #fff4e7;
+        color: var(--amber);
+      }
+
+      .state.parsed {
+        background: #ebf5ff;
+        color: var(--blue-deep);
+      }
+
+      .item h3 {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.45;
+      }
+
+      .item p {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .item-footer {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        color: #627488;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .detail {
+        display: grid;
+        gap: 16px;
+      }
+
+      .detail-title {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.28;
+      }
+
+      .summary,
+      .editor {
+        padding: 18px;
+        border: 1px solid #e1e8f2;
+        border-radius: 18px;
+        background: #fff;
+      }
+
+      .summary {
+        background: #f9fbff;
+        color: #43556a;
+        font-size: 14px;
+        line-height: 1.8;
+      }
+
+      .editor h4,
+      .summary h4 {
+        margin: 0 0 12px;
+        font-size: 14px;
+      }
+
+      .editor-surface {
+        min-height: 320px;
+        padding: 18px;
+        border: 1px solid #dce4ef;
+        border-radius: 16px;
+        background: #fcfdff;
+        white-space: pre-line;
+        font-size: 14px;
+        line-height: 1.8;
+        color: #26384d;
+      }
+
+      .actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+
+      .action-group {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .url-hero {
+        display: grid;
+        grid-template-columns: 1.8fr 0.8fr auto auto;
+        gap: 12px;
+        padding: 18px 24px 22px;
+        border-bottom: 1px solid #e9eef5;
+        background: linear-gradient(180deg, rgba(250, 252, 255, 0.95), rgba(246, 250, 255, 0.95));
+      }
+
+      .history-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .history-item {
+        padding: 14px;
+        border: 1px solid #e3e9f2;
+        border-radius: 16px;
+        background: #fff;
+      }
+
+      .history-item strong {
+        display: block;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .history-item span {
+        display: block;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      @media (max-width: 1320px) {
+        .search-bar {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .layout-three,
+        .layout-two,
+        .url-hero {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .shell {
+          padding: 0 14px 14px;
+        }
+
+        .metric-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .toolbar,
+        .actions,
+        .topbar,
+        .page-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .brand,
+        .topnav {
+          min-width: 0;
+        }
+
+        .topnav {
+          justify-content: flex-start;
+          overflow-x: auto;
+          padding-bottom: 16px;
+        }
+
+        .toolbar-actions {
+          flex-wrap: wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">CW</div>
+          <div class="brand-copy">
+            <p class="brand-title">内容工作台</p>
+            <p class="brand-subtitle">Research and Answers</p>
+          </div>
+        </div>
+
+      <nav class="topnav" aria-label="主导航">
+          <a class="topnav-link active" href="#collect-page" data-page-target="collect-page">主题采集</a>
+          <a class="topnav-link" href="#direct-page" data-page-target="direct-page">URL 导入回答</a>
+      </nav>
+      </header>
+
+      <main class="pages">
+        <section class="app-page active" id="collect-page" data-page="collect-page">
+          <section class="page-card">
+          <div class="page-header">
+            <div>
+              <h2 class="page-title">主题采集工作台</h2>
+              <p class="page-copy">按主题采集问题，筛选候选题目，并批量生成或编辑回答。</p>
+            </div>
+            <div class="chip">32 个问题</div>
+          </div>
+
+          <section class="search-bar">
+            <input class="input" value="空气炸锅 / 健身餐 / 减脂早餐" />
+            <div class="static">
+              <div class="static-label">平台</div>
+              <div class="static-value">知乎</div>
+            </div>
+            <div class="static">
+              <div class="static-label">上限</div>
+              <div class="static-value">50 条</div>
+            </div>
+            <button class="btn-primary">开始采集</button>
+            <button class="btn-secondary">批量生成</button>
+          </section>
+
+          <div class="layout-three">
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title">研究设置</h3>
+                  <p class="panel-copy">主题、筛选、扩展词和生成配置。</p>
+                </div>
+              </div>
+              <div class="panel-body stack">
+                <div class="metric-grid">
+                  <div class="metric">
+                    <div class="metric-label">问题池</div>
+                    <div class="metric-value">32</div>
+                  </div>
+                  <div class="metric">
+                    <div class="metric-label">已生成</div>
+                    <div class="metric-value">12</div>
+                  </div>
+                </div>
+
+                <div class="block">
+                  <h4>筛选条件</h4>
+                  <div class="rows">
+                    <div class="row"><span>仅看未生成</span><strong>18 条</strong></div>
+                    <div class="row"><span>回答数高于 20</span><strong>11 条</strong></div>
+                    <div class="row"><span>最近 30 天更新</span><strong>9 条</strong></div>
+                  </div>
+                </div>
+
+                <div class="block">
+                  <h4>扩展检索词</h4>
+                  <div class="tags">
+                    <span class="tag">低卡早餐</span>
+                    <span class="tag">空气炸锅食谱</span>
+                    <span class="tag">高蛋白早餐</span>
+                    <span class="tag">上班族备餐</span>
+                    <span class="tag">早八快手菜</span>
+                  </div>
+                </div>
+
+                <div class="block">
+                  <h4>高级配置</h4>
+                  <div class="rows">
+                    <div class="row"><span>System Prompt</span><strong>折叠</strong></div>
+                    <div class="row"><span>回答风格</span><strong>实用清单风</strong></div>
+                    <div class="row"><span>生成规则</span><strong>带行动建议</strong></div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title">问题研究结果</h3>
+                  <p class="panel-copy">搜索、筛选并选择当前要处理的问题。</p>
+                </div>
+                <button class="btn-secondary">导出结果</button>
+              </div>
+              <div class="panel-body">
+                <div class="toolbar">
+                  <input class="input" value="搜索标题、摘要、关键词" />
+                  <div class="toolbar-actions">
+                    <button class="btn-ghost">全部</button>
+                    <button class="btn-ghost">未生成</button>
+                    <button class="btn-ghost">已生成</button>
+                  </div>
+                </div>
+
+                <div class="list">
+                  <article class="item active">
+                    <div class="item-meta">
+                      <span class="state generated">已生成</span>
+                      <strong>知乎 / 1.2 万浏览</strong>
+                    </div>
+                    <h3>有哪些适合减脂期、又能长期坚持的空气炸锅早餐方案？</h3>
+                    <p>问题聚焦减脂、早餐和空气炸锅场景，适合做清单式回答。</p>
+                    <div class="item-footer">
+                      <span>38 个回答</span>
+                      <span>最近更新 2 天前</span>
+                      <span>标签: 减脂 / 早餐 / 空气炸锅</span>
+                    </div>
+                  </article>
+
+                  <article class="item">
+                    <div class="item-meta">
+                      <span class="state pending">未生成</span>
+                      <strong>知乎 / 9,800 浏览</strong>
+                    </div>
+                    <h3>减脂期间早餐怎么吃最省事，而且不容易饿？</h3>
+                    <p>可按原则、食材搭配和示例菜单三个部分组织回答。</p>
+                    <div class="item-footer">
+                      <span>24 个回答</span>
+                      <span>最近更新 5 天前</span>
+                      <span>标签: 饱腹感 / 控卡 / 上班族</span>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title">当前问题详情与回答</h3>
+                  <p class="panel-copy">查看当前问题信息并编辑回答内容。</p>
+                </div>
+                <button class="btn-secondary">查看原问题</button>
+              </div>
+              <div class="panel-body detail">
+                <div class="tags">
+                  <span class="tag">知乎</span>
+                  <span class="tag">38 个回答</span>
+                  <span class="tag">2 天前更新</span>
+                  <span class="tag">已生成回答</span>
+                </div>
+                <h3 class="detail-title">有哪些适合减脂期、又能长期坚持的空气炸锅早餐方案？</h3>
+                <div class="summary">
+                  <h4>问题摘要</h4>
+                  关注减脂早餐、准备效率和长期坚持，适合从食材组合、操作步骤和饱腹感三个角度回答。
+                </div>
+                <div class="editor">
+                  <h4>AI 回答草稿</h4>
+                  <div class="editor-surface">
+                    如果目标是“减脂期也能长期坚持”，那早餐方案必须同时满足三个条件：准备时间短、饱腹感足、口味不要太单调。
+
+                    我更建议按“主食 + 蛋白 + 蔬果”去搭，而不是只盯着热量数字。比如空气炸锅可以很稳定地解决蛋白和主食的部分……
+                  </div>
+                  <div class="actions">
+                    <div class="action-group">
+                      <button class="btn-primary">重新生成</button>
+                      <button class="btn-secondary">复制回答</button>
+                    </div>
+                    <div class="action-group">
+                      <button class="btn-secondary">保存草稿</button>
+                      <button class="btn-secondary">标记完成</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+        </section>
+
+        <section class="app-page" id="direct-page" data-page="direct-page">
+          <section class="page-card">
+          <div class="page-header">
+            <div>
+              <h2 class="page-title">URL 直达回答工作台</h2>
+              <p class="page-copy">粘贴问题链接，解析单题信息，并直接生成和编辑回答。</p>
+            </div>
+            <div class="chip">最近导入 2 条</div>
+          </div>
+
+          <section class="url-hero">
+            <input class="input" value="https://www.zhihu.com/question/123456789" />
+            <div class="static">
+              <div class="static-label">平台</div>
+              <div class="static-value">知乎</div>
+            </div>
+            <button class="btn-primary">解析问题</button>
+            <button class="btn-secondary">直接生成回答</button>
+          </section>
+
+          <div class="layout-two">
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title">单题入口配置</h3>
+                  <p class="panel-copy">链接状态、回答配置和最近导入记录。</p>
+                </div>
+              </div>
+              <div class="panel-body stack">
+                <div class="block">
+                  <h4>当前状态</h4>
+                  <div class="rows">
+                    <div class="row"><span>URL 解析</span><strong style="color: var(--green)">已完成</strong></div>
+                    <div class="row"><span>回答生成</span><strong style="color: var(--amber)">待执行</strong></div>
+                    <div class="row"><span>本地保存</span><strong style="color: var(--red)">未保存</strong></div>
+                  </div>
+                </div>
+
+                <div class="block">
+                  <h4>回答配置</h4>
+                  <div class="rows">
+                    <div class="row"><span>回答风格</span><strong>理性经验分享</strong></div>
+                    <div class="row"><span>系统提示词</span><strong>折叠</strong></div>
+                    <div class="row"><span>生成规则</span><strong>附原始链接</strong></div>
+                  </div>
+                </div>
+
+                <div class="block">
+                  <h4>最近导入历史</h4>
+                  <div class="history-list">
+                    <div class="history-item">
+                      <strong>为什么很多人减脂失败其实是早餐没吃对？</strong>
+                      <span>知乎 · 1 小时前导入 · 已生成回答</span>
+                    </div>
+                    <div class="history-item">
+                      <strong>空气炸锅是否适合长期做健身餐？</strong>
+                      <span>知乎 · 昨天导入 · 已保存草稿</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3 class="panel-title">解析结果与回答编辑</h3>
+                  <p class="panel-copy">查看当前问题，并直接生成或编辑回答。</p>
+                </div>
+                <button class="btn-secondary">打开原链接</button>
+              </div>
+              <div class="panel-body detail">
+                <div class="tags">
+                  <span class="tag">知乎题目</span>
+                  <span class="tag">URL 已验证</span>
+                  <span class="tag">尚未生成回答</span>
+                </div>
+                <h3 class="detail-title">为什么很多人减脂失败，其实是早餐没吃对？</h3>
+                <div class="summary">
+                  <h4>解析后的题目信息</h4>
+                  这是一个围绕早餐习惯、饱腹感和减脂执行难度的问题，适合采用误区说明加执行建议的结构。
+                </div>
+                <div class="editor">
+                  <h4>回答编辑区</h4>
+                  <div class="editor-surface">
+                    很多人减脂失败，问题不一定出在午餐或晚餐，而是早餐要么随便吃，要么干脆不吃。
+
+                    早餐如果只有精制碳水，没有足够蛋白和纤维，血糖波动会更快，上午更容易饿，中午也更容易失控。相比之下，一个更稳妥的减脂早餐，应该尽量满足三件事……
+                  </div>
+                  <div class="actions">
+                    <div class="action-group">
+                      <button class="btn-primary">生成回答</button>
+                      <button class="btn-secondary">重新解析</button>
+                      <button class="btn-secondary">复制回答</button>
+                    </div>
+                    <div class="action-group">
+                      <button class="btn-secondary">保存草稿</button>
+                      <button class="btn-secondary">打开原链接</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+        </section>
+      </main>
+      <script>
+        const navButtons = document.querySelectorAll(".topnav-link[data-page-target]");
+        const pages = document.querySelectorAll(".app-page[data-page]");
+
+        function switchPage(pageId) {
+          pages.forEach((page) => {
+            page.classList.toggle("active", page.dataset.page === pageId);
+          });
+          navButtons.forEach((button) => {
+            button.classList.toggle("active", button.dataset.pageTarget === pageId);
+          });
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        navButtons.forEach((button) => {
+          button.addEventListener("click", () => {
+            switchPage(button.dataset.pageTarget);
+          });
+        });
+      </script>
+    </div>
+  </body>
+</html>
