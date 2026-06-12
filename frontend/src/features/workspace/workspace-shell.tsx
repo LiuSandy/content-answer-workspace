@@ -732,7 +732,7 @@ function CollectPage() {
   const answeredCount = questions.filter((q) => q.answer?.trim()).length;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       {/* Page header */}
       <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/60 px-5 py-3.5">
         <div className="flex items-center gap-3">
@@ -865,9 +865,9 @@ function CollectPage() {
       </div>
 
       {/* Three-column body */}
-      <div className="grid xl:grid-cols-[280px_minmax(0,1.3fr)_minmax(0,1fr)]">
+      <div className="flex-1 min-h-0 grid xl:grid-cols-[280px_minmax(0,1.3fr)_minmax(0,1fr)]">
         {/* Left: config */}
-        <div className="border-r border-slate-200 p-4">
+        <div className="overflow-y-auto border-r border-slate-200 p-4">
           <div className="space-y-5">
             {collectKeywords.length > 0 && (
               <PanelSection label="扩展检索词">
@@ -904,7 +904,7 @@ function CollectPage() {
         </div>
 
         {/* Middle: question list */}
-        <div className="border-r border-slate-200 p-4">
+        <div className="overflow-y-auto border-r border-slate-200 p-4">
           <QuestionsPanel
             questions={questions}
             selectedQuestionId={selectedQuestionId}
@@ -960,7 +960,7 @@ function ImportPage() {
   const saveStatus: StatusLevel = saveState === "saved" ? "done" : saveState === "saving" ? "running" : saveState === "error" ? "error" : "idle";
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       {/* Page header */}
       <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/60 px-5 py-3.5">
         <div className="flex items-center gap-3">
@@ -1039,9 +1039,9 @@ function ImportPage() {
       </div>
 
       {/* Two-column body: left = config, right = answer */}
-      <div className="grid xl:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="flex-1 min-h-0 grid xl:grid-cols-[320px_minmax(0,1fr)]">
         {/* Left: config params only */}
-        <div className="border-r border-slate-200 p-4">
+        <div className="overflow-y-auto border-r border-slate-200 p-4">
           <div className="space-y-5">
             {/* Recent imports */}
             <PanelSection label="最近导入">
@@ -1101,7 +1101,7 @@ function ImportPage() {
         </div>
 
         {/* Right: answer workspace */}
-        <div className="p-4">
+        <div className="overflow-y-auto p-4">
           <AnswerPanel
             question={currentQuestion}
             onGenerateOne={generateOneAnswer}
@@ -1122,9 +1122,9 @@ export function WorkspaceLayout() {
   const workspace = useWorkspace();
 
   return (
-    <div className="min-h-screen bg-[#EFF2F7] text-slate-900">
+    <div className="flex min-h-screen flex-col bg-[#EFF2F7] text-slate-900">
       <WorkspaceTopbar />
-      <main className="mx-auto w-full max-w-[1800px] px-4 pb-6 pt-4 sm:px-5">
+      <main className="mx-auto flex w-full flex-1 flex-col max-w-[1800px] px-4 pb-4 pt-4 sm:px-5">
         <Outlet context={workspace} />
       </main>
     </div>
