@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from ...application.workflow_service import WorkflowService
-from ...models import ParseQuestionUrlPayload, RegeneratePayload, RunPayload, SessionPayload
+from ...models import ParseQuestionUrlPayload, PolishPayload, RegeneratePayload, RunPayload, SessionPayload
 
 router = APIRouter(prefix="/api/workflow", tags=["workflow"])
 workflow_service = WorkflowService()
@@ -41,6 +41,17 @@ async def generate(payload: SessionPayload) -> JSONResponse:
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return JSONResponse({"ok": True, "data": {"items": [item.model_dump(by_alias=True) for item in items]}})
+
+
+@router.post("/polish-one")
+async def polish_one(payload: PolishPayload) -> JSONResponse:
+    """接收单条回答润色请求；这样前端已有草稿可以直接送入 AI 改写而不重新生成。"""
+
+    try:
+        item = await workflow_service.polish_one(payload)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return JSONResponse({"ok": True, "data": {"item": item.model_dump(by_alias=True)}})
 
 
 @router.post("/parse-question-url")

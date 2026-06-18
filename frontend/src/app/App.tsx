@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
-import { CollectPage, ImportPage, WorkspaceLayout } from "@/features/workspace/workspace-shell";
+import { CollectPage, HotlistPage, ImportPage, WorkspaceLayout } from "@/features/workspace/workspace-shell";
 
 export function App() {
   return (
@@ -10,6 +10,7 @@ export function App() {
           <Route index element={<Navigate to="/import" replace />} />
           <Route path="import" element={<ImportPage />} />
           <Route path="collect" element={<CollectPage />} />
+          <Route path="hotlist" element={<HotlistPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/import" replace />} />
       </Routes>

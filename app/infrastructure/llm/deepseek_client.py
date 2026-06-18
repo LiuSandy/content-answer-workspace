@@ -36,27 +36,34 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         cta_text: str,
         system_prompt: str,
         generation_prompt: str,
+        content_constraint: str | None = None,
     ) -> str:
         """调用 DeepSeek 为问题创作回答；这样回答提示词、平台语境和模型输出处理集中在适配器内。"""
 
         client = self.get_client()
         model = get_required_env("DEEPSEEK_MODEL")
         platform_label = item.platform or "zhihu"
-        prompt = "\n".join(
-            [
-                f"请围绕下面这个{platform_label}问题写一篇适合发布到对应平台的原创回答，整体风格要求：{answer_style}",
+        prompt_parts = [
+            f"请围绕下面这个{platform_label}问题写一篇适合发布到对应平台的原创回答，整体风格要求：{answer_style}",
+            "",
+            "全局生成规则：",
+            generation_prompt,
+        ]
+        if content_constraint and content_constraint.strip():
+            prompt_parts += [
                 "",
-                "全局生成规则：",
-                generation_prompt,
-                "",
-                f"平台：{platform_label}",
-                f"问题标题：{item.title}",
-                f"问题链接：{item.url}",
-                f"问题分类：{item.topic or '未分类'}",
-                f"问题摘要：{item.excerpt or '无'}",
-                f"结尾引流文案：{cta_text}",
+                f"内容约束（必须严格遵守）：回答只能围绕「{content_constraint.strip()}」展开，不要回答与此无关的内容。",
             ]
-        )
+        prompt_parts += [
+            "",
+            f"平台：{platform_label}",
+            f"问题标题：{item.title}",
+            f"问题链接：{item.url}",
+            f"问题分类：{item.topic or '未分类'}",
+            f"问题摘要：{item.excerpt or '无'}",
+            f"结尾引流文案：{cta_text}",
+        ]
+        prompt = "\n".join(prompt_parts)
         completion = client.chat.completions.create(
             model=model,
             messages=[
@@ -69,21 +76,69 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         )
         content = completion.choices[0].message.content if completion.choices else None
         if isinstance(content, str):
-            return self._normalize_answer_content(content, item.url)
+            return self._normalize_answer_content(content)
         if isinstance(content, list):
             text = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
-            return self._normalize_answer_content(text, item.url)
+            return self._normalize_answer_content(text)
         raise ValueError("DeepSeek returned empty answer content")
 
-    def _normalize_answer_content(self, content: str, source_url: str) -> str:
-        """规范化回答输出；这样模型漏掉原始链接时仍能保证最基本的可核查来源存在。"""
+    async def polish_answer(
+        self,
+        item: QuestionItem,
+        current_answer: str,
+        answer_style: str,
+        cta_text: str,
+        system_prompt: str,
+        generation_prompt: str,
+        content_constraint: str | None = None,
+    ) -> str:
+        """对已有回答进行润色改写；这样用户修改的草稿可以通过 AI 改善表达而不丢失原有观点。"""
 
-        text = content.strip()
-        if "## 可核查资料" not in text:
-            text = f"{text}\n\n## 可核查资料\n- 原始问题：{source_url}"
-        elif source_url and source_url not in text:
-            text = f"{text.rstrip()}\n- 原始问题：{source_url}"
-        return text
+        client = self.get_client()
+        model = get_required_env("DEEPSEEK_MODEL")
+        platform_label = item.platform or "zhihu"
+        prompt_parts = [
+            f"请对下面这篇{platform_label}回答进行润色改写。要求：保留原有核心观点和论证思路，不要引入新观点；改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}",
+            "",
+            "全局生成规则：",
+            generation_prompt,
+        ]
+        if content_constraint and content_constraint.strip():
+            prompt_parts += [
+                "",
+                f"内容约束（必须严格遵守）：回答只能围绕「{content_constraint.strip()}」展开，不要回答与此无关的内容。",
+            ]
+        prompt_parts += [
+            "",
+            f"平台：{platform_label}",
+            f"问题标题：{item.title}",
+            f"问题链接：{item.url}",
+            f"问题分类：{item.topic or '未分类'}",
+            f"结尾引流文案：{cta_text}",
+            "",
+            "当前回答草稿（请以此为基础润色，不要大幅偏离原有内容）：",
+            current_answer,
+        ]
+        prompt = "\n".join(prompt_parts)
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        content = completion.choices[0].message.content if completion.choices else None
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            text = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
+            return text.strip()
+        raise ValueError("DeepSeek returned empty polish content")
+
+    def _normalize_answer_content(self, content: str) -> str:
+        """规范化回答输出；这样模型返回的内容在交给上层前统一做基本清理。"""
+
+        return content.strip()
 
 
 class DeepSeekTopicExpander(TopicExpanderPort):

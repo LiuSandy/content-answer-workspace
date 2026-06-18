@@ -7,8 +7,11 @@ import type {
   GenerateAllResponse,
   GenerateOnePayload,
   GenerateOneResponse,
+  HotlistResponse,
   ParseQuestionUrlPayload,
   ParseQuestionUrlResponse,
+  PolishOnePayload,
+  PolishOneResponse,
   SaveSessionPayload,
   SessionResponse,
 } from "@/types/workflow";
@@ -33,10 +36,18 @@ export function generateOneAnswer(payload: GenerateOnePayload) {
   return apiPost<GenerateOneResponse>("/api/workflow/generate-one", payload);
 }
 
+export function polishOneAnswer(payload: PolishOnePayload) {
+  return apiPost<PolishOneResponse>("/api/workflow/polish-one", payload);
+}
+
 export function generateAllAnswers(payload: GenerateAllPayload) {
   return apiPost<GenerateAllResponse>("/api/workflow/generate", payload);
 }
 
 export function saveWorkspaceSession(payload: SaveSessionPayload) {
   return apiPost<{ filePath: string }>("/api/session/save", payload);
+}
+
+export function getHotlist(limit = 30) {
+  return apiGet<HotlistResponse>(`/api/hotlist?limit=${limit}`);
 }

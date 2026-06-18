@@ -2,6 +2,8 @@ export const DEFAULT_PLATFORM = "zhihu" as const;
 
 export type Platform = typeof DEFAULT_PLATFORM;
 
+export type CollectSource = "official" | "web" | "auto";
+
 export type Topic = {
   id: string;
   name: string;
@@ -84,6 +86,7 @@ export type GenerateAllResponse = {
 
 export type CollectPayload = {
   platform: Platform;
+  source?: CollectSource;
   topics: Topic[];
   maxPushCount: number;
   answerStyle: string;
@@ -98,6 +101,21 @@ export type GenerateOnePayload = {
   answerStyle: string;
   systemPrompt: string;
   generationPrompt: string;
+  contentConstraint?: string;
+};
+
+export type PolishOnePayload = {
+  platform: Platform;
+  item: QuestionItem;
+  currentAnswer: string;
+  answerStyle: string;
+  systemPrompt: string;
+  generationPrompt: string;
+  contentConstraint?: string;
+};
+
+export type PolishOneResponse = {
+  item: QuestionItem;
 };
 
 export type GenerateAllPayload = {
@@ -107,6 +125,7 @@ export type GenerateAllPayload = {
   answerStyle: string;
   systemPrompt: string;
   generationPrompt: string;
+  contentConstraint?: string;
   maxPushCount: number;
 };
 
@@ -119,4 +138,18 @@ export type SaveSessionPayload = {
   generationPrompt: string;
   maxPushCount: number;
   savedAt: string;
+};
+
+export type HotlistItem = {
+  rank: number;
+  title: string;
+  url: string;
+  thumbnailUrl: string;
+  summary: string;
+  heat: string;
+};
+
+export type HotlistResponse = {
+  items: HotlistItem[];
+  fetchedAt: string;
 };
