@@ -8,12 +8,13 @@ import type {
   GenerateOnePayload,
   ParseQuestionUrlPayload,
   Platform,
+  PolishOnePayload,
   QuestionItem,
   SaveSessionPayload,
   Topic,
 } from "@/types/workflow";
 
-import { defaultPlatform, fallbackTopics, fallbackWorkflow } from "./defaults";
+import { defaultPlatform } from "./defaults";
 import {
   collectWorkflow,
   generateAllAnswers,
@@ -21,6 +22,7 @@ import {
   getLatestSession,
   getWorkspaceConfig,
   parseQuestionUrl,
+  polishOneAnswer,
   saveWorkspaceSession,
 } from "./workflow-api";
 
@@ -64,6 +66,7 @@ export function useWorkspace() {
   const hasHydratedSession = useRef(false);
   const {
     selectedPlatform,
+    selectedSource,
     presetTopics,
     selectedTopic,
     questions,
@@ -71,6 +74,7 @@ export function useWorkspace() {
     answerStyle,
     systemPrompt,
     generationPrompt,
+    contentConstraint,
     maxPushCount,
     setSelectedPlatform,
     setPresetTopics,
@@ -83,6 +87,7 @@ export function useWorkspace() {
     setAnswerStyle,
     setSystemPrompt,
     setGenerationPrompt,
+    setContentConstraint,
     setMaxPushCount,
     setIsCollecting,
     setIsGeneratingAll,
@@ -136,27 +141,9 @@ export function useWorkspace() {
   useEffect(() => {
     if (configQuery.isError && !hasHydratedConfig.current) {
       hasHydratedConfig.current = true;
-      const initialTopic = fallbackTopics[0] ?? null;
-      setSelectedPlatform(fallbackWorkflow.platform);
-      setPresetTopics(fallbackTopics);
-      setAnswerStyle(getTopicAnswerStyle(initialTopic, fallbackWorkflow.answerStyle));
-      setSystemPrompt(getTopicSystemPrompt(initialTopic, fallbackWorkflow.systemPrompt));
-      setGenerationPrompt(fallbackWorkflow.generationPrompt);
-      setMaxPushCount(fallbackWorkflow.maxPushCount);
-      setSelectedTopic(initialTopic);
-      setStatusMessage("配置接口加载失败，已回退到本地默认主题。");
+      setStatusMessage("配置接口加载失败，请检查后端服务是否正常运行。");
     }
-  }, [
-    configQuery.isError,
-    setAnswerStyle,
-    setMaxPushCount,
-    setPresetTopics,
-    setSelectedPlatform,
-    setSelectedTopic,
-    setStatusMessage,
-    setSystemPrompt,
-    setGenerationPrompt,
-  ]);
+  }, [configQuery.isError, setStatusMessage]);
 
   useEffect(() => {
     const session = sessionQuery.data?.session;
@@ -211,6 +198,7 @@ export function useWorkspace() {
       const currentAnswerStyle = getTopicAnswerStyle(selectedTopic, answerStyle);
       const payload: CollectPayload = {
         platform: selectedPlatform,
+        source: selectedSource,
         topics: selectedTopic
           ? [
               {
@@ -299,6 +287,7 @@ export function useWorkspace() {
         answerStyle: currentAnswerStyle,
         systemPrompt: currentSystemPrompt,
         generationPrompt,
+        contentConstraint: contentConstraint || undefined,
         maxPushCount,
       };
       return generateAllAnswers(payload);
@@ -329,12 +318,37 @@ export function useWorkspace() {
         answerStyle: currentAnswerStyle,
         systemPrompt: currentSystemPrompt,
         generationPrompt,
+        contentConstraint: contentConstraint || undefined,
       };
       return generateOneAnswer(payload);
     },
     onSuccess: (data, item) => {
       setQuestionItem(item.id, withPlatform(data.item, selectedPlatform));
       setStatusMessage(`已生成：${item.title}`);
+    },
+    onError: (error: Error) => {
+      setStatusMessage(error.message);
+    },
+  });
+
+  const polishOneMutation = useMutation({
+    mutationFn: (item: QuestionItem) => {
+      const currentSystemPrompt = getTopicSystemPrompt(selectedTopic, systemPrompt);
+      const currentAnswerStyle = getTopicAnswerStyle(selectedTopic, answerStyle);
+      const payload: PolishOnePayload = {
+        platform: selectedPlatform,
+        item: withPlatform(item, selectedPlatform),
+        currentAnswer: item.answer,
+        answerStyle: currentAnswerStyle,
+        systemPrompt: currentSystemPrompt,
+        generationPrompt,
+        contentConstraint: contentConstraint || undefined,
+      };
+      return polishOneAnswer(payload);
+    },
+    onSuccess: (data, item) => {
+      setQuestionItem(item.id, withPlatform(data.item, selectedPlatform));
+      setStatusMessage(`已润色：${item.title}`);
     },
     onError: (error: Error) => {
       setStatusMessage(error.message);
@@ -377,8 +391,11 @@ export function useWorkspace() {
     },
   });
 
+  const { setSelectedSource } = useWorkspaceStore();
+
   return {
     selectedPlatform,
+    selectedSource,
     presetTopics,
     selectedTopic,
     questions,
@@ -386,12 +403,14 @@ export function useWorkspace() {
     answerStyle,
     systemPrompt,
     generationPrompt,
+    contentConstraint,
     maxPushCount,
     isBootstrapping: configQuery.isLoading || sessionQuery.isLoading,
     isCollecting: collectMutation.isPending,
     isGeneratingAll: generateAllMutation.isPending,
     collectingError: collectMutation.error,
     selectPlatform: setSelectedPlatform,
+    selectSource: setSelectedSource,
     selectTopic: setSelectedTopic,
     setQuestions,
     selectQuestion,
@@ -410,12 +429,15 @@ export function useWorkspace() {
     },
     setMaxPushCount,
     setGenerationPrompt,
+    setContentConstraint,
     collectQuestions: () => collectMutation.mutate(),
     importQuestionByUrl: (url: string) => importQuestionByUrlMutation.mutate(url),
     generateAllAnswers: () => generateAllMutation.mutate(),
     generateOneAnswer: (item: QuestionItem) => generateOneMutation.mutate(item),
+    polishOneAnswer: (item: QuestionItem) => polishOneMutation.mutate(item),
     saveSession: () => saveMutation.mutate(),
     isGeneratingOne: (questionId: string) => generateOneMutation.isPending && generateOneMutation.variables?.id === questionId,
+    isPolishingOne: (questionId: string) => polishOneMutation.isPending && polishOneMutation.variables?.id === questionId,
     isImportingQuestionUrl: importQuestionByUrlMutation.isPending,
   };
 }

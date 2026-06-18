@@ -24,6 +24,7 @@ class WorkflowConfig(BaseModel):
     """表示一次工作流运行配置；定义成模型是为了让采集、生成和保存共享同一份规范化参数。"""
 
     platform: str = "zhihu"
+    source: str = "auto"
     max_push_count: int = Field(alias="maxPushCount")
     sort_modes: list[str] = Field(alias="sortModes")
     answer_style: str = Field(alias="answerStyle")
@@ -79,6 +80,7 @@ class SessionPayload(BaseModel):
     answer_style: str = Field(default="", alias="answerStyle")
     system_prompt: str = Field(default="", alias="systemPrompt")
     generation_prompt: str = Field(default="", alias="generationPrompt")
+    content_constraint: str = Field(default="", alias="contentConstraint")
     max_push_count: int | None = Field(default=None, alias="maxPushCount")
     items: list[QuestionItem] = Field(default_factory=list)
 
@@ -91,6 +93,7 @@ class RunPayload(BaseModel):
     """表示前端发起采集时提交的参数；定义成模型是为了支持平台默认值和主题、生成选项的统一解析。"""
 
     platform: str = "zhihu"
+    source: str = "auto"
     topics: list[Topic] = Field(default_factory=list)
     max_push_count: int | None = Field(default=None, alias="maxPushCount")
     skip_answer_generation: bool | None = Field(default=None, alias="skipAnswerGeneration")
@@ -111,6 +114,23 @@ class RegeneratePayload(BaseModel):
     answer_style: str | None = Field(default=None, alias="answerStyle")
     system_prompt: str | None = Field(default=None, alias="systemPrompt")
     generation_prompt: str | None = Field(default=None, alias="generationPrompt")
+    content_constraint: str | None = Field(default=None, alias="contentConstraint")
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
+class PolishPayload(BaseModel):
+    """表示前端对单个问题润色回答的请求；包含当前草稿内容，供 LLM 在原有基础上改写。"""
+
+    platform: str = "zhihu"
+    item: QuestionItem
+    current_answer: str = Field(alias="currentAnswer")
+    answer_style: str | None = Field(default=None, alias="answerStyle")
+    system_prompt: str | None = Field(default=None, alias="systemPrompt")
+    generation_prompt: str | None = Field(default=None, alias="generationPrompt")
+    content_constraint: str | None = Field(default=None, alias="contentConstraint")
 
     model_config = {
         "populate_by_name": True,
@@ -171,3 +191,25 @@ class ZhihuSearchResponse(BaseModel):
 
     paging: dict[str, Any] = Field(default_factory=dict)
     data: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class HotlistItem(BaseModel):
+    """表示知乎热榜单条条目；定义成模型是为了把官方热榜响应和前端展示模型隔离。"""
+
+    rank: int = 0
+    title: str
+    url: str
+    thumbnail_url: str = Field(default="", alias="thumbnailUrl")
+    summary: str = ""
+    heat: str = ""
+
+    model_config = {"populate_by_name": True}
+
+
+class HotlistResponse(BaseModel):
+    """表示热榜接口返回结构；定义成模型是为了统一前后端字段约定。"""
+
+    items: list[HotlistItem]
+    fetched_at: str = Field(alias="fetchedAt")
+
+    model_config = {"populate_by_name": True}

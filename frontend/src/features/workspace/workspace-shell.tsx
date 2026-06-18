@@ -12,10 +12,10 @@ import {
   LoaderCircle,
   Maximize2,
   RefreshCcw,
-  Save,
   Search,
   Sparkles,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -44,9 +44,11 @@ import { cn } from "@/lib/utils";
 
 import { maxCollectCount, supportedPlatforms } from "./defaults";
 import { useWorkspace } from "./use-workspace";
+import { getHotlist } from "./workflow-api";
+import type { HotlistItem } from "@/types/workflow";
 import { NavLink, Outlet, useOutletContext } from "react-router-dom";
 
-type EntryMode = "import" | "collect";
+type EntryMode = "import" | "collect" | "hotlist";
 type WorkspaceState = ReturnType<typeof useWorkspace>;
 
 function useWorkspaceOutlet() {
@@ -56,6 +58,7 @@ function useWorkspaceOutlet() {
 const topNavItems: Array<{ id: EntryMode; label: string }> = [
   { id: "import", label: "URL 导入回答" },
   { id: "collect", label: "主题采集" },
+  { id: "hotlist", label: "知乎热榜" },
 ];
 
 // ──────────────────────────────────────────────────────────
@@ -228,19 +231,22 @@ function PromptField({
   value,
   onChange,
   rows = 4,
+  containerClassName,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
   rows?: number;
+  containerClassName?: string;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const isFlex = Boolean(containerClassName);
 
   return (
     <>
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
+      <div className={cn("flex flex-col space-y-1.5", containerClassName)}>
+        <div className="flex flex-none items-center justify-between">
           <Label htmlFor={id} className="text-[11px] font-medium text-slate-600">
             {label}
           </Label>
@@ -256,10 +262,13 @@ function PromptField({
         </div>
         <Textarea
           id={id}
-          rows={rows}
+          {...(isFlex ? {} : { rows })}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="resize-none rounded-md border-slate-200 bg-white text-[12px] leading-relaxed shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
+          className={cn(
+            "resize-none rounded-md border-slate-200 bg-white text-[12px] leading-relaxed shadow-none focus-visible:ring-1 focus-visible:ring-blue-500",
+            isFlex && "h-0 flex-1",
+          )}
         />
       </div>
 
@@ -285,6 +294,7 @@ function PromptConfigPanel({
   onAnswerStyleChange,
   onSystemPromptChange,
   onGenerationPromptChange,
+  className,
 }: {
   answerStyle: string;
   systemPrompt: string;
@@ -292,16 +302,19 @@ function PromptConfigPanel({
   onAnswerStyleChange: (value: string) => void;
   onSystemPromptChange: (value: string) => void;
   onGenerationPromptChange: (value: string) => void;
+  className?: string;
 }) {
+  const isFill = Boolean(className);
   return (
-    <PanelSection label="提示词配置">
-      <div className="space-y-3">
+    <PanelSection label="提示词配置" className={cn(isFill && "flex flex-col min-h-0", className)}>
+      <div className={cn(isFill ? "flex flex-col flex-1 min-h-0 gap-3" : "space-y-3")}>
         <PromptField
           id="topic-system-prompt"
           label="主题提示词"
           value={systemPrompt}
           onChange={onSystemPromptChange}
           rows={5}
+          containerClassName={isFill ? "flex-[5] min-h-0" : undefined}
         />
         <PromptField
           id="answer-style"
@@ -309,6 +322,7 @@ function PromptConfigPanel({
           value={answerStyle}
           onChange={onAnswerStyleChange}
           rows={3}
+          containerClassName={isFill ? "flex-[3] min-h-0" : undefined}
         />
         <PromptField
           id="generation-prompt"
@@ -316,6 +330,7 @@ function PromptConfigPanel({
           value={generationPrompt}
           onChange={onGenerationPromptChange}
           rows={6}
+          containerClassName={isFill ? "flex-[6] min-h-0" : undefined}
         />
       </div>
     </PanelSection>
@@ -584,14 +599,24 @@ function QuestionBrief({
 
 function AnswerPanel({
   question,
+  contentConstraint,
+  onContentConstraintChange,
   onGenerateOne,
+  onPolishOne,
   onSave,
   setQuestionAnswer,
+  isGenerating = false,
+  isPolishing = false,
 }: {
   question: WorkspaceState["questions"][number] | null;
+  contentConstraint: string;
+  onContentConstraintChange: (value: string) => void;
   onGenerateOne: (item: WorkspaceState["questions"][number]) => void;
+  onPolishOne: (item: WorkspaceState["questions"][number]) => void;
   onSave: () => void;
   setQuestionAnswer: (questionId: string, answer: string) => void;
+  isGenerating?: boolean;
+  isPolishing?: boolean;
 }) {
   const [isCopied, setIsCopied] = useState(false);
 
@@ -608,39 +633,54 @@ function AnswerPanel({
         <PanelSection label="回答工作区" className="flex-1" />
         {question && (
           <div className="flex shrink-0 items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 rounded-md border-slate-200 px-2.5 text-[12px] font-medium"
-              onClick={copyAnswer}
-              disabled={!question.answer?.trim()}
-            >
-              {isCopied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-              {isCopied ? "已复制" : "复制"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 rounded-md border-slate-200 px-2.5 text-[12px] font-medium"
-              onClick={() => onGenerateOne(question)}
-            >
-              <RefreshCcw className="h-3 w-3" />
-              重新生成
-            </Button>
-            <Button
-              size="sm"
-              className="h-7 gap-1.5 rounded-md bg-slate-900 px-3 text-[12px] font-medium hover:bg-slate-800"
-              onClick={() => onGenerateOne(question)}
-            >
-              <Sparkles className="h-3 w-3" />
-              AI 生成
-            </Button>
+            {question.answer?.trim() ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 rounded-md border-slate-200 px-2.5 text-[12px] font-medium"
+                  onClick={() => onGenerateOne(question)}
+                  disabled={isGenerating || isPolishing}
+                >
+                  {isGenerating ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <RefreshCcw className="h-3 w-3" />}
+                  重新生成
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 gap-1.5 rounded-md bg-slate-900 px-3 text-[12px] font-medium hover:bg-slate-800"
+                  onClick={() => onPolishOne(question)}
+                  disabled={isGenerating || isPolishing}
+                >
+                  {isPolishing ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  {isPolishing ? "润色中…" : "AI 润色"}
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                className="h-7 gap-1.5 rounded-md bg-slate-900 px-3 text-[12px] font-medium hover:bg-slate-800"
+                onClick={() => onGenerateOne(question)}
+                disabled={isGenerating}
+              >
+                {isGenerating ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                {isGenerating ? "生成中…" : "AI 生成"}
+              </Button>
+            )}
           </div>
         )}
       </div>
 
+      {/* Content constraint — always visible in answer area */}
+      <PromptField
+        id="content-constraint"
+        label="内容约束"
+        value={contentConstraint}
+        onChange={onContentConstraintChange}
+        rows={2}
+      />
+
       {!question ? (
-        <div className="flex min-h-[400px] flex-col items-center justify-center gap-3 rounded-md border border-dashed border-slate-200 bg-slate-50/50">
+        <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 rounded-md border border-dashed border-slate-200 bg-slate-50/50">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
             <Bot className="h-5 w-5 text-slate-400" />
           </div>
@@ -675,12 +715,36 @@ function AnswerPanel({
             </div>
           ) : null}
 
-          <MarkdownEditor
-            className="min-h-[320px] rounded-md border border-slate-200 bg-white"
-            placeholder="点击 AI 生成 按钮自动撰写，或直接手工编辑内容。"
-            value={question.answer || ""}
-            onChange={(v) => setQuestionAnswer(question.id, v)}
-          />
+          <div className={cn("relative", (isGenerating || isPolishing) && "pointer-events-none")}>
+            <MarkdownEditor
+              className={cn(
+                "min-h-[320px] rounded-md border bg-white transition-colors",
+                (isGenerating || isPolishing) ? "border-blue-300 opacity-60" : "border-slate-200",
+              )}
+              placeholder="点击 AI 生成 按钮自动撰写，或直接手工编辑内容。"
+              value={question.answer || ""}
+              onChange={(v) => setQuestionAnswer(question.id, v)}
+            />
+            {/* Copy button overlaid in the editor toolbar area */}
+            {question.answer?.trim() && !isGenerating && !isPolishing && (
+              <button
+                type="button"
+                onClick={copyAnswer}
+                className="absolute right-2 top-[7px] z-10 flex items-center gap-1 rounded px-1.5 py-[3px] text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                {isCopied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                {isCopied ? "已复制" : "复制"}
+              </button>
+            )}
+            {(isGenerating || isPolishing) && (
+              <div className="absolute inset-0 flex items-center justify-center rounded-md bg-white/40">
+                <div className="flex items-center gap-2 rounded-full border border-blue-200 bg-white px-3.5 py-2 text-[12px] font-medium text-blue-600 shadow-sm">
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  {isPolishing ? "AI 正在润色回答…" : "AI 正在生成回答…"}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -708,6 +772,7 @@ function CollectPage() {
   const { saveState, statusMessage } = useWorkspaceStore();
   const {
     selectedPlatform,
+    selectedSource,
     presetTopics,
     selectedTopic,
     questions,
@@ -715,16 +780,21 @@ function CollectPage() {
     answerStyle,
     systemPrompt,
     generationPrompt,
+    contentConstraint,
     maxPushCount,
     selectPlatform,
+    selectSource,
     selectTopic,
     setMaxPushCount,
+    setContentConstraint,
     collectQuestions,
     generateOneAnswer,
+    polishOneAnswer,
     saveSession,
     setQuestionAnswer,
     isCollecting,
     isGeneratingOne,
+    isPolishingOne,
   } = workspace;
 
   const currentQuestion = questions.find((q) => q.id === selectedQuestionId) ?? null;
@@ -798,6 +868,20 @@ function CollectPage() {
           </div>
 
           <div className="flex items-center gap-1.5">
+            <Label className="shrink-0 text-[11px] font-medium text-slate-500">来源</Label>
+            <Select value={selectedSource} onValueChange={(v) => selectSource(v as typeof selectedSource)}>
+              <SelectTrigger className="h-8 w-[112px] rounded-md border-slate-200 bg-white text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto" className="text-[12px]">自动选择</SelectItem>
+                <SelectItem value="official" className="text-[12px]">官方 API</SelectItem>
+                <SelectItem value="web" className="text-[12px]">网页抓取</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
             <Label className="shrink-0 text-[11px] font-medium text-slate-500">上限</Label>
             <Input
               type="number"
@@ -828,15 +912,6 @@ function CollectPage() {
             {isCollecting ? "采集中…" : "开始采集"}
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 rounded-md border-slate-200 px-3 text-[12px] font-medium"
-            onClick={saveSession}
-          >
-            <Save className="h-3.5 w-3.5" />
-            保存结果
-          </Button>
         </div>
 
         {/* Inline status row */}
@@ -867,8 +942,8 @@ function CollectPage() {
       {/* Three-column body */}
       <div className="flex-1 min-h-0 grid xl:grid-cols-[280px_minmax(0,1.3fr)_minmax(0,1fr)]">
         {/* Left: config */}
-        <div className="overflow-y-auto border-r border-slate-200 p-4">
-          <div className="space-y-5">
+        <div className="flex flex-col overflow-hidden border-r border-slate-200 p-4">
+          <div className="flex flex-1 flex-col gap-5 min-h-0">
             {collectKeywords.length > 0 && (
               <PanelSection label="扩展检索词">
                 <div className="flex flex-wrap gap-1">
@@ -899,6 +974,7 @@ function CollectPage() {
               onAnswerStyleChange={workspace.setAnswerStyle}
               onSystemPromptChange={workspace.setSystemPrompt}
               onGenerationPromptChange={workspace.setGenerationPrompt}
+              className="flex-1 min-h-0"
             />
           </div>
         </div>
@@ -915,12 +991,17 @@ function CollectPage() {
         </div>
 
         {/* Right: answer workspace */}
-        <div className="p-4">
+        <div className="overflow-y-auto p-4">
           <AnswerPanel
             question={currentQuestion}
+            contentConstraint={contentConstraint}
+            onContentConstraintChange={setContentConstraint}
             onGenerateOne={generateOneAnswer}
+            onPolishOne={polishOneAnswer}
             onSave={saveSession}
             setQuestionAnswer={setQuestionAnswer}
+            isGenerating={currentQuestion ? isGeneratingOne(currentQuestion.id) : false}
+            isPolishing={currentQuestion ? isPolishingOne(currentQuestion.id) : false}
           />
         </div>
       </div>
@@ -942,15 +1023,20 @@ function ImportPage() {
     answerStyle,
     systemPrompt,
     generationPrompt,
+    contentConstraint,
     selectPlatform,
     importQuestionByUrl,
     isImportingQuestionUrl,
     saveSession,
     generateOneAnswer,
+    polishOneAnswer,
+    isGeneratingOne,
+    isPolishingOne,
     setQuestionAnswer,
     setAnswerStyle,
     setSystemPrompt,
     setGenerationPrompt,
+    setContentConstraint,
   } = workspace;
   const [questionUrl, setQuestionUrl] = useState("");
   const currentQuestion = questions.find((q) => q.id === selectedQuestionId) ?? null;
@@ -1016,15 +1102,6 @@ function ImportPage() {
             )}
             {isImportingQuestionUrl ? "解析中…" : "导入问题"}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 rounded-md border-slate-200 px-3 text-[12px] font-medium"
-            onClick={saveSession}
-          >
-            <Save className="h-3.5 w-3.5" />
-            保存
-          </Button>
         </div>
 
         {/* Inline status — moved from left panel */}
@@ -1041,8 +1118,8 @@ function ImportPage() {
       {/* Two-column body: left = config, right = answer */}
       <div className="flex-1 min-h-0 grid xl:grid-cols-[320px_minmax(0,1fr)]">
         {/* Left: config params only */}
-        <div className="overflow-y-auto border-r border-slate-200 p-4">
-          <div className="space-y-5">
+        <div className="flex flex-col overflow-hidden border-r border-slate-200 p-4">
+          <div className="flex flex-1 flex-col gap-5 min-h-0">
             {/* Recent imports */}
             <PanelSection label="最近导入">
               {questions.length > 0 ? (
@@ -1096,6 +1173,7 @@ function ImportPage() {
               onAnswerStyleChange={setAnswerStyle}
               onSystemPromptChange={setSystemPrompt}
               onGenerationPromptChange={setGenerationPrompt}
+              className="flex-1 min-h-0"
             />
           </div>
         </div>
@@ -1104,11 +1182,176 @@ function ImportPage() {
         <div className="overflow-y-auto p-4">
           <AnswerPanel
             question={currentQuestion}
+            contentConstraint={contentConstraint}
+            onContentConstraintChange={setContentConstraint}
             onGenerateOne={generateOneAnswer}
+            onPolishOne={polishOneAnswer}
             onSave={saveSession}
             setQuestionAnswer={setQuestionAnswer}
+            isGenerating={currentQuestion ? isGeneratingOne(currentQuestion.id) : false}
+            isPolishing={currentQuestion ? isPolishingOne(currentQuestion.id) : false}
           />
         </div>
+      </div>
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Hotlist Page
+// ──────────────────────────────────────────────────────────
+
+function HotlistItemCard({ item, onImport }: { item: HotlistItem; onImport: (item: HotlistItem) => void }) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:border-slate-300 hover:shadow-sm transition-all">
+      {item.thumbnailUrl && (
+        <img
+          src={item.thumbnailUrl}
+          alt=""
+          className="h-14 w-20 shrink-0 rounded-md object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="shrink-0 text-[11px] font-bold text-slate-400">#{item.rank}</span>
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="truncate text-[13px] font-medium text-slate-800 hover:text-slate-600 hover:underline"
+            >
+              {item.title}
+            </a>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {item.heat && (
+              <span className="text-[11px] font-medium text-orange-500">{item.heat}</span>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 rounded-md border-slate-200 px-2 text-[11px] font-medium"
+              onClick={() => onImport(item)}
+            >
+              <ArrowUpRight className="h-3 w-3" />
+              导入工作台
+            </Button>
+          </div>
+        </div>
+        {item.summary && (
+          <p className="mt-1 line-clamp-2 text-[12px] text-slate-500">{item.summary}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function HotlistPage() {
+  const workspace = useWorkspace();
+  const { setQuestions, importQuestionByUrl } = workspace;
+  const [limit, setLimit] = useState<number>(30);
+
+  const hotlistQuery = useQuery({
+    queryKey: ["hotlist", limit],
+    queryFn: () => getHotlist(limit),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const items = hotlistQuery.data?.items ?? [];
+  const fetchedAt = hotlistQuery.data?.fetchedAt;
+  const fetchedAtLabel = fetchedAt
+    ? new Date(fetchedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+    : null;
+
+  function handleImport(item: HotlistItem) {
+    importQuestionByUrl(item.url);
+  }
+
+  return (
+    <section className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/60 px-5 py-3.5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100">
+            <Sparkles className="h-3.5 w-3.5 text-slate-600" />
+          </div>
+          <div>
+            <span className="text-[14px] font-semibold text-slate-800">知乎热榜</span>
+            <span className="ml-2 text-[12px] text-slate-400">发现热门话题，一键导入工作台</span>
+          </div>
+        </div>
+        <Badge variant="secondary" className="rounded-[6px] px-2 py-0.5 text-[11px] font-semibold">
+          {items.length} 条
+        </Badge>
+      </div>
+
+      {/* Action bar */}
+      <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
+        <div className="flex items-center gap-1.5">
+          <Label className="shrink-0 text-[11px] font-medium text-slate-500">条数上限</Label>
+          <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
+            <SelectTrigger className="h-8 w-[80px] rounded-md border-slate-200 bg-white text-[12px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="10" className="text-[12px]">10 条</SelectItem>
+              <SelectItem value="20" className="text-[12px]">20 条</SelectItem>
+              <SelectItem value="30" className="text-[12px]">30 条</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex-1" />
+
+        {fetchedAtLabel && (
+          <span className="text-[11px] text-slate-400">更新于 {fetchedAtLabel}</span>
+        )}
+
+        <Button
+          size="sm"
+          className="h-8 gap-1.5 rounded-md bg-slate-900 px-3.5 text-[12px] font-medium hover:bg-slate-800"
+          onClick={() => hotlistQuery.refetch()}
+          disabled={hotlistQuery.isFetching}
+        >
+          {hotlistQuery.isFetching ? (
+            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCcw className="h-3.5 w-3.5" />
+          )}
+          {hotlistQuery.isFetching ? "获取中…" : "刷新热榜"}
+        </Button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        {hotlistQuery.isLoading && (
+          <div className="flex h-32 items-center justify-center gap-2 text-[13px] text-slate-400">
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+            正在获取热榜…
+          </div>
+        )}
+
+        {hotlistQuery.isError && (
+          <div className="flex h-32 items-center justify-center text-[13px] text-red-500">
+            获取失败：{String((hotlistQuery.error as Error)?.message ?? "未知错误")}
+          </div>
+        )}
+
+        {!hotlistQuery.isLoading && !hotlistQuery.isError && items.length === 0 && (
+          <div className="flex h-32 items-center justify-center text-[13px] text-slate-400">
+            暂无热榜数据，请先配置 ZHIHU_ACCESS_SECRET 并刷新。
+          </div>
+        )}
+
+        {items.length > 0 && (
+          <div className="space-y-2">
+            {items.map((item) => (
+              <HotlistItemCard key={item.rank} item={item} onImport={handleImport} />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -1122,9 +1365,9 @@ export function WorkspaceLayout() {
   const workspace = useWorkspace();
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#EFF2F7] text-slate-900">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#EFF2F7] text-slate-900">
       <WorkspaceTopbar />
-      <main className="mx-auto flex w-full flex-1 flex-col max-w-[1800px] px-4 pb-4 pt-4 sm:px-5">
+      <main className="mx-auto flex w-full flex-1 flex-col min-h-0 max-w-[1800px] px-4 pb-4 pt-4 sm:px-5">
         <Outlet context={workspace} />
       </main>
     </div>

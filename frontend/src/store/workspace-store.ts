@@ -1,11 +1,12 @@
 import { create } from "zustand";
 
-import { DEFAULT_PLATFORM, type Platform, type QuestionItem, type Topic } from "@/types/workflow";
+import { DEFAULT_PLATFORM, type CollectSource, type Platform, type QuestionItem, type Topic } from "@/types/workflow";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 type WorkspaceState = {
   selectedPlatform: Platform;
+  selectedSource: CollectSource;
   presetTopics: Topic[];
   selectedTopic: Topic | null;
   questions: QuestionItem[];
@@ -13,12 +14,14 @@ type WorkspaceState = {
   answerStyle: string;
   systemPrompt: string;
   generationPrompt: string;
+  contentConstraint: string;
   maxPushCount: number;
   isCollecting: boolean;
   isGeneratingAll: boolean;
   saveState: SaveState;
   statusMessage: string;
   setSelectedPlatform: (platform: Platform) => void;
+  setSelectedSource: (source: CollectSource) => void;
   setPresetTopics: (topics: Topic[]) => void;
   setSelectedTopic: (topic: Topic | null) => void;
   updateTopicPrompts: (topicId: string, prompts: { systemPrompt?: string; answerStyle?: string }) => void;
@@ -30,6 +33,7 @@ type WorkspaceState = {
   setAnswerStyle: (value: string) => void;
   setSystemPrompt: (value: string) => void;
   setGenerationPrompt: (value: string) => void;
+  setContentConstraint: (value: string) => void;
   setMaxPushCount: (value: number) => void;
   setIsCollecting: (value: boolean) => void;
   setIsGeneratingAll: (value: boolean) => void;
@@ -39,6 +43,7 @@ type WorkspaceState = {
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   selectedPlatform: DEFAULT_PLATFORM,
+  selectedSource: "auto",
   presetTopics: [],
   selectedTopic: null,
   questions: [],
@@ -46,12 +51,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   answerStyle: "",
   systemPrompt: "",
   generationPrompt: "",
+  contentConstraint: "",
   maxPushCount: 10,
   isCollecting: false,
   isGeneratingAll: false,
   saveState: "idle",
   statusMessage: "正在初始化工作台...",
   setSelectedPlatform: (selectedPlatform) => set({ selectedPlatform }),
+  setSelectedSource: (selectedSource) => set({ selectedSource }),
   setPresetTopics: (topics) => set({ presetTopics: topics }),
   setSelectedTopic: (topic) => set({ selectedTopic: topic }),
   updateTopicPrompts: (topicId, prompts) =>
@@ -101,6 +108,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setAnswerStyle: (answerStyle) => set({ answerStyle }),
   setSystemPrompt: (systemPrompt) => set({ systemPrompt }),
   setGenerationPrompt: (generationPrompt) => set({ generationPrompt }),
+  setContentConstraint: (contentConstraint) => set({ contentConstraint }),
   setMaxPushCount: (maxPushCount) => set({ maxPushCount }),
   setIsCollecting: (isCollecting) => set({ isCollecting }),
   setIsGeneratingAll: (isGeneratingAll) => set({ isGeneratingAll }),

@@ -4,8 +4,8 @@ from typing import Any
 
 from ..core.config import DEFAULT_PLATFORM, get_default_topics, get_workflow_config, load_env_file
 from ..infrastructure.collectors.factory import CollectorFactory
-from ..models import ParseQuestionUrlPayload, QuestionItem, RegeneratePayload, RunPayload, SessionPayload, Topic, WorkflowResult
-from ..services.answer_service import generate_answer, generate_answer_with_images
+from ..models import ParseQuestionUrlPayload, PolishPayload, QuestionItem, RegeneratePayload, RunPayload, SessionPayload, Topic, WorkflowResult
+from ..services.answer_service import generate_answer, generate_answer_with_images, polish_answer
 from ..services.topic_expansion_service import expand_topic_for_collection
 from ..services.zhihu_service import fetch_zhihu_question_by_url, get_topic_preview, unique_by
 
@@ -33,10 +33,11 @@ class WorkflowService:
         load_env_file()
         options = self._to_options(payload)
         platform = normalize_platform(options.get("platform"))
-        config = get_workflow_config({**options, "platform": platform})
+        source = str(options.get("source") or "auto").strip().lower()
+        config = get_workflow_config({**options, "platform": platform, "source": source})
         topics = normalize_topics(options.get("topics"))
         expanded_topics = [await expand_topic_for_collection(topic) for topic in topics]
-        collector = CollectorFactory.create(platform)
+        collector = CollectorFactory.create(platform, source=source)
         items = await collector.collect(expanded_topics, config)
         deduplicated = unique_by(items, lambda item: f"{item.platform}:{item.topic}:{item.id}")[: config.max_push_count]
         if not deduplicated:
@@ -63,6 +64,7 @@ class WorkflowService:
             config.cta_text,
             payload.system_prompt or config.system_prompt,
             payload.generation_prompt or config.generation_prompt,
+            payload.content_constraint or None,
         )
         return item.model_copy(
             update={
@@ -71,6 +73,31 @@ class WorkflowService:
                 "image_prompts": image_payload.get("imagePrompts", []),
             }
         )
+
+    async def polish_one(self, payload: PolishPayload) -> QuestionItem:
+        """对单个问题的现有回答进行润色；这样用户编辑的草稿可以通过 AI 改善表达而不重新生成。"""
+
+        load_env_file()
+        platform = normalize_platform(payload.platform or payload.item.platform)
+        item = payload.item.model_copy(update={"platform": platform})
+        config = get_workflow_config(
+            {
+                "platform": platform,
+                "answerStyle": payload.answer_style,
+                "systemPrompt": payload.system_prompt,
+                "generationPrompt": payload.generation_prompt,
+            }
+        )
+        polished = await polish_answer(
+            item,
+            payload.current_answer,
+            payload.answer_style or config.answer_style,
+            config.cta_text,
+            payload.system_prompt or config.system_prompt,
+            payload.generation_prompt or config.generation_prompt,
+            payload.content_constraint or None,
+        )
+        return item.model_copy(update={"answer": polished})
 
     async def parse_question_url(self, payload: ParseQuestionUrlPayload) -> QuestionItem:
         """按问题链接导入单个题目；这样用户可以跳过检索，直接把指定问题送入现有回答工作流。"""
@@ -106,6 +133,7 @@ class WorkflowService:
                 config.cta_text,
                 payload.system_prompt or config.system_prompt,
                 payload.generation_prompt or config.generation_prompt,
+                payload.content_constraint or None,
             )
             items.append(
                 normalized_item.model_copy(

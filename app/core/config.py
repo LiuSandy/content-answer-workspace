@@ -82,6 +82,7 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
 
     overrides = overrides or {}
     platform = str(overrides.get("platform") or os.getenv("DEFAULT_PLATFORM", DEFAULT_PLATFORM)).strip().lower()
+    source = str(overrides.get("source") or os.getenv("ZHIHU_SOURCE_MODE", "auto")).strip().lower()
     max_push_count = min(
         parse_positive_int(overrides.get("maxPushCount", os.getenv("MAX_PUSH_COUNT")), 10),
         MAX_PUSH_COUNT_LIMIT,
@@ -111,6 +112,7 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
     )
     return WorkflowConfig(
         platform=platform or DEFAULT_PLATFORM,
+        source=source,
         maxPushCount=max_push_count,
         sortModes=sort_modes,
         answerStyle=answer_style,
