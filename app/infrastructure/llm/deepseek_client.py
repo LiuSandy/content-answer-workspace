@@ -140,6 +140,22 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
 
         return content.strip()
 
+    async def call_raw(self, system: str, user: str) -> str:
+        """通用 LLM 调用，不附加任何业务提示词。供 Agent 层和提取器使用。"""
+        client = self.get_client()
+        model = get_required_env("DEEPSEEK_MODEL")
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        content = completion.choices[0].message.content if completion.choices else None
+        if isinstance(content, str):
+            return content.strip()
+        raise ValueError("LLM returned empty content")
+
 
 class DeepSeekTopicExpander(TopicExpanderPort):
     """封装 DeepSeek 主题扩词能力；这样采集前的关键词扩展可以复用同一套模型配置和接入方式。"""

@@ -140,6 +140,44 @@ export type SaveSessionPayload = {
   savedAt: string;
 };
 
+export type AgentChatPayload = {
+  sessionId: string;
+  questionId?: string;
+  message: string;
+  currentAnswer?: string;
+};
+
+export type AgentChatResponse = {
+  reply: string;
+  answerUpdated: boolean;
+  updatedAnswer?: string;
+  operationSummary: string;
+};
+
+export type HotlistAnalysisResult = {
+  topicDistribution: {
+    field: string;
+    count: number;
+    examples: string[];
+  }[];
+  contentOpportunities: {
+    direction: string;
+    reason: string;
+  }[];
+  audienceMood: string;
+  recommendations: {
+    topic: string;
+    reason: string;
+    keywords: string[];
+  }[];
+};
+
+export type AnalysisStatus =
+  | { type: "idle" }
+  | { type: "loading" }
+  | { type: "success"; data: HotlistAnalysisResult }
+  | { type: "error"; raw: string };
+
 export type HotlistItem = {
   rank: number;
   title: string;

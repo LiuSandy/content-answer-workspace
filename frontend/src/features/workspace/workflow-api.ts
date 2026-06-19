@@ -1,5 +1,7 @@
 import { apiGet, apiPost } from "@/lib/api";
 import type {
+  AgentChatPayload,
+  AgentChatResponse,
   CollectPayload,
   CollectResponse,
   ConfigResponse,
@@ -50,4 +52,8 @@ export function saveWorkspaceSession(payload: SaveSessionPayload) {
 
 export function getHotlist(limit = 30) {
   return apiGet<HotlistResponse>(`/api/hotlist?limit=${limit}`);
+}
+
+export function agentChat(payload: AgentChatPayload) {
+  return apiPost<AgentChatResponse>("/api/agent/chat", payload);
 }

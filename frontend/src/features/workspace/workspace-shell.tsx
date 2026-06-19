@@ -16,7 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useDeferredValue, useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import { maxCollectCount, supportedPlatforms } from "./defaults";
+import { HotlistAnalysisPanel } from "./hotlist-analysis-panel";
+import { RefinementChat } from "./refinement-chat";
 import { useWorkspace } from "./use-workspace";
 import { getHotlist } from "./workflow-api";
 import type { HotlistItem } from "@/types/workflow";
@@ -607,6 +609,7 @@ function AnswerPanel({
   setQuestionAnswer,
   isGenerating = false,
   isPolishing = false,
+  sessionId = "workspace",
 }: {
   question: WorkspaceState["questions"][number] | null;
   contentConstraint: string;
@@ -617,6 +620,7 @@ function AnswerPanel({
   setQuestionAnswer: (questionId: string, answer: string) => void;
   isGenerating?: boolean;
   isPolishing?: boolean;
+  sessionId?: string;
 }) {
   const [isCopied, setIsCopied] = useState(false);
 
@@ -745,6 +749,8 @@ function AnswerPanel({
               </div>
             )}
           </div>
+
+          <RefinementChat sessionId={sessionId} question={question} />
         </div>
       )}
     </div>
@@ -796,6 +802,16 @@ function CollectPage() {
     isGeneratingOne,
     isPolishingOne,
   } = workspace;
+
+  useEffect(() => {
+    const draft = useWorkspaceStore.getState().topicDraft;
+    if (!draft) return;
+    const matched = useWorkspaceStore.getState().presetTopics.find(
+      (t) => t.name.toLowerCase() === draft.name.toLowerCase()
+    );
+    if (matched) selectTopic(matched);
+    useWorkspaceStore.getState().setTopicDraft(null);
+  }, [selectTopic]);
 
   const currentQuestion = questions.find((q) => q.id === selectedQuestionId) ?? null;
   const collectKeywords = selectedTopic?.expandedHints ?? [];
@@ -1248,9 +1264,13 @@ function HotlistItemCard({ item, onImport }: { item: HotlistItem; onImport: (ite
   );
 }
 
-export function HotlistPage() {
+function HotlistListPanel({
+  className,
+}: {
+  className?: string;
+}) {
   const workspace = useWorkspace();
-  const { setQuestions, importQuestionByUrl } = workspace;
+  const { importQuestionByUrl } = workspace;
   const [limit, setLimit] = useState<number>(30);
 
   const hotlistQuery = useQuery({
@@ -1270,25 +1290,9 @@ export function HotlistPage() {
   }
 
   return (
-    <section className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      {/* Page header */}
-      <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/60 px-5 py-3.5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100">
-            <Sparkles className="h-3.5 w-3.5 text-slate-600" />
-          </div>
-          <div>
-            <span className="text-[14px] font-semibold text-slate-800">知乎热榜</span>
-            <span className="ml-2 text-[12px] text-slate-400">发现热门话题，一键导入工作台</span>
-          </div>
-        </div>
-        <Badge variant="secondary" className="rounded-[6px] px-2 py-0.5 text-[11px] font-semibold">
-          {items.length} 条
-        </Badge>
-      </div>
-
+    <div className={cn("flex flex-col min-h-0", className)}>
       {/* Action bar */}
-      <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
+      <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3 shrink-0">
         <div className="flex items-center gap-1.5">
           <Label className="shrink-0 text-[11px] font-medium text-slate-500">条数上限</Label>
           <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
@@ -1353,9 +1357,35 @@ export function HotlistPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+export function HotlistPage() {
+  return (
+    <section className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/60 px-5 py-3.5 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100">
+            <Sparkles className="h-3.5 w-3.5 text-slate-600" />
+          </div>
+          <div>
+            <span className="text-[14px] font-semibold text-slate-800">知乎热榜</span>
+            <span className="ml-2 text-[12px] text-slate-400">发现热门话题，一键导入工作台或 AI 分析选题</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Two-column content */}
+      <div className="flex flex-1 min-h-0">
+        <HotlistListPanel className="flex-1 min-w-0" />
+        <HotlistAnalysisPanel />
+      </div>
     </section>
   );
 }
+
 
 // ──────────────────────────────────────────────────────────
 // Layout root
