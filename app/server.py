@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .api.routes.agent import router as agent_router
 from .api.routes.config import router as config_router
 from .api.routes.hotlist import router as hotlist_router
 from .api.routes.session import router as session_router
@@ -45,6 +46,7 @@ async def health() -> JSONResponse:
     return JSONResponse({"ok": True, "data": {"status": "ok"}})
 
 
+app.include_router(agent_router)
 app.include_router(config_router)
 app.include_router(hotlist_router)
 app.include_router(session_router)

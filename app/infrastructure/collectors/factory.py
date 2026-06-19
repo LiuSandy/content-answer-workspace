@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 
 from ...domain.ports import CollectorPort
+from .platform_config_loader import PlatformConfigLoader
+from .universal_collector import UniversalCollector
 from .zhihu_collector import ZhihuCollector
 from .zhihu_official_collector import ZhihuOfficialCollector
 
@@ -40,7 +42,13 @@ class CollectorFactory:
             # 降级到 web 模式
 
         collector_class = cls._collectors.get(normalized_platform)
-        if collector_class is None:
-            supported = ", ".join(k for k in sorted(cls._collectors) if ":" not in k)
-            raise ValueError(f"Unsupported platform: {normalized_platform}. Supported platforms: {supported}")
-        return collector_class()
+        if collector_class is not None:
+            return collector_class()
+
+        # fallback：尝试 YAML 平台配置（UniversalCollector）
+        yaml_config = PlatformConfigLoader.load(normalized_platform)
+        if yaml_config is not None:
+            return UniversalCollector(yaml_config)
+
+        supported = ", ".join(k for k in sorted(cls._collectors) if ":" not in k)
+        raise ValueError(f"Unsupported platform: {normalized_platform}. Supported platforms: {supported}")

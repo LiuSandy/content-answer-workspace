@@ -4,6 +4,11 @@ import { DEFAULT_PLATFORM, type CollectSource, type Platform, type QuestionItem,
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
+type TopicDraft = {
+  name: string;
+  keywords: string[];
+} | null;
+
 type WorkspaceState = {
   selectedPlatform: Platform;
   selectedSource: CollectSource;
@@ -20,6 +25,7 @@ type WorkspaceState = {
   isGeneratingAll: boolean;
   saveState: SaveState;
   statusMessage: string;
+  topicDraft: TopicDraft;
   setSelectedPlatform: (platform: Platform) => void;
   setSelectedSource: (source: CollectSource) => void;
   setPresetTopics: (topics: Topic[]) => void;
@@ -39,6 +45,7 @@ type WorkspaceState = {
   setIsGeneratingAll: (value: boolean) => void;
   setSaveState: (value: SaveState) => void;
   setStatusMessage: (value: string) => void;
+  setTopicDraft: (draft: TopicDraft) => void;
 };
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -57,6 +64,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   isGeneratingAll: false,
   saveState: "idle",
   statusMessage: "正在初始化工作台...",
+  topicDraft: null,
   setSelectedPlatform: (selectedPlatform) => set({ selectedPlatform }),
   setSelectedSource: (selectedSource) => set({ selectedSource }),
   setPresetTopics: (topics) => set({ presetTopics: topics }),
@@ -114,4 +122,5 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setIsGeneratingAll: (isGeneratingAll) => set({ isGeneratingAll }),
   setSaveState: (saveState) => set({ saveState }),
   setStatusMessage: (statusMessage) => set({ statusMessage }),
+  setTopicDraft: (topicDraft) => set({ topicDraft }),
 }));
