@@ -5,6 +5,7 @@ import os
 from ...domain.ports import CollectorPort
 from .platform_config_loader import PlatformConfigLoader
 from .universal_collector import UniversalCollector
+from .xiaohongshu_collector import XiaohongshuCollector
 from .zhihu_collector import ZhihuCollector
 from .zhihu_official_collector import ZhihuOfficialCollector
 
@@ -20,6 +21,7 @@ class CollectorFactory:
     _collectors: dict[str, type[CollectorPort]] = {
         ZhihuCollector.platform: ZhihuCollector,
         f"{ZhihuOfficialCollector.platform}:official": ZhihuOfficialCollector,
+        XiaohongshuCollector.platform: XiaohongshuCollector,
     }
 
     @classmethod

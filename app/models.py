@@ -25,6 +25,7 @@ class WorkflowConfig(BaseModel):
 
     platform: str = "zhihu"
     source: str = "auto"
+    content_mode: str = Field(default="answer", alias="contentMode")
     max_push_count: int = Field(alias="maxPushCount")
     sort_modes: list[str] = Field(alias="sortModes")
     answer_style: str = Field(alias="answerStyle")
@@ -56,6 +57,7 @@ class QuestionItem(BaseModel):
     answer: str = ""
     images: list[str] = Field(default_factory=list)
     image_prompts: list[str] = Field(default_factory=list, alias="imagePrompts")
+    content_mode: str = Field(default="answer", alias="contentMode")
 
     model_config = {
         "populate_by_name": True,
@@ -103,6 +105,7 @@ class RunPayload(BaseModel):
     answer_style: str | None = Field(default=None, alias="answerStyle")
     system_prompt: str | None = Field(default=None, alias="systemPrompt")
     generation_prompt: str | None = Field(default=None, alias="generationPrompt")
+    content_mode: str | None = Field(default=None, alias="contentMode")
 
     model_config = {
         "populate_by_name": True,
