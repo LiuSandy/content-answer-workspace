@@ -46,7 +46,7 @@ import { maxCollectCount, supportedPlatforms } from "./defaults";
 import { HotlistAnalysisPanel } from "./hotlist-analysis-panel";
 import { RefinementChat } from "./refinement-chat";
 import { useWorkspace } from "./use-workspace";
-import { getHotlist } from "./workflow-api";
+import { getHotlist, listSessions } from "./workflow-api";
 import type { HotlistItem } from "@/types/workflow";
 import { NavLink, Outlet, useOutletContext } from "react-router-dom";
 
@@ -68,6 +68,34 @@ const topNavItems: Array<{ id: EntryMode; label: string }> = [
 // Topbar
 // ──────────────────────────────────────────────────────────
 
+function SessionSwitcher() {
+  const activeSessionId = useWorkspaceStore((s) => s.activeSessionId);
+  const setActiveSessionId = useWorkspaceStore((s) => s.setActiveSessionId);
+  const { data: sessions } = useQuery({
+    queryKey: ["chat-session-list"],
+    queryFn: listSessions,
+  });
+
+  if (!sessions || sessions.length === 0) {
+    return null;
+  }
+
+  return (
+    <Select value={activeSessionId ?? undefined} onValueChange={setActiveSessionId}>
+      <SelectTrigger className="w-44">
+        <SelectValue placeholder="选择会话" />
+      </SelectTrigger>
+      <SelectContent>
+        {sessions.map((session) => (
+          <SelectItem key={session.sessionId} value={session.sessionId}>
+            {session.title}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function WorkspaceTopbar() {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
@@ -83,6 +111,8 @@ function WorkspaceTopbar() {
         </div>
 
         <Separator orientation="vertical" className="h-4" />
+
+        <SessionSwitcher />
 
         <NavigationMenu>
           <NavigationMenuList className="gap-0">
