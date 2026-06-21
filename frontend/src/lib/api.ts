@@ -39,3 +39,8 @@ export async function apiPost<T>(url: string, body: unknown): Promise<T> {
   });
   return unwrap<T>(response);
 }
+
+export async function apiDelete<T>(url: string): Promise<T> {
+  const response = await fetch(url, { method: "DELETE" });
+  return unwrap<T>(response);
+}

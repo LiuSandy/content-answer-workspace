@@ -9,6 +9,7 @@ from ...models import SessionPayload
 from ...services.session_service import (
     cookie_status,
     create_session,
+    delete_session,
     list_sessions,
     read_latest_session,
     read_session,
@@ -57,6 +58,16 @@ async def get_cookie_status() -> JSONResponse:
             "data": cookie_status(os.getenv("ZHIHU_COOKIE_FILE", "").strip()),
         }
     )
+
+
+@router.delete("/{session_id}")
+async def delete_session_by_id(session_id: str) -> JSONResponse:
+    """删除指定会话文件；删除后不可恢复，前端需在本地同步移除列表项。"""
+
+    deleted = delete_session(session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+    return JSONResponse({"ok": True})
 
 
 @router.get("/{session_id}")

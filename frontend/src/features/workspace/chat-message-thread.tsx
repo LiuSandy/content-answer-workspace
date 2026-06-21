@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -7,9 +8,33 @@ import type { ChatMessage } from "@/types/workflow";
 type Props = {
   messages: ChatMessage[];
   isLoading: boolean;
+  isSending: boolean;
 };
 
-export function ChatMessageThread({ messages, isLoading }: Props) {
+function ThinkingDots() {
+  return (
+    <div className="flex items-center gap-1 px-3 py-2">
+      <span className="text-sm text-muted-foreground">思考中</span>
+      <span className="flex gap-0.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="inline-block h-1 w-1 rounded-full bg-muted-foreground animate-bounce"
+            style={{ animationDelay: `${i * 0.15}s` }}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+export function ChatMessageThread({ messages, isLoading, isSending }: Props) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isSending]);
+
   return (
     <div className="flex-1 min-h-0 space-y-3 overflow-y-auto p-4">
       {isLoading && <p className="text-sm text-muted-foreground">加载历史消息中...</p>}
@@ -19,14 +44,28 @@ export function ChatMessageThread({ messages, isLoading }: Props) {
       {messages.map((message, index) => (
         <div
           key={index}
-          className={cn(
-            "max-w-[75%] rounded-lg px-3 py-2 text-sm leading-relaxed",
-            message.role === "user" ? "ml-auto bg-primary text-primary-foreground" : "bg-muted text-foreground",
-          )}
+          className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}
         >
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          <div
+            className={cn(
+              "w-fit max-w-[75%] rounded-lg px-3 py-2 text-sm leading-relaxed",
+              message.role === "user"
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-foreground",
+            )}
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          </div>
         </div>
       ))}
+      {isSending && (
+        <div className="flex justify-start">
+          <div className="rounded-lg bg-muted">
+            <ThinkingDots />
+          </div>
+        </div>
+      )}
+      <div ref={bottomRef} />
     </div>
   );
 }

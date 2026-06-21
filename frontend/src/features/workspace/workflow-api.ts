@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import type {
   AgentChatPayload,
   AgentChatResponse,
@@ -80,4 +80,8 @@ export function sendConversationMessage(payload: ConversationPayload) {
 
 export function getConversationHistory(sessionId: string) {
   return apiGet<ConversationHistoryResponse>(`/api/agent/conversation/${sessionId}/history`);
+}
+
+export function deleteSession(sessionId: string) {
+  return apiDelete<void>(`/api/session/${sessionId}`);
 }

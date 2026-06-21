@@ -7,7 +7,13 @@ import type { ChatMessage } from "@/types/workflow";
 import { ChatMessageInput } from "./chat-message-input";
 import { ChatMessageThread } from "./chat-message-thread";
 import { ChatSessionList } from "./chat-session-list";
-import { createSession, getConversationHistory, listSessions, sendConversationMessage } from "./workflow-api";
+import {
+  createSession,
+  deleteSession,
+  getConversationHistory,
+  listSessions,
+  sendConversationMessage,
+} from "./workflow-api";
 
 const SESSION_LIST_QUERY_KEY = ["chat-session-list"];
 
@@ -40,6 +46,15 @@ export function ChatPage() {
     queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
   }
 
+  async function handleDeleteSession(sessionId: string) {
+    await deleteSession(sessionId);
+    if (activeSessionId === sessionId) {
+      setActiveSessionId(null);
+      setMessages([]);
+    }
+    queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
+  }
+
   async function handleSend(message: string) {
     if (!activeSessionId) {
       return;
@@ -64,9 +79,14 @@ export function ChatPage() {
         activeSessionId={activeSessionId}
         onSelect={setActiveSessionId}
         onCreate={handleCreateSession}
+        onDelete={handleDeleteSession}
       />
       <div className="flex min-h-0 flex-1 flex-col rounded-lg border bg-white">
-        <ChatMessageThread messages={messages} isLoading={historyQuery.isLoading} />
+        <ChatMessageThread
+          messages={messages}
+          isLoading={historyQuery.isLoading}
+          isSending={isSending}
+        />
         <ChatMessageInput disabled={!activeSessionId || isSending} onSend={handleSend} />
       </div>
     </section>
