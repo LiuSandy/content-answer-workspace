@@ -2,11 +2,24 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "backend",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "-m", "app.server"],
+      "port": 3000
+    },
+    {
       "name": "frontend",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "dev"],
       "cwd": "frontend",
       "port": 5173
+    },
+    {
+      "name": "docs-static",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "-m", "http.server", "8765"],
+      "cwd": "docs",
+      "port": 8765
     }
   ]
 }
