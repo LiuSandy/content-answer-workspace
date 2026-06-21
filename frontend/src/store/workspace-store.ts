@@ -10,6 +10,7 @@ type TopicDraft = {
 } | null;
 
 type WorkspaceState = {
+  activeSessionId: string | null;
   selectedPlatform: Platform;
   selectedSource: CollectSource;
   presetTopics: Topic[];
@@ -46,9 +47,11 @@ type WorkspaceState = {
   setSaveState: (value: SaveState) => void;
   setStatusMessage: (value: string) => void;
   setTopicDraft: (draft: TopicDraft) => void;
+  setActiveSessionId: (sessionId: string | null) => void;
 };
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
+  activeSessionId: null,
   selectedPlatform: DEFAULT_PLATFORM,
   selectedSource: "auto",
   presetTopics: [],
@@ -123,4 +126,5 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setSaveState: (saveState) => set({ saveState }),
   setStatusMessage: (statusMessage) => set({ statusMessage }),
   setTopicDraft: (topicDraft) => set({ topicDraft }),
+  setActiveSessionId: (sessionId) => set({ activeSessionId: sessionId }),
 }));
