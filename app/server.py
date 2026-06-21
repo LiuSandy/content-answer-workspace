@@ -1,27 +1,42 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from .api.routes.agent import router as agent_router
 from .api.routes.config import router as config_router
 from .api.routes.hotlist import router as hotlist_router
 from .api.routes.session import router as session_router
 from .api.routes.workflow import router as workflow_router
+from .application.agent.graphs.conversation import build_conversation_graph
 from .application.workflow_service import WorkflowService
-from .core.config import GENERATED_IMAGES_DIR, load_env_file
+from .core.config import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
 from .models import RegeneratePayload, RunPayload, SessionPayload
 from .services.session_service import cookie_status, read_latest_session, save_session
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIST_DIR = ROOT_DIR / "frontend" / "dist"
+CONVERSATION_CHECKPOINT_DB = OUTPUT_DIR / "agent_checkpoints.sqlite"
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """启动时打开对话历史的 SQLite 连接并编译对话 Graph；关闭时释放连接。"""
+
+    CONVERSATION_CHECKPOINT_DB.parent.mkdir(parents=True, exist_ok=True)
+    async with AsyncSqliteSaver.from_conn_string(str(CONVERSATION_CHECKPOINT_DB)) as checkpointer:
+        app.state.conversation_graph = build_conversation_graph(checkpointer)
+        yield
+
+
+app = FastAPI(lifespan=lifespan)
 workflow_service = WorkflowService()
 GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/generated-images", StaticFiles(directory=GENERATED_IMAGES_DIR), name="generated-images")
