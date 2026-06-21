@@ -50,7 +50,7 @@ import { getHotlist } from "./workflow-api";
 import type { HotlistItem } from "@/types/workflow";
 import { NavLink, Outlet, useOutletContext } from "react-router-dom";
 
-type EntryMode = "import" | "collect" | "hotlist";
+type EntryMode = "import" | "collect" | "hotlist" | "chat";
 type WorkspaceState = ReturnType<typeof useWorkspace>;
 
 function useWorkspaceOutlet() {
@@ -61,6 +61,7 @@ const topNavItems: Array<{ id: EntryMode; label: string }> = [
   { id: "import", label: "URL 导入回答" },
   { id: "collect", label: "主题采集" },
   { id: "hotlist", label: "知乎热榜" },
+  { id: "chat", label: "对话" },
 ];
 
 // ──────────────────────────────────────────────────────────
