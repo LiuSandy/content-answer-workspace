@@ -412,7 +412,9 @@ function QuestionRow({
               {generated ? "已生成" : "待生成"}
             </span>
             <span className="text-[11px] text-slate-400">
-              {question.platform ?? "zhihu"} · {question.answerCount} 个回答
+              {question.contentMode === "imitate"
+                ? `${question.platform ?? "zhihu"} · 笔记仿写参考`
+                : `${question.platform ?? "zhihu"} · ${question.answerCount} 个回答`}
             </span>
             {question.updatedTime ? (
               <span className="text-[11px] text-slate-400">{question.updatedTime}</span>
@@ -810,6 +812,7 @@ function CollectPage() {
   const {
     selectedPlatform,
     selectedSource,
+    selectedContentMode,
     presetTopics,
     selectedTopic,
     questions,
@@ -821,6 +824,7 @@ function CollectPage() {
     maxPushCount,
     selectPlatform,
     selectSource,
+    selectContentMode,
     selectTopic,
     setMaxPushCount,
     setContentConstraint,
@@ -914,19 +918,37 @@ function CollectPage() {
             </Select>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <Label className="shrink-0 text-[11px] font-medium text-slate-500">来源</Label>
-            <Select value={selectedSource} onValueChange={(v) => selectSource(v as typeof selectedSource)}>
-              <SelectTrigger className="h-8 w-[112px] rounded-md border-slate-200 bg-white text-[12px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto" className="text-[12px]">自动选择</SelectItem>
-                <SelectItem value="official" className="text-[12px]">官方 API</SelectItem>
-                <SelectItem value="web" className="text-[12px]">网页抓取</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {selectedPlatform === "xiaohongshu" ? (
+            <div className="flex items-center gap-1.5">
+              <Label className="shrink-0 text-[11px] font-medium text-slate-500">内容模式</Label>
+              <Select
+                value={selectedContentMode}
+                onValueChange={(v) => selectContentMode(v as typeof selectedContentMode)}
+              >
+                <SelectTrigger className="h-8 w-[112px] rounded-md border-slate-200 bg-white text-[12px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="answer" className="text-[12px]">回答模式</SelectItem>
+                  <SelectItem value="imitate" className="text-[12px]">仿写模式</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <Label className="shrink-0 text-[11px] font-medium text-slate-500">来源</Label>
+              <Select value={selectedSource} onValueChange={(v) => selectSource(v as typeof selectedSource)}>
+                <SelectTrigger className="h-8 w-[112px] rounded-md border-slate-200 bg-white text-[12px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto" className="text-[12px]">自动选择</SelectItem>
+                  <SelectItem value="official" className="text-[12px]">官方 API</SelectItem>
+                  <SelectItem value="web" className="text-[12px]">网页抓取</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5">
             <Label className="shrink-0 text-[11px] font-medium text-slate-500">上限</Label>

@@ -1,6 +1,13 @@
 import { create } from "zustand";
 
-import { DEFAULT_PLATFORM, type CollectSource, type Platform, type QuestionItem, type Topic } from "@/types/workflow";
+import {
+  DEFAULT_PLATFORM,
+  type CollectSource,
+  type ContentMode,
+  type Platform,
+  type QuestionItem,
+  type Topic,
+} from "@/types/workflow";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -13,6 +20,7 @@ type WorkspaceState = {
   activeSessionId: string | null;
   selectedPlatform: Platform;
   selectedSource: CollectSource;
+  selectedContentMode: ContentMode;
   presetTopics: Topic[];
   selectedTopic: Topic | null;
   questions: QuestionItem[];
@@ -29,6 +37,7 @@ type WorkspaceState = {
   topicDraft: TopicDraft;
   setSelectedPlatform: (platform: Platform) => void;
   setSelectedSource: (source: CollectSource) => void;
+  setSelectedContentMode: (mode: ContentMode) => void;
   setPresetTopics: (topics: Topic[]) => void;
   setSelectedTopic: (topic: Topic | null) => void;
   updateTopicPrompts: (topicId: string, prompts: { systemPrompt?: string; answerStyle?: string }) => void;
@@ -54,6 +63,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   activeSessionId: null,
   selectedPlatform: DEFAULT_PLATFORM,
   selectedSource: "auto",
+  selectedContentMode: "answer",
   presetTopics: [],
   selectedTopic: null,
   questions: [],
@@ -70,6 +80,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   topicDraft: null,
   setSelectedPlatform: (selectedPlatform) => set({ selectedPlatform }),
   setSelectedSource: (selectedSource) => set({ selectedSource }),
+  setSelectedContentMode: (selectedContentMode) => set({ selectedContentMode }),
   setPresetTopics: (topics) => set({ presetTopics: topics }),
   setSelectedTopic: (topic) => set({ selectedTopic: topic }),
   updateTopicPrompts: (topicId, prompts) =>
