@@ -49,6 +49,9 @@ export type ConfigResponse = {
 
 export type SessionResponse = {
   session: {
+    sessionId?: string;
+    title?: string;
+    createdAt?: string;
     platform?: Platform;
     topics?: Topic[];
     answerStyle?: string;
@@ -130,6 +133,7 @@ export type GenerateAllPayload = {
 };
 
 export type SaveSessionPayload = {
+  sessionId?: string;
   platform: Platform;
   topics: Topic[];
   items: QuestionItem[];
@@ -190,4 +194,28 @@ export type HotlistItem = {
 export type HotlistResponse = {
   items: HotlistItem[];
   fetchedAt: string;
+};
+
+export type SessionSummary = {
+  sessionId: string;
+  title: string;
+  createdAt: string;
+};
+
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type ConversationPayload = {
+  sessionId: string;
+  message: string;
+};
+
+export type ConversationResponse = {
+  reply: string;
+};
+
+export type ConversationHistoryResponse = {
+  messages: ChatMessage[];
 };
