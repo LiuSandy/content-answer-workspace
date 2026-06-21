@@ -43,8 +43,15 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         client = self.get_client()
         model = get_required_env("DEEPSEEK_MODEL")
         platform_label = item.platform or "zhihu"
+        if item.content_mode == "imitate":
+            intro_line = (
+                f"请参考下面这篇{platform_label}笔记的选题角度和写作风格，创作一篇全新的原创笔记，"
+                f"不要照抄原文内容，只学习其风格和结构。整体风格要求：{answer_style}"
+            )
+        else:
+            intro_line = f"请围绕下面这个{platform_label}问题写一篇适合发布到对应平台的原创回答，整体风格要求：{answer_style}"
         prompt_parts = [
-            f"请围绕下面这个{platform_label}问题写一篇适合发布到对应平台的原创回答，整体风格要求：{answer_style}",
+            intro_line,
             "",
             "全局生成规则：",
             generation_prompt,
@@ -97,8 +104,18 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         client = self.get_client()
         model = get_required_env("DEEPSEEK_MODEL")
         platform_label = item.platform or "zhihu"
+        if item.content_mode == "imitate":
+            intro_line = (
+                f"请对下面这篇{platform_label}笔记进行润色改写。要求：保留原有核心创意和结构，不要引入新观点；"
+                f"改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}"
+            )
+        else:
+            intro_line = (
+                f"请对下面这篇{platform_label}回答进行润色改写。要求：保留原有核心观点和论证思路，不要引入新观点；"
+                f"改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}"
+            )
         prompt_parts = [
-            f"请对下面这篇{platform_label}回答进行润色改写。要求：保留原有核心观点和论证思路，不要引入新观点；改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}",
+            intro_line,
             "",
             "全局生成规则：",
             generation_prompt,

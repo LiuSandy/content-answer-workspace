@@ -14,6 +14,7 @@ ENV_PATH = ROOT_DIR / ".env"
 OUTPUT_DIR = ROOT_DIR / "output"
 GENERATED_IMAGES_DIR = ROOT_DIR / "generated-images"
 COOKIE_PATH_DEFAULT = ROOT_DIR / ".secrets" / "zhihu.cookie"
+XIAOHONGSHU_COOKIE_PATH_DEFAULT = ROOT_DIR / ".secrets" / "xiaohongshu.cookie"
 DEFAULT_PLATFORM = "zhihu"
 MAX_PUSH_COUNT_LIMIT = 100
 
@@ -83,6 +84,7 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
     overrides = overrides or {}
     platform = str(overrides.get("platform") or os.getenv("DEFAULT_PLATFORM", DEFAULT_PLATFORM)).strip().lower()
     source = str(overrides.get("source") or os.getenv("ZHIHU_SOURCE_MODE", "auto")).strip().lower()
+    content_mode = str(overrides.get("contentMode") or os.getenv("CONTENT_MODE", "answer")).strip().lower()
     max_push_count = min(
         parse_positive_int(overrides.get("maxPushCount", os.getenv("MAX_PUSH_COUNT")), 10),
         MAX_PUSH_COUNT_LIMIT,
@@ -113,6 +115,7 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
     return WorkflowConfig(
         platform=platform or DEFAULT_PLATFORM,
         source=source,
+        contentMode=content_mode,
         maxPushCount=max_push_count,
         sortModes=sort_modes,
         answerStyle=answer_style,
