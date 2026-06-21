@@ -70,6 +70,16 @@ def save_session(payload: SessionPayload) -> str:
     return str(file_path)
 
 
+def delete_session(session_id: str) -> bool:
+    """删除指定 session 的文件；返回 True 表示删除成功，False 表示文件不存在。"""
+
+    file_path = _session_file_path(session_id)
+    if not file_path.exists():
+        return False
+    file_path.unlink()
+    return True
+
+
 def save_workflow_result(result: WorkflowResult) -> dict[str, str]:
     """保存完整工作流结果；这样 CLI 执行采集和生成后能产出可追踪的本地文件。"""
 
