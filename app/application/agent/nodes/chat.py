@@ -1,20 +1,30 @@
 from __future__ import annotations
 
+from langchain_core.messages import SystemMessage
+from langchain_openai import ChatOpenAI
+
+from ....core.config import get_required_env
 from ....core.prompts import CONVERSATION_SYSTEM_PROMPT
-from ....infrastructure.llm.deepseek_client import DeepSeekAnswerGenerator
 from ..state import ConversationState
+from ..tools import ALL_TOOLS
 
-_generator = DeepSeekAnswerGenerator()
+_llm_with_tools: ChatOpenAI | None = None
 
-_ROLE_MAP = {"human": "user", "ai": "assistant", "system": "system"}
+
+def _get_llm() -> ChatOpenAI:
+    global _llm_with_tools
+    if _llm_with_tools is None:
+        llm = ChatOpenAI(
+            api_key=get_required_env("DEEPSEEK_API_KEY"),
+            base_url=get_required_env("DEEPSEEK_BASE_URL").strip().rstrip("/"),
+            model=get_required_env("DEEPSEEK_MODEL"),
+        )
+        _llm_with_tools = llm.bind_tools(ALL_TOOLS)
+    return _llm_with_tools
 
 
 async def chat_node(state: ConversationState) -> dict:
-    """把完整对话历史交给 LLM 做多轮对话；不调用任何业务工具，只返回新的一条助手消息。"""
-
-    history = [{"role": "system", "content": CONVERSATION_SYSTEM_PROMPT}]
-    for message in state["messages"]:
-        history.append({"role": _ROLE_MAP.get(message.type, "user"), "content": message.content})
-
-    reply = await _generator.chat(history)
-    return {"messages": [{"role": "assistant", "content": reply}]}
+    """ReAct 模型节点：LLM 携带工具，有工具调用时返回 tool_calls，否则直接返回文本回复。"""
+    messages = [SystemMessage(content=CONVERSATION_SYSTEM_PROMPT)] + list(state["messages"])
+    response = await _get_llm().ainvoke(messages)
+    return {"messages": [response]}
