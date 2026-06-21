@@ -5,6 +5,9 @@ import type {
   CollectPayload,
   CollectResponse,
   ConfigResponse,
+  ConversationHistoryResponse,
+  ConversationPayload,
+  ConversationResponse,
   GenerateAllPayload,
   GenerateAllResponse,
   GenerateOnePayload,
@@ -16,6 +19,7 @@ import type {
   PolishOneResponse,
   SaveSessionPayload,
   SessionResponse,
+  SessionSummary,
 } from "@/types/workflow";
 
 export function getWorkspaceConfig() {
@@ -56,4 +60,24 @@ export function getHotlist(limit = 30) {
 
 export function agentChat(payload: AgentChatPayload) {
   return apiPost<AgentChatResponse>("/api/agent/chat", payload);
+}
+
+export function listSessions() {
+  return apiGet<SessionSummary[]>("/api/session/list");
+}
+
+export function createSession() {
+  return apiPost<SessionSummary>("/api/session/new", {});
+}
+
+export function getSession(sessionId: string) {
+  return apiGet<SessionResponse>(`/api/session/${sessionId}`);
+}
+
+export function sendConversationMessage(payload: ConversationPayload) {
+  return apiPost<ConversationResponse>("/api/agent/conversation", payload);
+}
+
+export function getConversationHistory(sessionId: string) {
+  return apiGet<ConversationHistoryResponse>(`/api/agent/conversation/${sessionId}/history`);
 }
