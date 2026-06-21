@@ -68,6 +68,7 @@ export function useWorkspace() {
   const {
     selectedPlatform,
     selectedSource,
+    selectedContentMode,
     presetTopics,
     selectedTopic,
     questions,
@@ -78,6 +79,7 @@ export function useWorkspace() {
     contentConstraint,
     maxPushCount,
     setSelectedPlatform,
+    setSelectedContentMode,
     setPresetTopics,
     setSelectedTopic,
     updateTopicPrompts,
@@ -206,6 +208,7 @@ export function useWorkspace() {
       const payload: CollectPayload = {
         platform: selectedPlatform,
         source: selectedSource,
+        contentMode: selectedContentMode,
         topics: selectedTopic
           ? [
               {
@@ -404,6 +407,7 @@ export function useWorkspace() {
   return {
     selectedPlatform,
     selectedSource,
+    selectedContentMode,
     presetTopics,
     selectedTopic,
     questions,
@@ -419,6 +423,7 @@ export function useWorkspace() {
     collectingError: collectMutation.error,
     selectPlatform: setSelectedPlatform,
     selectSource: setSelectedSource,
+    selectContentMode: setSelectedContentMode,
     selectTopic: setSelectedTopic,
     setQuestions,
     selectQuestion,

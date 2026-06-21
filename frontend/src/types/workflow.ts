@@ -1,8 +1,10 @@
 export const DEFAULT_PLATFORM = "zhihu" as const;
 
-export type Platform = typeof DEFAULT_PLATFORM;
+export type Platform = typeof DEFAULT_PLATFORM | "xiaohongshu";
 
 export type CollectSource = "official" | "web" | "auto";
+
+export type ContentMode = "answer" | "imitate";
 
 export type Topic = {
   id: string;
@@ -40,6 +42,7 @@ export type QuestionItem = {
   answer: string;
   images?: string[];
   imagePrompts?: string[];
+  contentMode?: ContentMode;
 };
 
 export type ConfigResponse = {
@@ -90,6 +93,7 @@ export type GenerateAllResponse = {
 export type CollectPayload = {
   platform: Platform;
   source?: CollectSource;
+  contentMode?: ContentMode;
   topics: Topic[];
   maxPushCount: number;
   answerStyle: string;
