@@ -2,20 +2,41 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from ...models import SessionPayload
-from ...services.session_service import cookie_status, read_latest_session, save_session
+from ...services.session_service import (
+    cookie_status,
+    create_session,
+    list_sessions,
+    read_latest_session,
+    read_session,
+    save_session,
+)
 
 router = APIRouter(prefix="/api/session", tags=["session"])
 
 
 @router.get("/latest")
 async def get_latest_session() -> JSONResponse:
-    """返回最近保存的会话；这样前端刷新后可以恢复上一次编辑状态。"""
+    """返回最近创建的会话；这样前端刷新后可以恢复上一次编辑状态。"""
 
     return JSONResponse({"ok": True, "data": {"session": read_latest_session()}})
+
+
+@router.post("/new")
+async def new_session() -> JSONResponse:
+    """创建一个新的空会话；这样对话页面点「新建对话」时能立刻拿到一个可用的 sessionId。"""
+
+    return JSONResponse({"ok": True, "data": create_session()})
+
+
+@router.get("/list")
+async def get_session_list() -> JSONResponse:
+    """列出所有会话摘要；这样对话页面和工作区页面能渲染可切换的会话列表。"""
+
+    return JSONResponse({"ok": True, "data": list_sessions()})
 
 
 @router.post("/save")
@@ -36,3 +57,13 @@ async def get_cookie_status() -> JSONResponse:
             "data": cookie_status(os.getenv("ZHIHU_COOKIE_FILE", "").strip()),
         }
     )
+
+
+@router.get("/{session_id}")
+async def get_session_by_id(session_id: str) -> JSONResponse:
+    """按 ID 读取指定会话的工作区数据；这样前端切换会话后能恢复对应的采集结果。"""
+
+    session = read_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+    return JSONResponse({"ok": True, "data": {"session": session}})
