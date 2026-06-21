@@ -74,6 +74,9 @@ class WorkflowResult(BaseModel):
 class SessionPayload(BaseModel):
     """表示前端保存或批量生成时提交的会话数据；定义成模型是为了兼容本地保存和回答生成两个场景。"""
 
+    session_id: str = Field(default="", alias="sessionId")
+    title: str = Field(default="新对话", alias="title")
+    created_at: str = Field(default="", alias="createdAt")
     platform: str = "zhihu"
     saved_at: str | None = Field(default=None, alias="savedAt")
     topics: list[Topic] = Field(default_factory=list)
