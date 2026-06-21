@@ -20,6 +20,7 @@ import {
   generateAllAnswers,
   generateOneAnswer,
   getLatestSession,
+  getSession,
   getWorkspaceConfig,
   parseQuestionUrl,
   polishOneAnswer,
@@ -63,7 +64,7 @@ function getTopicAnswerStyle(topic: Topic | null, fallback: string) {
 
 export function useWorkspace() {
   const hasHydratedConfig = useRef(false);
-  const hasHydratedSession = useRef(false);
+  const hydratedSessionKey = useRef<string | null>(null);
   const {
     selectedPlatform,
     selectedSource,
@@ -93,6 +94,8 @@ export function useWorkspace() {
     setIsGeneratingAll,
     setSaveState,
     setStatusMessage,
+    activeSessionId,
+    setActiveSessionId,
   } = useWorkspaceStore();
 
   const configQuery = useQuery({
@@ -101,8 +104,8 @@ export function useWorkspace() {
   });
 
   const sessionQuery = useQuery({
-    queryKey: ["workspace-session"],
-    queryFn: getLatestSession,
+    queryKey: ["workspace-session", activeSessionId],
+    queryFn: () => (activeSessionId ? getSession(activeSessionId) : getLatestSession()),
   });
 
   useEffect(() => {
@@ -147,10 +150,14 @@ export function useWorkspace() {
 
   useEffect(() => {
     const session = sessionQuery.data?.session;
-    if (!session || hasHydratedSession.current) {
+    const sessionKey = activeSessionId ?? "__latest__";
+    if (!session || hydratedSessionKey.current === sessionKey) {
       return;
     }
-    hasHydratedSession.current = true;
+    hydratedSessionKey.current = sessionKey;
+    if (!activeSessionId && session.sessionId) {
+      setActiveSessionId(session.sessionId);
+    }
     const sessionPlatform = session.platform ?? selectedPlatform;
     const sessionTopics = session.topics ?? [];
     const sessionSelectedTopic = sessionTopics[0] ?? null;
@@ -174,13 +181,13 @@ export function useWorkspace() {
         setSystemPrompt(session.systemPrompt);
       }
     }
-    if (session.items?.length) {
-      setQuestions(session.items.map((item) => withPlatform(item, sessionPlatform)));
-      setStatusMessage("已恢复最近一次保存的会话。");
-    }
+    setQuestions(session.items?.length ? session.items.map((item) => withPlatform(item, sessionPlatform)) : []);
+    setStatusMessage(session.items?.length ? "已恢复所选会话。" : "已切换到新的空会话。");
   }, [
     sessionQuery.data,
+    activeSessionId,
     selectedPlatform,
+    setActiveSessionId,
     setAnswerStyle,
     setMaxPushCount,
     setPresetTopics,
@@ -360,6 +367,7 @@ export function useWorkspace() {
       const currentSystemPrompt = getTopicSystemPrompt(selectedTopic, systemPrompt);
       const currentAnswerStyle = getTopicAnswerStyle(selectedTopic, answerStyle);
       const payload: SaveSessionPayload = {
+        sessionId: activeSessionId ?? undefined,
         platform: selectedPlatform,
         topics: presetTopics.map((topic) => ({
           ...topic,
