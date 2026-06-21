@@ -156,6 +156,16 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
             return content.strip()
         raise ValueError("LLM returned empty content")
 
+    async def chat(self, messages: list[dict[str, str]]) -> str:
+        """多轮对话调用，messages 是完整历史（含 system/user/assistant），不附加任何业务提示词。"""
+        client = self.get_client()
+        model = get_required_env("DEEPSEEK_MODEL")
+        completion = client.chat.completions.create(model=model, messages=messages)
+        content = completion.choices[0].message.content if completion.choices else None
+        if isinstance(content, str):
+            return content.strip()
+        raise ValueError("LLM returned empty chat content")
+
 
 class DeepSeekTopicExpander(TopicExpanderPort):
     """封装 DeepSeek 主题扩词能力；这样采集前的关键词扩展可以复用同一套模型配置和接入方式。"""
