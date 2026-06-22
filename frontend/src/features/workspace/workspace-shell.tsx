@@ -11,6 +11,8 @@ import {
   Layers,
   LoaderCircle,
   Maximize2,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCcw,
   Search,
   Sparkles,
@@ -31,11 +33,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
-import {
-  NavigationMenu,
-  NavigationMenuItem,
-  NavigationMenuList,
-} from "@/components/ui/navigation-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
@@ -46,95 +43,40 @@ import { maxCollectCount, supportedPlatforms } from "./defaults";
 import { HotlistAnalysisPanel } from "./hotlist-analysis-panel";
 import { RefinementChat } from "./refinement-chat";
 import { useWorkspace } from "./use-workspace";
-import { getHotlist, listSessions } from "./workflow-api";
+import { getHotlist } from "./workflow-api";
 import type { HotlistItem } from "@/types/workflow";
-import { NavLink, Outlet, useOutletContext } from "react-router-dom";
+import { Outlet, useOutletContext } from "react-router-dom";
+import { AppSidebar } from "./app-sidebar";
+import { SidebarInset, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 
-type EntryMode = "import" | "collect" | "hotlist" | "chat";
 type WorkspaceState = ReturnType<typeof useWorkspace>;
 
 function useWorkspaceOutlet() {
   return useOutletContext<WorkspaceState>();
 }
 
-const topNavItems: Array<{ id: EntryMode; label: string }> = [
-  { id: "import", label: "URL 导入回答" },
-  { id: "collect", label: "主题采集" },
-  { id: "hotlist", label: "知乎热榜" },
-  { id: "chat", label: "对话" },
-];
-
 // ──────────────────────────────────────────────────────────
 // Topbar
 // ──────────────────────────────────────────────────────────
 
-function SessionSwitcher() {
-  const activeSessionId = useWorkspaceStore((s) => s.activeSessionId);
-  const setActiveSessionId = useWorkspaceStore((s) => s.setActiveSessionId);
-  const { data: sessions } = useQuery({
-    queryKey: ["chat-session-list"],
-    queryFn: listSessions,
-  });
-
-  if (!sessions || sessions.length === 0) {
-    return null;
-  }
-
-  return (
-    <Select value={activeSessionId ?? undefined} onValueChange={setActiveSessionId}>
-      <SelectTrigger className="w-44">
-        <SelectValue placeholder="选择会话" />
-      </SelectTrigger>
-      <SelectContent>
-        {sessions.map((session) => (
-          <SelectItem key={session.sessionId} value={session.sessionId}>
-            {session.title}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
 function WorkspaceTopbar() {
+  const { open, toggleSidebar } = useSidebar();
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
-      <div className="mx-auto flex h-[52px] w-full max-w-[1800px] items-center gap-6 px-5">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-slate-900 text-[10px] font-bold tracking-tight text-white">
-            CW
-          </div>
-          <div className="leading-none">
-            <div className="text-[13px] font-semibold text-slate-900">内容工作台</div>
-            <div className="mt-[1px] text-[10px] font-medium text-slate-400">Content Workspace</div>
-          </div>
-        </div>
-
-        <Separator orientation="vertical" className="h-4" />
-
-        <SessionSwitcher />
-
-        <NavigationMenu>
-          <NavigationMenuList className="gap-0">
-            {topNavItems.map((item) => (
-              <NavigationMenuItem key={item.id}>
-                <NavLink
-                  to={`/${item.id}`}
-                  end
-                  className={({ isActive }) =>
-                    cn(
-                      "inline-flex h-[52px] items-center border-b-2 border-transparent px-3 text-[13px] font-medium text-slate-500 transition-all hover:text-slate-800",
-                      isActive && "border-slate-900 font-semibold text-slate-900",
-                    )
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              </NavigationMenuItem>
-            ))}
-          </NavigationMenuList>
-        </NavigationMenu>
-      </div>
+    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
+      <button
+        type="button"
+        onClick={toggleSidebar}
+        className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+        aria-label={open ? "收起侧边栏" : "展开侧边栏"}
+      >
+        {open ? (
+          <PanelLeftClose className="h-4 w-4" />
+        ) : (
+          <PanelLeftOpen className="h-4 w-4" />
+        )}
+      </button>
+      <Separator orientation="vertical" className="h-4" />
+      <span className="text-[13px] font-medium text-slate-500">内容工作台</span>
     </header>
   );
 }
@@ -1448,12 +1390,15 @@ export function WorkspaceLayout() {
   const workspace = useWorkspace();
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#EFF2F7] text-slate-900">
-      <WorkspaceTopbar />
-      <main className="mx-auto flex w-full flex-1 flex-col min-h-0 max-w-[1800px] px-4 pb-4 pt-4 sm:px-5">
-        <Outlet context={workspace} />
-      </main>
-    </div>
+    <SidebarProvider className="h-svh">
+      <AppSidebar />
+      <SidebarInset className="overflow-hidden">
+        <WorkspaceTopbar />
+        <div className="flex flex-1 min-h-0 px-4 pb-4 pt-4 sm:px-5">
+          <Outlet context={workspace} />
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
