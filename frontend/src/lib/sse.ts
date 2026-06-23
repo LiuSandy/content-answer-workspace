@@ -38,12 +38,19 @@ export async function streamPost<T>(
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+    // SSE 规范：以 \n\n 分隔事件
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
 
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      const raw = line.slice(6).trim();
+    for (const eventBlock of events) {
+      if (!eventBlock.trim()) continue;
+      // 提取所有 data: 行并拼接
+      const dataLines = eventBlock
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim());
+      if (dataLines.length === 0) continue;
+      const raw = dataLines.join("");
       if (!raw) continue;
       try {
         const event = JSON.parse(raw) as SseEvent<T>;
