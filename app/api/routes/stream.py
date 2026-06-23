@@ -46,7 +46,7 @@ async def generate_one_stream(payload: RegeneratePayload) -> StreamingResponse:
                 payload.content_constraint or None,
             ):
                 full_text += chunk
-                yield _sse({"type": "chunk", "text": chunk})
+                yield sse_event({"type": "chunk", "text": chunk})
 
             try:
                 images = await _image_service.generate_images_for_answer(item, full_text)
@@ -66,7 +66,7 @@ async def generate_one_stream(payload: RegeneratePayload) -> StreamingResponse:
         except Exception as e:  # noqa: BLE001
             yield _sse({"type": "error", "message": str(e)})
 
-    return _make_sse_response(_gen())
+    return make_sse_response(_gen())
 
 
 @router.post("/polish-one/stream")
@@ -97,14 +97,14 @@ async def polish_one_stream(payload: PolishPayload) -> StreamingResponse:
                 payload.content_constraint or None,
             ):
                 full_text += chunk
-                yield _sse({"type": "chunk", "text": chunk})
+                yield sse_event({"type": "chunk", "text": chunk})
 
             final_item = item.model_copy(update={"answer": full_text.strip()})
             yield _sse({"type": "done", "data": {"item": final_item.model_dump(by_alias=True)}})
         except Exception as e:  # noqa: BLE001
             yield _sse({"type": "error", "message": str(e)})
 
-    return _make_sse_response(_gen())
+    return make_sse_response(_gen())
 
 
 @router.post("/generate/stream")
@@ -128,7 +128,7 @@ async def generate_stream(payload: SessionPayload) -> StreamingResponse:
                 item = raw_item.model_copy(
                     update={"platform": normalize_platform(raw_item.platform or platform)}
                 )
-                yield _sse({"type": "item_start", "itemId": item.id})
+                yield sse_event({"type": "item_start", "itemId": item.id})
                 full_text = ""
                 async for chunk in _answer_generator.generate_answer_stream(
                     item,
@@ -139,7 +139,7 @@ async def generate_stream(payload: SessionPayload) -> StreamingResponse:
                     payload.content_constraint or None,
                 ):
                     full_text += chunk
-                    yield _sse({"type": "chunk", "itemId": item.id, "text": chunk})
+                    yield sse_event({"type": "chunk", "itemId": item.id, "text": chunk})
 
                 try:
                     images = await _image_service.generate_images_for_answer(item, full_text)
@@ -156,10 +156,10 @@ async def generate_stream(payload: SessionPayload) -> StreamingResponse:
                     }
                 )
                 done_items.append(final_item)
-                yield _sse({"type": "item_done", "itemId": item.id, "item": final_item.model_dump(by_alias=True)})
+                yield sse_event({"type": "item_done", "itemId": item.id, "item": final_item.model_dump(by_alias=True)})
 
             yield _sse({"type": "done", "data": {"items": [i.model_dump(by_alias=True) for i in done_items]}})
         except Exception as e:  # noqa: BLE001
             yield _sse({"type": "error", "message": str(e)})
 
-    return _make_sse_response(_gen())
+    return make_sse_response(_gen())
