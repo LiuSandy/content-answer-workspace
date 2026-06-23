@@ -5,7 +5,7 @@ import os
 import re
 from collections.abc import AsyncIterator
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from ...core.config import get_required_env
 from ...domain.ports import AnswerGeneratorPort, TopicExpanderPort
@@ -19,6 +19,7 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         """初始化延迟创建的模型客户端；这样缺少配置时只在真正生成回答时才报错。"""
 
         self._client: OpenAI | None = None
+        self._async_client: AsyncOpenAI | None = None
 
     def get_client(self) -> OpenAI:
         """获取 DeepSeek OpenAI 兼容客户端；这样同一进程内可以复用客户端并集中读取模型配置。"""
@@ -29,6 +30,16 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
                 base_url=get_required_env("DEEPSEEK_BASE_URL").strip().rstrip("/"),
             )
         return self._client
+
+    def get_async_client(self) -> AsyncOpenAI:
+        """获取异步 OpenAI 兼容客户端；供流式调用使用，不阻塞事件循环。"""
+
+        if self._async_client is None:
+            self._async_client = AsyncOpenAI(
+                api_key=get_required_env("DEEPSEEK_API_KEY"),
+                base_url=get_required_env("DEEPSEEK_BASE_URL").strip().rstrip("/"),
+            )
+        return self._async_client
 
     async def generate_answer(
         self,
@@ -101,7 +112,7 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
     ) -> AsyncIterator[str]:
         """流式调用 DeepSeek 生成回答；逐 token yield 给调用方，供 SSE 端点推送。"""
 
-        client = self.get_client()
+        client = self.get_async_client()
         model = get_required_env("DEEPSEEK_MODEL")
         platform_label = item.platform or "zhihu"
         if item.content_mode == "imitate":
@@ -132,7 +143,7 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
             f"结尾引流文案：{cta_text}",
         ]
         prompt = "\n".join(prompt_parts)
-        stream = client.chat.completions.create(
+        stream = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -140,7 +151,7 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
             ],
             stream=True,
         )
-        for chunk in stream:
+        async for chunk in stream:
             delta = chunk.choices[0].delta if chunk.choices else None
             if delta and delta.content:
                 yield delta.content
@@ -220,7 +231,7 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
     ) -> AsyncIterator[str]:
         """流式润色回答；逐 token yield，供 SSE 端点推送。"""
 
-        client = self.get_client()
+        client = self.get_async_client()
         model = get_required_env("DEEPSEEK_MODEL")
         platform_label = item.platform or "zhihu"
         if item.content_mode == "imitate":
@@ -256,7 +267,7 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
             current_answer,
         ]
         prompt = "\n".join(prompt_parts)
-        stream = client.chat.completions.create(
+        stream = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -264,7 +275,7 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
             ],
             stream=True,
         )
-        for chunk in stream:
+        async for chunk in stream:
             delta = chunk.choices[0].delta if chunk.choices else None
             if delta and delta.content:
                 yield delta.content
@@ -292,9 +303,9 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
 
     async def call_raw_stream(self, system: str, user: str) -> AsyncIterator[str]:
         """通用 LLM 流式调用，不附加任何业务提示词。供 Agent 层 SSE 端点使用。"""
-        client = self.get_client()
+        client = self.get_async_client()
         model = get_required_env("DEEPSEEK_MODEL")
-        stream = client.chat.completions.create(
+        stream = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system},
@@ -302,7 +313,7 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
             ],
             stream=True,
         )
-        for chunk in stream:
+        async for chunk in stream:
             delta = chunk.choices[0].delta if chunk.choices else None
             if delta and delta.content:
                 yield delta.content
