@@ -348,12 +348,11 @@ export function useWorkspace() {
         generationPrompt,
         contentConstraint: contentConstraint || undefined,
       };
+      let accumulatedText = "";
       return streamGenerateOneAnswer(payload, {
         onChunk: (text) => {
-          setQuestionAnswer(
-            item.id,
-            (useWorkspaceStore.getState().questions.find((q) => q.id === item.id)?.answer ?? "") + text,
-          );
+          accumulatedText += text;
+          setQuestionAnswer(item.id, accumulatedText);
         },
         onDone: (data) => {
           setQuestionItem(item.id, withPlatform(data.item, selectedPlatform));
@@ -384,12 +383,11 @@ export function useWorkspace() {
         generationPrompt,
         contentConstraint: contentConstraint || undefined,
       };
+      let accumulatedText = "";
       return streamPolishOneAnswer(payload, {
         onChunk: (text) => {
-          setQuestionAnswer(
-            item.id,
-            (useWorkspaceStore.getState().questions.find((q) => q.id === item.id)?.answer ?? "") + text,
-          );
+          accumulatedText += text;
+          setQuestionAnswer(item.id, accumulatedText);
         },
         onDone: (data) => {
           setQuestionItem(item.id, withPlatform(data.item, selectedPlatform));
