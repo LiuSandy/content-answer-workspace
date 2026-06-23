@@ -17,14 +17,14 @@ import type {
 import { defaultPlatform } from "./defaults";
 import {
   collectWorkflow,
-  generateAllAnswers,
-  generateOneAnswer,
   getLatestSession,
   getSession,
   getWorkspaceConfig,
   parseQuestionUrl,
-  polishOneAnswer,
   saveWorkspaceSession,
+  streamGenerateAllAnswers,
+  streamGenerateOneAnswer,
+  streamPolishOneAnswer,
 } from "./workflow-api";
 
 function withPlatform<T extends { platform?: Platform }>(item: T, platform: Platform): T {
@@ -300,15 +300,33 @@ export function useWorkspace() {
         contentConstraint: contentConstraint || undefined,
         maxPushCount,
       };
-      return generateAllAnswers(payload);
+      const itemAnswers = new Map<string, string>();
+      return streamGenerateAllAnswers(payload, {
+        onItemStart: (itemId) => {
+          itemAnswers.set(itemId, "");
+        },
+        onChunk: (text, itemId) => {
+          if (!itemId) return;
+          const prev = itemAnswers.get(itemId) ?? "";
+          itemAnswers.set(itemId, prev + text);
+          setQuestionAnswer(itemId, prev + text);
+        },
+        onItemDone: (_itemId, item) => {
+          const q = item as QuestionItem;
+          setQuestionItem(q.id, withPlatform(q, selectedPlatform));
+        },
+        onError: (message) => {
+          setStatusMessage(message);
+        },
+      });
     },
     onMutate: () => {
       setIsGeneratingAll(true);
       setStatusMessage("正在批量生成回答...");
     },
-    onSuccess: (data) => {
-      setQuestions(data.items.map((item) => withPlatform(item, selectedPlatform)));
-      setStatusMessage(`已完成 ${data.items.length} 条回答生成。`);
+    onSuccess: () => {
+      const count = useWorkspaceStore.getState().questions.length;
+      setStatusMessage(`已完成 ${count} 条回答生成。`);
     },
     onError: (error: Error) => {
       setStatusMessage(error.message);
@@ -330,10 +348,22 @@ export function useWorkspace() {
         generationPrompt,
         contentConstraint: contentConstraint || undefined,
       };
-      return generateOneAnswer(payload);
+      return streamGenerateOneAnswer(payload, {
+        onChunk: (text) => {
+          setQuestionAnswer(
+            item.id,
+            (useWorkspaceStore.getState().questions.find((q) => q.id === item.id)?.answer ?? "") + text,
+          );
+        },
+        onDone: (data) => {
+          setQuestionItem(item.id, withPlatform(data.item, selectedPlatform));
+        },
+        onError: (message) => {
+          setStatusMessage(message);
+        },
+      });
     },
-    onSuccess: (data, item) => {
-      setQuestionItem(item.id, withPlatform(data.item, selectedPlatform));
+    onSuccess: (_data, item) => {
       setStatusMessage(`已生成：${item.title}`);
     },
     onError: (error: Error) => {
@@ -354,10 +384,22 @@ export function useWorkspace() {
         generationPrompt,
         contentConstraint: contentConstraint || undefined,
       };
-      return polishOneAnswer(payload);
+      return streamPolishOneAnswer(payload, {
+        onChunk: (text) => {
+          setQuestionAnswer(
+            item.id,
+            (useWorkspaceStore.getState().questions.find((q) => q.id === item.id)?.answer ?? "") + text,
+          );
+        },
+        onDone: (data) => {
+          setQuestionItem(item.id, withPlatform(data.item, selectedPlatform));
+        },
+        onError: (message) => {
+          setStatusMessage(message);
+        },
+      });
     },
-    onSuccess: (data, item) => {
-      setQuestionItem(item.id, withPlatform(data.item, selectedPlatform));
+    onSuccess: (_data, item) => {
       setStatusMessage(`已润色：${item.title}`);
     },
     onError: (error: Error) => {
