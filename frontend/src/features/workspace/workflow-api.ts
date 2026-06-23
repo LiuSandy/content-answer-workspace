@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { streamPost, type SseCallbacks } from "@/lib/sse";
 import type {
   AgentChatPayload,
   AgentChatResponse,
@@ -84,4 +85,39 @@ export function getConversationHistory(sessionId: string) {
 
 export function deleteSession(sessionId: string) {
   return apiDelete<void>(`/api/session/${sessionId}`);
+}
+
+export function streamGenerateOneAnswer(
+  payload: GenerateOnePayload,
+  callbacks: SseCallbacks<GenerateOneResponse>,
+): Promise<void> {
+  return streamPost("/api/workflow/generate-one/stream", payload, callbacks);
+}
+
+export function streamPolishOneAnswer(
+  payload: PolishOnePayload,
+  callbacks: SseCallbacks<PolishOneResponse>,
+): Promise<void> {
+  return streamPost("/api/workflow/polish-one/stream", payload, callbacks);
+}
+
+export function streamGenerateAllAnswers(
+  payload: GenerateAllPayload,
+  callbacks: SseCallbacks<GenerateAllResponse>,
+): Promise<void> {
+  return streamPost("/api/workflow/generate/stream", payload, callbacks);
+}
+
+export function streamConversationMessage(
+  payload: ConversationPayload,
+  callbacks: SseCallbacks<ConversationResponse>,
+): Promise<void> {
+  return streamPost("/api/agent/conversation/stream", payload, callbacks);
+}
+
+export function streamAgentChat(
+  payload: AgentChatPayload,
+  callbacks: SseCallbacks<AgentChatResponse>,
+): Promise<void> {
+  return streamPost("/api/agent/chat/stream", payload, callbacks);
 }
