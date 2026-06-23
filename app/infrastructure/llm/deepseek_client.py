@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import AsyncIterator
 
 from openai import OpenAI
 
@@ -89,6 +90,61 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
             return self._normalize_answer_content(text)
         raise ValueError("DeepSeek returned empty answer content")
 
+    async def generate_answer_stream(
+        self,
+        item: QuestionItem,
+        answer_style: str,
+        cta_text: str,
+        system_prompt: str,
+        generation_prompt: str,
+        content_constraint: str | None = None,
+    ) -> AsyncIterator[str]:
+        """流式调用 DeepSeek 生成回答；逐 token yield 给调用方，供 SSE 端点推送。"""
+
+        client = self.get_client()
+        model = get_required_env("DEEPSEEK_MODEL")
+        platform_label = item.platform or "zhihu"
+        if item.content_mode == "imitate":
+            intro_line = (
+                f"请参考下面这篇{platform_label}笔记的选题角度和写作风格，创作一篇全新的原创笔记，"
+                f"不要照抄原文内容，只学习其风格和结构。整体风格要求：{answer_style}"
+            )
+        else:
+            intro_line = f"请围绕下面这个{platform_label}问题写一篇适合发布到对应平台的原创回答，整体风格要求：{answer_style}"
+        prompt_parts = [
+            intro_line,
+            "",
+            "全局生成规则：",
+            generation_prompt,
+        ]
+        if content_constraint and content_constraint.strip():
+            prompt_parts += [
+                "",
+                f"内容约束（必须严格遵守）：回答只能围绕「{content_constraint.strip()}」展开，不要回答与此无关的内容。",
+            ]
+        prompt_parts += [
+            "",
+            f"平台：{platform_label}",
+            f"问题标题：{item.title}",
+            f"问题链接：{item.url}",
+            f"问题分类：{item.topic or '未分类'}",
+            f"问题摘要：{item.excerpt or '无'}",
+            f"结尾引流文案：{cta_text}",
+        ]
+        prompt = "\n".join(prompt_parts)
+        stream = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content
+
     async def polish_answer(
         self,
         item: QuestionItem,
@@ -152,6 +208,67 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
             return text.strip()
         raise ValueError("DeepSeek returned empty polish content")
 
+    async def polish_answer_stream(
+        self,
+        item: QuestionItem,
+        current_answer: str,
+        answer_style: str,
+        cta_text: str,
+        system_prompt: str,
+        generation_prompt: str,
+        content_constraint: str | None = None,
+    ) -> AsyncIterator[str]:
+        """流式润色回答；逐 token yield，供 SSE 端点推送。"""
+
+        client = self.get_client()
+        model = get_required_env("DEEPSEEK_MODEL")
+        platform_label = item.platform or "zhihu"
+        if item.content_mode == "imitate":
+            intro_line = (
+                f"请对下面这篇{platform_label}笔记进行润色改写。要求：保留原有核心创意和结构，不要引入新观点；"
+                f"改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}"
+            )
+        else:
+            intro_line = (
+                f"请对下面这篇{platform_label}回答进行润色改写。要求：保留原有核心观点和论证思路，不要引入新观点；"
+                f"改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}"
+            )
+        prompt_parts = [
+            intro_line,
+            "",
+            "全局生成规则：",
+            generation_prompt,
+        ]
+        if content_constraint and content_constraint.strip():
+            prompt_parts += [
+                "",
+                f"内容约束（必须严格遵守）：回答只能围绕「{content_constraint.strip()}」展开，不要回答与此无关的内容。",
+            ]
+        prompt_parts += [
+            "",
+            f"平台：{platform_label}",
+            f"问题标题：{item.title}",
+            f"问题链接：{item.url}",
+            f"问题分类：{item.topic or '未分类'}",
+            f"结尾引流文案：{cta_text}",
+            "",
+            "当前回答草稿（请以此为基础润色，不要大幅偏离原有内容）：",
+            current_answer,
+        ]
+        prompt = "\n".join(prompt_parts)
+        stream = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content
+
     def _normalize_answer_content(self, content: str) -> str:
         """规范化回答输出；这样模型返回的内容在交给上层前统一做基本清理。"""
 
@@ -172,6 +289,23 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         if isinstance(content, str):
             return content.strip()
         raise ValueError("LLM returned empty content")
+
+    async def call_raw_stream(self, system: str, user: str) -> AsyncIterator[str]:
+        """通用 LLM 流式调用，不附加任何业务提示词。供 Agent 层 SSE 端点使用。"""
+        client = self.get_client()
+        model = get_required_env("DEEPSEEK_MODEL")
+        stream = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content
 
     async def chat(self, messages: list[dict[str, str]]) -> str:
         """多轮对话调用，messages 是完整历史（含 system/user/assistant），不附加任何业务提示词。"""
