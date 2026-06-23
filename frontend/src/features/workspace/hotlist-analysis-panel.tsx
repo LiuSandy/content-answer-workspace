@@ -9,11 +9,13 @@ import { streamAgentChat } from "./workflow-api";
 
 export function HotlistAnalysisPanel() {
   const [status, setStatus] = useState<AnalysisStatus>({ type: "idle" });
+  const [receivedChars, setReceivedChars] = useState(0);
   const navigate = useNavigate();
   const setTopicDraft = useWorkspaceStore((s) => s.setTopicDraft);
 
   async function handleAnalyze() {
     setStatus({ type: "loading" });
+    setReceivedChars(0);
     try {
       await streamAgentChat(
         {
@@ -21,6 +23,9 @@ export function HotlistAnalysisPanel() {
           message: "请分析当前热榜，给出内容策略建议",
         },
         {
+          onChunk: (text) => {
+            setReceivedChars((prev) => prev + text.length);
+          },
           onDone: (data) => {
             const parsed = parseAnalysisResult(data.reply);
             if (parsed) {
@@ -59,7 +64,7 @@ export function HotlistAnalysisPanel() {
 
       <div className="flex-1 overflow-y-auto p-3">
         {status.type === "idle" && <AnalysisEmpty />}
-        {status.type === "loading" && <AnalysisLoading />}
+        {status.type === "loading" && <AnalysisLoading receivedChars={receivedChars} />}
         {status.type === "error" && <AnalysisError raw={status.raw} />}
         {status.type === "success" && (
           <AnalysisResult data={status.data} onAdopt={handleAdopt} />
@@ -77,9 +82,12 @@ function AnalysisEmpty() {
   );
 }
 
-function AnalysisLoading() {
+function AnalysisLoading({ receivedChars }: { receivedChars: number }) {
   return (
     <div className="space-y-3">
+      {receivedChars > 0 && (
+        <p className="text-xs text-muted-foreground">已接收 {receivedChars} 字，解析中...</p>
+      )}
       {[1, 2, 3].map((i) => (
         <div key={i} className="h-16 bg-muted/50 rounded animate-pulse" />
       ))}
