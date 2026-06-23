@@ -8,7 +8,7 @@ import { ChatMessageInput } from "./chat-message-input";
 import { ChatMessageThread } from "./chat-message-thread";
 import {
   getConversationHistory,
-  sendConversationMessage,
+  streamConversationMessage,
 } from "./workflow-api";
 
 const SESSION_LIST_QUERY_KEY = ["chat-session-list"];
@@ -17,6 +17,7 @@ export function ChatPage() {
   const activeSessionId = useWorkspaceStore((s) => s.activeSessionId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
   const queryClient = useQueryClient();
 
   const historyQuery = useQuery({
@@ -35,10 +36,26 @@ export function ChatPage() {
     }
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     setIsSending(true);
+    setStreamingContent("");
     try {
-      const res = await sendConversationMessage({ sessionId: activeSessionId, message });
-      setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
+      await streamConversationMessage(
+        { sessionId: activeSessionId, message },
+        {
+          onChunk: (text) => {
+            setStreamingContent((prev) => prev + text);
+          },
+          onDone: (data) => {
+            setStreamingContent("");
+            setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+          },
+          onError: (msg) => {
+            setStreamingContent("");
+            setMessages((prev) => [...prev, { role: "assistant", content: `发送失败：${msg}` }]);
+          },
+        },
+      );
     } catch {
+      setStreamingContent("");
       setMessages((prev) => [...prev, { role: "assistant", content: "发送失败，请重试" }]);
     } finally {
       setIsSending(false);
@@ -53,6 +70,7 @@ export function ChatPage() {
           messages={messages}
           isLoading={historyQuery.isLoading}
           isSending={isSending}
+          streamingContent={streamingContent}
         />
         <ChatMessageInput disabled={!activeSessionId || isSending} onSend={handleSend} />
       </div>
