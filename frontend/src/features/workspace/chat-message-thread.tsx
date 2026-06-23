@@ -9,6 +9,7 @@ type Props = {
   messages: ChatMessage[];
   isLoading: boolean;
   isSending: boolean;
+  streamingContent?: string;
 };
 
 function ThinkingDots() {
@@ -28,7 +29,7 @@ function ThinkingDots() {
   );
 }
 
-export function ChatMessageThread({ messages, isLoading, isSending }: Props) {
+export function ChatMessageThread({ messages, isLoading, isSending, streamingContent }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,10 +59,17 @@ export function ChatMessageThread({ messages, isLoading, isSending }: Props) {
           </div>
         </div>
       ))}
-      {isSending && (
+      {isSending && !streamingContent && (
         <div className="flex justify-start">
           <div className="rounded-lg bg-muted">
             <ThinkingDots />
+          </div>
+        </div>
+      )}
+      {isSending && streamingContent && (
+        <div className="flex justify-start">
+          <div className="w-fit max-w-[75%] rounded-lg px-3 py-2 text-sm leading-relaxed bg-muted text-foreground">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
           </div>
         </div>
       )}
