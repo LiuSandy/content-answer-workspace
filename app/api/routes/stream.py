@@ -62,9 +62,9 @@ async def generate_one_stream(payload: RegeneratePayload) -> StreamingResponse:
                     "image_prompts": images.get("imagePrompts", []),
                 }
             )
-            yield _sse({"type": "done", "data": {"item": final_item.model_dump(by_alias=True)}})
+            yield sse_event({"type": "done", "data": {"item": final_item.model_dump(by_alias=True)}})
         except Exception as e:  # noqa: BLE001
-            yield _sse({"type": "error", "message": str(e)})
+            yield sse_event({"type": "error", "message": str(e)})
 
     return make_sse_response(_gen())
 
@@ -100,9 +100,9 @@ async def polish_one_stream(payload: PolishPayload) -> StreamingResponse:
                 yield sse_event({"type": "chunk", "text": chunk})
 
             final_item = item.model_copy(update={"answer": full_text.strip()})
-            yield _sse({"type": "done", "data": {"item": final_item.model_dump(by_alias=True)}})
+            yield sse_event({"type": "done", "data": {"item": final_item.model_dump(by_alias=True)}})
         except Exception as e:  # noqa: BLE001
-            yield _sse({"type": "error", "message": str(e)})
+            yield sse_event({"type": "error", "message": str(e)})
 
     return make_sse_response(_gen())
 
@@ -158,8 +158,8 @@ async def generate_stream(payload: SessionPayload) -> StreamingResponse:
                 done_items.append(final_item)
                 yield sse_event({"type": "item_done", "itemId": item.id, "item": final_item.model_dump(by_alias=True)})
 
-            yield _sse({"type": "done", "data": {"items": [i.model_dump(by_alias=True) for i in done_items]}})
+            yield sse_event({"type": "done", "data": {"items": [i.model_dump(by_alias=True) for i in done_items]}})
         except Exception as e:  # noqa: BLE001
-            yield _sse({"type": "error", "message": str(e)})
+            yield sse_event({"type": "error", "message": str(e)})
 
     return make_sse_response(_gen())
