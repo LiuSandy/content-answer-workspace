@@ -14,6 +14,7 @@ from .api.routes.agent import router as agent_router
 from .api.routes.config import router as config_router
 from .api.routes.hotlist import router as hotlist_router
 from .api.routes.session import router as session_router
+from .api.routes.settings import router as settings_router
 from .api.routes.stream import router as stream_router
 from .api.routes.workflow import router as workflow_router
 from .application.agent.graphs.conversation import build_conversation_graph
@@ -66,6 +67,7 @@ app.include_router(agent_router)
 app.include_router(config_router)
 app.include_router(hotlist_router)
 app.include_router(session_router)
+app.include_router(settings_router)
 app.include_router(stream_router)
 app.include_router(workflow_router)
 
