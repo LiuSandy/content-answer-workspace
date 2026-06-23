@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from ...api.sse_utils import make_sse_response, sse_event
 from ...application.agent.graphs.analysis import get_analysis_graph
 from ...application.agent.graphs.refinement import build_refinement_graph
 from ...application.agent.session_adapter import InMemorySessionAdapter
@@ -29,18 +29,6 @@ _ANALYSIS_SYSTEM_PROMPT = """
 }
 只返回 JSON，不要其他说明。
 """.strip()
-
-
-def _sse(payload: dict) -> str:
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
-def _make_sse_response(gen: AsyncIterator[str]) -> StreamingResponse:
-    return StreamingResponse(
-        gen,
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 class AgentChatRequest(BaseModel):
@@ -150,16 +138,16 @@ async def agent_conversation_stream(request: ConversationRequest, http_request: 
                     chunk = event["data"].get("chunk")
                     if chunk and hasattr(chunk, "content") and chunk.content:
                         full_reply += chunk.content
-                        yield _sse({"type": "chunk", "text": chunk.content})
+                        yield sse_event({"type": "chunk", "text": chunk.content})
 
             if is_first_message:
                 update_session_title(request.sessionId, request.message[:20])
 
-            yield _sse({"type": "done", "data": {"reply": full_reply}})
+            yield sse_event({"type": "done", "data": {"reply": full_reply}})
         except Exception as e:  # noqa: BLE001
-            yield _sse({"type": "error", "message": str(e)})
+            yield sse_event({"type": "error", "message": str(e)})
 
-    return _make_sse_response(_gen())
+    return make_sse_response(_gen())
 
 
 @router.post("/api/agent/chat/stream")
@@ -187,10 +175,10 @@ async def agent_chat_stream(request: AgentChatRequest) -> StreamingResponse:
                     user=prompt,
                 ):
                     full_answer += chunk
-                    yield _sse({"type": "chunk", "text": chunk})
+                    yield sse_event({"type": "chunk", "text": chunk})
 
                 short = instruction[:30]
-                yield _sse({
+                yield sse_event({
                     "type": "done",
                     "data": {
                         "reply": "已按您的要求完成修改。",
@@ -214,9 +202,9 @@ async def agent_chat_stream(request: AgentChatRequest) -> StreamingResponse:
                     user=user_prompt,
                 ):
                     full_reply += chunk
-                    yield _sse({"type": "chunk", "text": chunk})
+                    yield sse_event({"type": "chunk", "text": chunk})
 
-                yield _sse({
+                yield sse_event({
                     "type": "done",
                     "data": {
                         "reply": full_reply.strip(),
@@ -226,6 +214,6 @@ async def agent_chat_stream(request: AgentChatRequest) -> StreamingResponse:
                     },
                 })
         except Exception as e:  # noqa: BLE001
-            yield _sse({"type": "error", "message": str(e)})
+            yield sse_event({"type": "error", "message": str(e)})
 
-    return _make_sse_response(_gen())
+    return make_sse_response(_gen())

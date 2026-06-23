@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
+from ...api.sse_utils import make_sse_response, sse_event
 from ...application.workflow_service import WorkflowService, normalize_platform
 from ...core.config import get_workflow_config, load_env_file
 from ...infrastructure.llm.deepseek_client import DeepSeekAnswerGenerator
@@ -17,18 +17,6 @@ router = APIRouter(prefix="/api/workflow", tags=["stream"])
 _answer_generator = DeepSeekAnswerGenerator()
 _image_service = ImageGenerationService()
 workflow_service = WorkflowService()
-
-
-def _sse(payload: dict) -> str:
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
-def _make_sse_response(gen: AsyncIterator[str]) -> StreamingResponse:
-    return StreamingResponse(
-        gen,
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 @router.post("/generate-one/stream")
