@@ -5,7 +5,7 @@ import { useWorkspaceStore } from "@/store/workspace-store";
 import type { AnalysisStatus, HotlistAnalysisResult } from "@/types/workflow";
 
 import { parseAnalysisResult } from "./hotlist-analysis-parser";
-import { agentChat } from "./workflow-api";
+import { streamAgentChat } from "./workflow-api";
 
 export function HotlistAnalysisPanel() {
   const [status, setStatus] = useState<AnalysisStatus>({ type: "idle" });
@@ -15,16 +15,25 @@ export function HotlistAnalysisPanel() {
   async function handleAnalyze() {
     setStatus({ type: "loading" });
     try {
-      const res = await agentChat({
-        sessionId: "hotlist_analysis",
-        message: "请分析当前热榜，给出内容策略建议",
-      });
-      const parsed = parseAnalysisResult(res.reply);
-      if (parsed) {
-        setStatus({ type: "success", data: parsed });
-      } else {
-        setStatus({ type: "error", raw: res.reply });
-      }
+      await streamAgentChat(
+        {
+          sessionId: "hotlist_analysis",
+          message: "请分析当前热榜，给出内容策略建议",
+        },
+        {
+          onDone: (data) => {
+            const parsed = parseAnalysisResult(data.reply);
+            if (parsed) {
+              setStatus({ type: "success", data: parsed });
+            } else {
+              setStatus({ type: "error", raw: data.reply });
+            }
+          },
+          onError: (msg) => {
+            setStatus({ type: "error", raw: `请求失败：${msg}` });
+          },
+        },
+      );
     } catch {
       setStatus({ type: "error", raw: "请求失败，请重试" });
     }
