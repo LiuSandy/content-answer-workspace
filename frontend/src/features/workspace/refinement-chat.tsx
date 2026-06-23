@@ -27,6 +27,7 @@ export function RefinementChat({ sessionId, question }: Props) {
     setLastReply("");
 
     try {
+      let accumulatedText = "";
       await streamAgentChat(
         {
           sessionId,
@@ -36,7 +37,8 @@ export function RefinementChat({ sessionId, question }: Props) {
         },
         {
           onChunk: (text) => {
-            updateQuestionAnswer(question.id, (useWorkspaceStore.getState().questions.find((q) => q.id === question.id)?.answer ?? "") + text);
+            accumulatedText += text;
+            updateQuestionAnswer(question.id, accumulatedText);
           },
           onDone: (data) => {
             setLastReply(data.reply);
