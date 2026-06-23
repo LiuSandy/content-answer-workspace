@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useWorkspaceStore } from "@/store/workspace-store";
 import type { QuestionItem } from "@/types/workflow";
 
-import { agentChat } from "./workflow-api";
+import { streamAgentChat } from "./workflow-api";
 
 type Props = {
   sessionId: string;
@@ -24,20 +24,31 @@ export function RefinementChat({ sessionId, question }: Props) {
 
     setIsLoading(true);
     setInput("");
+    setLastReply("");
 
     try {
-      const res = await agentChat({
-        sessionId,
-        questionId: question.id,
-        message: trimmed,
-        currentAnswer: question.answer,
-      });
-
-      setLastReply(res.reply);
-
-      if (res.answerUpdated && res.updatedAnswer) {
-        updateQuestionAnswer(question.id, res.updatedAnswer);
-      }
+      await streamAgentChat(
+        {
+          sessionId,
+          questionId: question.id,
+          message: trimmed,
+          currentAnswer: question.answer,
+        },
+        {
+          onChunk: (text) => {
+            updateQuestionAnswer(question.id, (useWorkspaceStore.getState().questions.find((q) => q.id === question.id)?.answer ?? "") + text);
+          },
+          onDone: (data) => {
+            setLastReply(data.reply);
+            if (data.answerUpdated && data.updatedAnswer) {
+              updateQuestionAnswer(question.id, data.updatedAnswer);
+            }
+          },
+          onError: (msg) => {
+            setLastReply(`请求失败：${msg}`);
+          },
+        },
+      );
     } catch {
       setLastReply("请求失败，请重试");
     } finally {
