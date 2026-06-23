@@ -22,6 +22,8 @@ dependencies = [
   "langchain-experimental>=0.4.2",
   "newsapi-python>=0.2.7",
   "ddgs>=9.14.4",
+  "crawl4ai>=0.9.0",
+  "firecrawl-py>=4.30.2",
 ]
 
 [tool.uv]
