@@ -3,6 +3,7 @@ import { streamPost, type SseCallbacks } from "@/lib/sse";
 import type {
   AgentChatPayload,
   AgentChatResponse,
+  AgentTool,
   CollectPayload,
   CollectResponse,
   ConfigResponse,
@@ -61,6 +62,10 @@ export function getHotlist(limit = 30) {
 
 export function agentChat(payload: AgentChatPayload) {
   return apiPost<AgentChatResponse>("/api/agent/chat", payload);
+}
+
+export function listAgentTools() {
+  return apiGet<AgentTool[]>("/api/agent/tools");
 }
 
 export function listSessions() {

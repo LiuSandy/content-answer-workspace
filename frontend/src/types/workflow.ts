@@ -207,8 +207,10 @@ export type SessionSummary = {
 };
 
 export type ChatMessage = {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
+  // tool 角色专用：工具调用过程的逐步文案
+  steps?: string[];
 };
 
 export type ConversationPayload = {
@@ -222,4 +224,9 @@ export type ConversationResponse = {
 
 export type ConversationHistoryResponse = {
   messages: ChatMessage[];
+};
+
+export type AgentTool = {
+  name: string;
+  description: string;
 };
