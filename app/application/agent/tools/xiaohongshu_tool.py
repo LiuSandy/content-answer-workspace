@@ -30,7 +30,6 @@ def _run(args: list[str]) -> str:
 def xiaohongshu_search(query: str) -> str:
     """在小红书搜索笔记，返回标题、作者、点赞数和链接（YAML 格式）。
     需要 Chrome 已打开并登录小红书，且安装了 OpenCLI 扩展。"""
-    print("--->", query)
     return _run(["opencli", "xiaohongshu", "search", query, "-f", "yaml"])
 
 
