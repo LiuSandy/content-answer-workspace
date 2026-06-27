@@ -2,6 +2,8 @@ export type SseEvent<T> =
   | { type: "chunk"; text: string; itemId?: string }
   | { type: "item_start"; itemId: string }
   | { type: "item_done"; itemId: string; item: unknown }
+  | { type: "tool_start"; text: string }
+  | { type: "tool_end"; text: string }
   | { type: "done"; data: T }
   | { type: "error"; message: string };
 
@@ -9,6 +11,8 @@ export type SseCallbacks<T> = {
   onChunk?: (text: string, itemId?: string) => void;
   onItemStart?: (itemId: string) => void;
   onItemDone?: (itemId: string, item: unknown) => void;
+  onToolStart?: (text: string) => void;
+  onToolEnd?: (text: string) => void;
   onDone?: (data: T) => void;
   onError?: (message: string) => void;
 };
@@ -57,6 +61,8 @@ export async function streamPost<T>(
         if (event.type === "chunk") callbacks.onChunk?.(event.text, event.itemId);
         else if (event.type === "item_start") callbacks.onItemStart?.(event.itemId);
         else if (event.type === "item_done") callbacks.onItemDone?.(event.itemId, event.item);
+        else if (event.type === "tool_start") callbacks.onToolStart?.(event.text);
+        else if (event.type === "tool_end") callbacks.onToolEnd?.(event.text);
         else if (event.type === "done") callbacks.onDone?.(event.data);
         else if (event.type === "error") callbacks.onError?.(event.message);
       } catch {

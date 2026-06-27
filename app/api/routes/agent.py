@@ -9,8 +9,10 @@ from pydantic import BaseModel
 from ...api.sse_utils import make_sse_response, sse_event
 from ...application.agent.graphs.analysis import get_analysis_graph
 from ...application.agent.graphs.refinement import build_refinement_graph
+from ...application.agent.process_steps import tool_end_step, tool_start_step
 from ...application.agent.session_adapter import InMemorySessionAdapter
 from ...application.agent.state import AgentState
+from ...application.agent.tools import ALL_TOOLS
 from ...infrastructure.llm.deepseek_client import DeepSeekAnswerGenerator
 from ...services.hotlist_service import fetch_hotlist
 from ...services.session_service import update_session_title
@@ -29,6 +31,13 @@ _ANALYSIS_SYSTEM_PROMPT = """
 }
 只返回 JSON，不要其他说明。
 """.strip()
+
+
+@router.get("/api/agent/tools")
+async def list_agent_tools() -> JSONResponse:
+    """返回当前已启用的 Agent 工具清单（名称+描述）；供聊天输入框的工具按钮只读展示。"""
+    tools = [{"name": tool.name, "description": (tool.description or "").strip()} for tool in ALL_TOOLS]
+    return JSONResponse({"ok": True, "data": tools})
 
 
 class AgentChatRequest(BaseModel):
@@ -110,12 +119,45 @@ async def agent_conversation_history(session_id: str, http_request: Request) -> 
     graph = http_request.app.state.conversation_graph
     config = {"configurable": {"thread_id": session_id}}
     state = await graph.aget_state(config)
-    role_map = {"human": "user", "ai": "assistant", "system": "system"}
-    messages = [
-        {"role": role_map.get(message.type, "user"), "content": message.content}
-        for message in state.values.get("messages", [])
-    ]
+    messages = _build_history_messages(state.values.get("messages", []))
     return JSONResponse({"ok": True, "data": {"messages": messages}})
+
+
+def _build_history_messages(raw_messages: list) -> list[dict]:
+    """把 LangGraph 持久化的消息流重建成前端消息列表；
+    单独定义是因为 ReAct 历史里混有工具调用与工具结果，需要把它们折叠成一条 tool 过程消息，
+    而不是把原始结果误当成用户输入展示。"""
+
+    result: list[dict] = []
+    pending_steps: list[str] = []
+
+    def flush_tool_steps() -> None:
+        """把累积的工具过程步骤落成一条 tool 角色消息；在出现最终回答或新一轮用户消息前调用。"""
+        nonlocal pending_steps
+        if pending_steps:
+            result.append({"role": "tool", "content": "", "steps": pending_steps})
+            pending_steps = []
+
+    for message in raw_messages:
+        mtype = getattr(message, "type", "")
+        if mtype == "human":
+            flush_tool_steps()
+            result.append({"role": "user", "content": message.content})
+        elif mtype == "tool":
+            pending_steps.append(tool_end_step(getattr(message, "name", "")))
+        elif mtype == "ai":
+            tool_calls = getattr(message, "tool_calls", None) or []
+            if tool_calls:
+                for call in tool_calls:
+                    name = call.get("name", "") if isinstance(call, dict) else getattr(call, "name", "")
+                    pending_steps.append(tool_start_step(name))
+            elif message.content:
+                flush_tool_steps()
+                result.append({"role": "assistant", "content": message.content})
+        # system 等其它类型不展示
+
+    flush_tool_steps()
+    return result
 
 
 @router.post("/api/agent/conversation/stream")
@@ -134,7 +176,12 @@ async def agent_conversation_stream(request: ConversationRequest, http_request: 
                 config=config,
                 version="v2",
             ):
-                if event["event"] == "on_chat_model_stream":
+                kind = event["event"]
+                if kind == "on_tool_start":
+                    yield sse_event({"type": "tool_start", "text": tool_start_step(event.get("name", ""))})
+                elif kind == "on_tool_end":
+                    yield sse_event({"type": "tool_end", "text": tool_end_step(event.get("name", ""))})
+                elif kind == "on_chat_model_stream":
                     chunk = event["data"].get("chunk")
                     if chunk and hasattr(chunk, "content") and chunk.content:
                         full_reply += chunk.content
