@@ -3,15 +3,17 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from ..config.loader import get_settings
 from ..infrastructure.zhihu.official_client import ZhihuOfficialClient
 from ..models import HotlistItem, HotlistResponse
 from .zhihu_service import clean_text
 
 
-async def fetch_hotlist(limit: int = 30) -> HotlistResponse:
+async def fetch_hotlist(limit: int | None = None) -> HotlistResponse:
     """获取知乎热榜条目列表；这样热榜功能独立于主题采集流程，可以单独被路由调用。"""
+    max_limit = get_settings().hotlist.max_limit
     client = ZhihuOfficialClient()
-    raw = await client.get_hotlist(limit=min(limit, 30))
+    raw = await client.get_hotlist(limit=min(limit or max_limit, max_limit))
     items = _map_hotlist(raw)
     return HotlistResponse(
         items=items,

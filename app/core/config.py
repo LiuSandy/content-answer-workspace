@@ -6,6 +6,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from ..config.loader import get_settings, load_default_topics
 from ..models import Topic, WorkflowConfig
 from .prompts import DEFAULT_ANSWER_STYLE, DEFAULT_SYSTEM_PROMPT, GLOBAL_GENERATION_PROMPT, TOPIC_PROMPT_PRESETS
 
@@ -15,8 +16,8 @@ OUTPUT_DIR = ROOT_DIR / "output"
 GENERATED_IMAGES_DIR = ROOT_DIR / "generated-images"
 COOKIE_PATH_DEFAULT = ROOT_DIR / ".secrets" / "zhihu.cookie"
 XIAOHONGSHU_COOKIE_PATH_DEFAULT = ROOT_DIR / ".secrets" / "xiaohongshu.cookie"
-DEFAULT_PLATFORM = "zhihu"
-MAX_PUSH_COUNT_LIMIT = 100
+DEFAULT_PLATFORM = get_settings().collect.default_platform
+MAX_PUSH_COUNT_LIMIT = get_settings().collect.max_push_count_limit
 
 
 def load_env_file() -> None:
@@ -51,31 +52,21 @@ def is_truthy(value: Any) -> bool:
 
 
 def get_default_topics() -> list[Topic]:
-    """提供后端默认主题；这样当前前端不传主题或恢复失败时仍能按知乎默认场景运行。"""
+    """提供后端默认主题；主题定义已外置到 default_topics.toml，这里只负责按 preset 组装成 Topic。"""
 
-    return [
-        Topic(
-            id="algo",
-            name="数据结构与算法",
-            keywords=["数据结构", "算法", "二叉树", "链表", "动态规划", "leetcode"],
-            answerStyle=TOPIC_PROMPT_PRESETS["algo"]["answer_style"],
-            systemPrompt=TOPIC_PROMPT_PRESETS["algo"]["system_prompt"],
-        ),
-        Topic(
-            id="personal-site",
-            name="个人站点",
-            keywords=["个人站点", "独立站", "博客", "建站", "个人主页"],
-            answerStyle=TOPIC_PROMPT_PRESETS["personal-site"]["answer_style"],
-            systemPrompt=TOPIC_PROMPT_PRESETS["personal-site"]["system_prompt"],
-        ),
-        Topic(
-            id="podcast",
-            name="播客",
-            keywords=["播客", "podcast", "音频节目", "内容创作"],
-            answerStyle=TOPIC_PROMPT_PRESETS["podcast"]["answer_style"],
-            systemPrompt=TOPIC_PROMPT_PRESETS["podcast"]["system_prompt"],
-        ),
-    ]
+    topics: list[Topic] = []
+    for entry in load_default_topics():
+        preset = TOPIC_PROMPT_PRESETS.get(entry.get("preset", ""), {})
+        topics.append(
+            Topic(
+                id=entry["id"],
+                name=entry["name"],
+                keywords=entry.get("keywords", []),
+                answerStyle=preset.get("answer_style", ""),
+                systemPrompt=preset.get("system_prompt", ""),
+            )
+        )
+    return topics
 
 
 def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConfig:
@@ -103,7 +94,7 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
     )
     user_agent = overrides.get("userAgent") or os.getenv(
         "HTTP_USER_AGENT",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+        get_settings().http.user_agent,
     )
     cta_text = (
         ""

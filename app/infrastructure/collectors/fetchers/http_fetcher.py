@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import httpx
 
+from ....config.loader import get_settings
+
 
 class HttpFetcher:
     """使用 httpx 发起 HTTP 请求获取页面；负责超时设置、Cookie 注入。"""
@@ -13,7 +15,9 @@ class HttpFetcher:
         merged = dict(headers)
         if self._cookie_string:
             merged["Cookie"] = self._cookie_string
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            timeout=get_settings().http.fetch_timeout_seconds, follow_redirects=True
+        ) as client:
             response = await client.get(url, headers=merged)
             response.raise_for_status()
             return response.text
