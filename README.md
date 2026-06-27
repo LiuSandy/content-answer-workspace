@@ -191,3 +191,9 @@ sequenceDiagram
 - 当前知乎搜索接口会混入非问题卡片，后端已做跳过处理，但仍需要持续维护
 - 当前知乎风控和 cookie 失效会直接影响采集结果
 - 模型返回风格仍建议人工复核后再发布
+
+
+## 其他项目
+
+- https://github.com/NanmiCoder/MediaCrawler
+- https://github.com/Thysrael/Horizon/blob/main/README_zh.md
