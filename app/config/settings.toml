@@ -1,0 +1,35 @@
+# 运行常量集中配置（非密钥）。密钥与环境差异项仍放 .env。
+# 加载入口见 app/config/loader.py，缺字段时回落到 loader.py 中的 Pydantic 默认值。
+
+# 采集相关
+[collect]
+default_platform = "zhihu"          # 未指定平台时的默认平台
+max_push_count_limit = 100          # 单次采集硬上限
+default_max_push_count = 10         # 未配置 MAX_PUSH_COUNT 时的默认值
+default_sort_modes = ["latest", "answer_count"]
+default_page_size = 20              # 平台分页未指定 page_size 时的默认值
+
+# HTTP / 默认 UA
+[http]
+fetch_timeout_seconds = 15.0        # collectors/fetchers/http_fetcher
+client_timeout_seconds = 30.0       # 知乎官方客户端 / zhihu_service
+user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+
+# Playwright 渲染
+[playwright]
+goto_timeout_ms = 30000             # 页面跳转超时（毫秒）
+render_wait_ms = 2000               # 跳转后等待渲染（毫秒）
+
+# 小红书采集
+[xiaohongshu]
+request_interval_seconds = 1.5      # 关键词之间的请求间隔，降低风控风险
+cookie_domain = ".xiaohongshu.com"
+
+# 知乎热榜
+[hotlist]
+max_limit = 30                      # 官方热榜单次返回上限
+
+# LLM 默认值（非密钥；OPENAI_API_KEY 等仍在 .env）
+[llm]
+default_model = "GLM-4.7"
+default_base_url = "https://open.bigmodel.cn/api/paas/v4/"

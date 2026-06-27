@@ -19,6 +19,7 @@ from .api.routes.stream import router as stream_router
 from .api.routes.workflow import router as workflow_router
 from .application.agent.graphs.conversation import build_conversation_graph
 from .application.workflow_service import WorkflowService
+from .config.loader import warmup as warmup_config
 from .core.config import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
 from .models import RegeneratePayload, RunPayload, SessionPayload
 from .services.session_service import cookie_status, read_latest_session, save_session
@@ -32,6 +33,7 @@ CONVERSATION_CHECKPOINT_DB = OUTPUT_DIR / "agent_checkpoints.sqlite"
 async def lifespan(app: FastAPI):
     """启动时打开对话历史的 SQLite 连接并编译对话 Graph；关闭时释放连接。"""
 
+    warmup_config()
     CONVERSATION_CHECKPOINT_DB.parent.mkdir(parents=True, exist_ok=True)
     async with AsyncSqliteSaver.from_conn_string(str(CONVERSATION_CHECKPOINT_DB)) as checkpointer:
         app.state.conversation_graph = build_conversation_graph(checkpointer)

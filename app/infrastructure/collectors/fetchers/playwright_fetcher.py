@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from playwright.async_api import async_playwright
 
+from ....config.loader import get_settings
+
 
 def parse_cookie_string(cookie_string: str, domain: str) -> list[dict[str, str]]:
     """把 `a=1; b=2` 形式的 cookie 字符串转成 Playwright 需要的 cookie 字典列表。"""
@@ -34,8 +36,9 @@ class PlaywrightFetcher:
                 if self._cookie_string and self._cookie_domain:
                     await context.add_cookies(parse_cookie_string(self._cookie_string, self._cookie_domain))
                 page = await context.new_page()
-                await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-                await page.wait_for_timeout(2_000)
+                settings = get_settings().playwright
+                await page.goto(url, wait_until="domcontentloaded", timeout=settings.goto_timeout_ms)
+                await page.wait_for_timeout(settings.render_wait_ms)
                 return await page.content()
             finally:
                 await browser.close()

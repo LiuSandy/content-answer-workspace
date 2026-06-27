@@ -5,6 +5,7 @@ from pathlib import Path
 
 import yaml
 
+from ...config.loader import get_settings
 from .platform_config import AuthConfig, PaginationConfig, PlatformConfig
 
 PLATFORMS_DIR = Path(__file__).parent / "platforms"
@@ -39,7 +40,7 @@ class PlatformConfigLoader:
             pagination=PaginationConfig(
                 type=pagination.get("type", "page"),
                 param=pagination.get("param", "page"),
-                page_size=pagination.get("page_size", 20),
+                page_size=pagination.get("page_size", get_settings().collect.default_page_size),
             ),
             extraction_prompt=raw["extraction_prompt"],
         )

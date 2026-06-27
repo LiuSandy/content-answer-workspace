@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ..config.loader import get_settings
 from ..core.config import (
     ENV_PATH,
     ROOT_DIR,
@@ -101,18 +102,17 @@ class SettingsService:
 
         return {
             "llm": {
-                "baseUrl": llm.get("baseUrl") or os.getenv("OPENAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/"),
-                "model": llm.get("model") or os.getenv("OPENAI_MODEL", "GLM-4.7"),
+                "baseUrl": llm.get("baseUrl") or os.getenv("OPENAI_BASE_URL", get_settings().llm.default_base_url),
+                "model": llm.get("model") or os.getenv("OPENAI_MODEL", get_settings().llm.default_model),
                 "apiKey": _mask_key(raw_key),
             },
             "collect": {
-                "defaultPlatform": collect.get("defaultPlatform") or os.getenv("DEFAULT_PLATFORM", "zhihu"),
-                "maxPushCount": collect.get("maxPushCount") or int(os.getenv("MAX_PUSH_COUNT", "10")),
-                "sortModes": collect.get("sortModes") or ["latest", "answer_count"],
-                "userAgent": collect.get("userAgent") or os.getenv(
-                    "HTTP_USER_AGENT",
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                ),
+                "defaultPlatform": collect.get("defaultPlatform")
+                or os.getenv("DEFAULT_PLATFORM", get_settings().collect.default_platform),
+                "maxPushCount": collect.get("maxPushCount")
+                or int(os.getenv("MAX_PUSH_COUNT", str(get_settings().collect.default_max_push_count))),
+                "sortModes": collect.get("sortModes") or list(get_settings().collect.default_sort_modes),
+                "userAgent": collect.get("userAgent") or os.getenv("HTTP_USER_AGENT", get_settings().http.user_agent),
                 "skipAnswerGeneration": collect.get("skipAnswerGeneration", False),
             },
             "publish": {

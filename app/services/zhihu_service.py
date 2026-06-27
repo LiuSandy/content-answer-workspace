@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from ..config.loader import get_settings
 from ..core.config import COOKIE_PATH_DEFAULT, get_default_topics, get_workflow_config, load_env_file
 from ..models import QuestionItem, Topic, WorkflowResult, ZhihuSearchResponse
 
@@ -347,7 +348,9 @@ async def fetch_question_detail_payload(question_id: str, user_agent: str) -> di
         include_signature=True,
         include_requested_with=True,
     )
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        timeout=get_settings().http.client_timeout_seconds, follow_redirects=True
+    ) as client:
         response = await client.get(detail_url, params=params, headers=headers)
     if response.status_code >= 400:
         return None
@@ -424,7 +427,9 @@ async def fetch_question_details(item: QuestionItem, user_agent: str) -> Questio
         referer="https://www.zhihu.com/",
         include_signature=False,
     )
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        timeout=get_settings().http.client_timeout_seconds, follow_redirects=True
+    ) as client:
         response = await client.get(item.url, headers=headers)
     if response.status_code < 400:
         html_snapshot = extract_zhihu_question_snapshot_from_html(response.text)
@@ -503,7 +508,9 @@ async def search_zhihu_for_keyword(topic: Topic, keyword: str, user_agent: str, 
         include_requested_with=True,
     )
 
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        timeout=get_settings().http.client_timeout_seconds, follow_redirects=True
+    ) as client:
         response = await client.get(url_base, params=params, headers=headers)
 
     if response.status_code >= 400:

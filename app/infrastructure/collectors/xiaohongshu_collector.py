@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Sequence
 
+from ...config.loader import get_settings
 from ...domain.ports import CollectorPort
 from ...models import QuestionItem, Topic, WorkflowConfig
 from ...services.xiaohongshu_service import (
@@ -17,8 +18,8 @@ from ...services.xiaohongshu_service import (
 )
 from .fetchers.playwright_fetcher import PlaywrightFetcher
 
-XIAOHONGSHU_COOKIE_DOMAIN = ".xiaohongshu.com"
-REQUEST_INTERVAL_SECONDS = 1.5
+XIAOHONGSHU_COOKIE_DOMAIN = get_settings().xiaohongshu.cookie_domain
+REQUEST_INTERVAL_SECONDS = get_settings().xiaohongshu.request_interval_seconds
 
 
 class XiaohongshuCollector(CollectorPort):
