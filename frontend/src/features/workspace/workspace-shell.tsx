@@ -1,4 +1,5 @@
 import { useWorkspaceStore } from "@/store/workspace-store";
+import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   ArrowUpRight,
   Bot,
@@ -9,6 +10,7 @@ import {
   ExternalLink,
   FileDown,
   Layers,
+  LayoutDashboard,
   LoaderCircle,
   Maximize2,
   PanelLeftClose,
@@ -22,6 +24,7 @@ import { useEffect, useDeferredValue, useMemo, useState, type ReactNode } from "
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Dialog,
@@ -321,25 +324,42 @@ function QuestionRow({
   active,
   onSelect,
   isGenerating,
+  checked,
+  onToggle,
 }: {
   question: WorkspaceState["questions"][number];
   active: boolean;
   onSelect: (questionId: string) => void;
   isGenerating: boolean;
+  checked?: boolean;
+  onToggle?: (questionId: string) => void;
 }) {
   const generated = Boolean(question.answer?.trim());
 
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(question.id)}
+    <div
       className={cn(
-        "w-full rounded-md border bg-white px-3 py-2.5 text-left transition-all hover:border-slate-300 hover:bg-slate-50/70",
+        "flex items-start gap-2 rounded-md border bg-white transition-all hover:border-slate-300 hover:bg-slate-50/70",
         active
           ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-500/20 hover:bg-blue-50/40"
           : "border-slate-200",
       )}
     >
+      {onToggle && (
+        <div className="flex items-center pl-3 pt-3">
+          <Checkbox
+            checked={checked ?? false}
+            onCheckedChange={() => onToggle(question.id)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4"
+          />
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => onSelect(question.id)}
+        className="min-w-0 flex-1 px-3 py-2.5 text-left"
+      >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -391,7 +411,8 @@ function QuestionRow({
           )}
         />
       </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -405,12 +426,22 @@ function QuestionsPanel({
   selectQuestion,
   isCollecting,
   isGeneratingOne,
+  selectedIds,
+  onToggleId,
+  onSelectAll,
+  onClearAll,
+  onAddToWorkbench,
 }: {
   questions: WorkspaceState["questions"];
   selectedQuestionId: string | null;
   selectQuestion: (questionId: string | null) => void;
   isCollecting: boolean;
   isGeneratingOne: (questionId: string) => boolean;
+  selectedIds?: Set<string>;
+  onToggleId?: (id: string) => void;
+  onSelectAll?: (ids: string[]) => void;
+  onClearAll?: () => void;
+  onAddToWorkbench?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -438,12 +469,6 @@ function QuestionsPanel({
     <div className="flex h-full min-h-0 flex-col gap-3">
       <PanelSection
         label={`问题列表 ${questions.length ? `(${questions.length})` : ""}`}
-        action={
-          <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px] text-slate-500 hover:text-slate-700">
-            <FileDown className="h-3 w-3" />
-            导出
-          </Button>
-        }
       >
         <div className="space-y-2">
           <div className="relative">
@@ -455,17 +480,54 @@ function QuestionsPanel({
               className="h-8 rounded-md border-slate-200 bg-white pl-8 text-[12px] shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
             />
           </div>
-          <div className="flex gap-1">
-            {["全部", "未生成", "已生成"].map((label) => (
+          {/* 全选行：有问题时始终显示（仅当启用批量模式） */}
+          {onToggleId && filteredQuestions.length > 0 && (
+            <div className="flex items-center gap-2 px-0.5">
+              <Checkbox
+                checked={
+                  selectedIds && selectedIds.size > 0 && filteredQuestions.every((q) => selectedIds.has(q.id))
+                    ? true
+                    : selectedIds && selectedIds.size > 0
+                    ? "indeterminate"
+                    : false
+                }
+                onCheckedChange={(v) => {
+                  if (v) {
+                    onSelectAll?.(filteredQuestions.map((q) => q.id));
+                  } else {
+                    onClearAll?.();
+                  }
+                }}
+                className="h-4 w-4"
+              />
+              <span className="text-[11px] text-slate-500">
+                全选（{filteredQuestions.length} 条）
+              </span>
+            </div>
+          )}
+          {/* 批量操作栏：有勾选时显示 */}
+          {selectedIds && selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5">
+              <span className="flex-1 text-[11px] font-medium text-blue-700">
+                已选 {selectedIds.size} 条
+              </span>
               <button
-                key={label}
                 type="button"
-                className="rounded-[4px] bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-200 first:bg-slate-800 first:text-white"
+                onClick={onClearAll}
+                className="text-[11px] text-blue-500 hover:text-blue-700"
               >
-                {label}
+                清空
               </button>
-            ))}
-          </div>
+              <Button
+                size="sm"
+                className="h-6 gap-1 rounded-md bg-slate-900 px-2.5 text-[11px] font-medium hover:bg-slate-800"
+                onClick={onAddToWorkbench}
+              >
+                <LayoutDashboard className="h-3 w-3" />
+                加入工作台
+              </Button>
+            </div>
+          )}
         </div>
       </PanelSection>
 
@@ -481,6 +543,8 @@ function QuestionsPanel({
                 active={q.id === selectedQuestionId}
                 onSelect={selectQuestion}
                 isGenerating={isGeneratingOne(q.id)}
+                checked={selectedIds?.has(q.id)}
+                onToggle={onToggleId}
               />
             ))
           ) : (
@@ -751,6 +815,7 @@ function EmptySlot({ message }: { message: string }) {
 function CollectPage() {
   const workspace = useWorkspaceOutlet();
   const { saveState, statusMessage } = useWorkspaceStore();
+  const { addItems } = useWorkbenchStore();
   const {
     selectedPlatform,
     selectedSource,
@@ -779,6 +844,44 @@ function CollectPage() {
     isGeneratingOne,
     isPolishingOne,
   } = workspace;
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [workbenchMessage, setWorkbenchMessage] = useState("");
+
+  function toggleId(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function handleSelectAll(ids: string[]) {
+    setSelectedIds(new Set(ids));
+  }
+
+  function handleClearAll() {
+    setSelectedIds(new Set());
+  }
+
+  function handleAddToWorkbench() {
+    const selected = questions.filter((q) => selectedIds.has(q.id));
+    const workbenchItems = selected.map((q) => ({
+      ...q,
+      addedAt: new Date().toISOString(),
+      sourcePlatform: selectedPlatform,
+      sourceTopic: selectedTopic?.name ?? q.topic ?? "",
+      promptConfig: { answerStyle, systemPrompt, generationPrompt },
+    }));
+    const { added, skipped } = addItems(workbenchItems);
+    setSelectedIds(new Set());
+    setWorkbenchMessage(
+      skipped > 0
+        ? `已加入 ${added} 条，跳过 ${skipped} 条重复`
+        : `已加入 ${added} 条到工作台`,
+    );
+    setTimeout(() => setWorkbenchMessage(""), 3000);
+  }
 
   useEffect(() => {
     const draft = useWorkspaceStore.getState().topicDraft;
@@ -943,8 +1046,10 @@ function CollectPage() {
               status={saveState === "saved" ? "done" : saveState === "saving" ? "running" : saveState === "error" ? "error" : "idle"}
               value={saveState === "saved" ? "已保存" : saveState === "saving" ? "保存中" : "未保存"}
             />
-            {statusMessage && (
-              <span className="ml-auto text-[11px] text-slate-400">{statusMessage}</span>
+            {(workbenchMessage || statusMessage) && (
+              <span className="ml-auto text-[11px] text-slate-400">
+                {workbenchMessage || statusMessage}
+              </span>
             )}
           </div>
         )}
@@ -998,6 +1103,11 @@ function CollectPage() {
             selectQuestion={workspace.selectQuestion}
             isCollecting={isCollecting}
             isGeneratingOne={isGeneratingOne}
+            selectedIds={selectedIds}
+            onToggleId={toggleId}
+            onSelectAll={handleSelectAll}
+            onClearAll={handleClearAll}
+            onAddToWorkbench={handleAddToWorkbench}
           />
         </div>
 

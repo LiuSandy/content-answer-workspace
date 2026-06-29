@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Layers, MessageSquare, Plus, Settings, Sparkles, Trash2 } from "lucide-react";
+import { ArrowUpRight, ChevronDown, ChevronRight, LayoutDashboard, Layers, MessageSquare, Plus, Settings, Sparkles, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sidebar,
   SidebarContent,
@@ -33,6 +32,7 @@ const SESSION_LIST_QUERY_KEY = ["chat-session-list"];
 const navItems = [
   { to: "/import", label: "URL 导入回答", icon: ArrowUpRight },
   { to: "/collect", label: "主题采集", icon: Layers },
+  { to: "/workbench", label: "工作台", icon: LayoutDashboard },
   { to: "/hotlist", label: "知乎热榜", icon: Sparkles },
   { to: "/chat", label: "对话", icon: MessageSquare },
 ] as const;
@@ -42,6 +42,7 @@ export function AppSidebar() {
   const activeSessionId = useWorkspaceStore((s) => s.activeSessionId);
   const setActiveSessionId = useWorkspaceStore((s) => s.setActiveSessionId);
   const [isCreating, setIsCreating] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(true);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -115,7 +116,17 @@ export function AppSidebar() {
         {/* ── 对话历史（折叠模式下整组隐藏） ── */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <div className="flex items-center justify-between px-2 py-1">
-            <SidebarGroupLabel className="p-0 text-[11px]">对话历史</SidebarGroupLabel>
+            <button
+              type="button"
+              className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setIsHistoryOpen((v) => !v)}
+            >
+              {isHistoryOpen
+                ? <ChevronDown className="h-3 w-3" />
+                : <ChevronRight className="h-3 w-3" />
+              }
+              对话历史
+            </button>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -132,50 +143,53 @@ export function AppSidebar() {
             </Tooltip>
           </div>
 
-          <SidebarGroupContent>
-            <ScrollArea className="max-h-[300px]">
-              <SidebarMenu>
-                {sessions.length === 0 ? (
-                  <p className="px-2 py-2 text-[11px] text-muted-foreground">
-                    还没有对话，点击 + 新建。
-                  </p>
-                ) : (
-                  sessions.map((session) => (
-                    <SidebarMenuItem key={session.sessionId}>
-                      <div
-                        className={cn(
-                          "group/item flex w-full min-w-0 items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-sidebar-accent",
-                          session.sessionId === activeSessionId && "bg-sidebar-accent font-medium",
-                        )}
-                      >
-                        <button
-                          type="button"
-                          className="min-w-0 flex-1 truncate text-left text-[12px]"
-                          onClick={() => {
-                            setActiveSessionId(session.sessionId);
-                            navigate("/chat");
-                          }}
+          {isHistoryOpen && (
+            <SidebarGroupContent>
+              <div className="max-h-[300px] overflow-y-auto">
+                <SidebarMenu>
+                  {sessions.length === 0 ? (
+                    <p className="px-2 py-2 text-[11px] text-muted-foreground">
+                      还没有对话，点击 + 新建。
+                    </p>
+                  ) : (
+                    sessions.map((session) => (
+                      <SidebarMenuItem key={session.sessionId} className="overflow-hidden">
+                        <div
+                          className={cn(
+                            "group/item flex w-full min-w-0 items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-sidebar-accent",
+                            session.sessionId === activeSessionId && "bg-sidebar-accent font-medium",
+                          )}
                         >
-                          {session.title}
-                        </button>
-                        <button
-                          type="button"
-                          className="invisible shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover/item:visible group-hover/item:opacity-100"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteSession(session.sessionId);
-                          }}
-                          aria-label="删除对话"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </SidebarMenuItem>
-                  ))
-                )}
-              </SidebarMenu>
-            </ScrollArea>
-          </SidebarGroupContent>
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 overflow-hidden text-left"
+                            title={session.title}
+                            onClick={() => {
+                              setActiveSessionId(session.sessionId);
+                              navigate("/chat");
+                            }}
+                          >
+                            <span className="block truncate text-[12px]">{session.title}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="invisible shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover/item:visible group-hover/item:opacity-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSession(session.sessionId);
+                            }}
+                            aria-label="删除对话"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </SidebarMenuItem>
+                    ))
+                  )}
+                </SidebarMenu>
+              </div>
+            </SidebarGroupContent>
+          )}
         </SidebarGroup>
       </SidebarContent>
 

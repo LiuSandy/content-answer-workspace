@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useWorkspaceStore } from "@/store/workspace-store";
-import type { ChatMessage } from "@/types/workflow";
+import type { ChatCollectItem, ChatCollectResult, ChatMessage } from "@/types/workflow";
 
 import { ChatMessageInput } from "./chat-message-input";
 import { ChatMessageThread } from "./chat-message-thread";
@@ -21,6 +21,7 @@ export function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [toolSteps, setToolSteps] = useState<string[]>([]);
+  const [liveCollectResult, setLiveCollectResult] = useState<ChatCollectResult | null>(null);
   const queryClient = useQueryClient();
 
   const historyQuery = useQuery({
@@ -41,8 +42,10 @@ export function ChatPage() {
     setIsSending(true);
     setStreamingContent("");
     setToolSteps([]);
-    // 本地累加器：回调闭包捕获的 state 是初始值，用局部变量保证 onDone 拿到最新步骤
+    setLiveCollectResult(null);
+    // 本地累加器：回调闭包捕获的 state 是初始值，用局部变量保证 onDone 拿到最新值
     let localToolSteps: string[] = [];
+    let localCollectResult: ChatCollectResult | null = null;
     try {
       await streamConversationMessage(
         { sessionId: activeSessionId, message },
@@ -55,6 +58,15 @@ export function ChatPage() {
             localToolSteps = [...localToolSteps, text];
             setToolSteps(localToolSteps);
           },
+          onCollectResult: (platform, topic, items) => {
+            const result: ChatCollectResult = {
+              platform,
+              topic,
+              items: items as ChatCollectItem[],
+            };
+            localCollectResult = result;
+            setLiveCollectResult(result);
+          },
           onChunk: (text) => {
             setStreamingContent((prev) => prev + text);
             // 最终回答开始流出时，补一条「正在整理」进行中提示（仅一次，仅在有工具调用时）
@@ -66,12 +78,15 @@ export function ChatPage() {
           onDone: (data) => {
             setStreamingContent("");
             setToolSteps([]);
-            // 落库的过程消息剔除「正在整理」这类进行中提示，与历史回看保持一致
+            setLiveCollectResult(null);
             const committedSteps = localToolSteps.filter((step) => step !== FINAL_OUTPUT_STEP);
             setMessages((prev) => [
               ...prev,
               ...(committedSteps.length > 0
                 ? [{ role: "tool" as const, content: "", steps: committedSteps }]
+                : []),
+              ...(localCollectResult
+                ? [{ role: "collect" as const, content: "", collectResult: localCollectResult }]
                 : []),
               { role: "assistant", content: data.reply },
             ]);
@@ -86,6 +101,7 @@ export function ChatPage() {
     } catch {
       setStreamingContent("");
       setToolSteps([]);
+      setLiveCollectResult(null);
       setMessages((prev) => [...prev, { role: "assistant", content: "发送失败，请重试" }]);
     } finally {
       setIsSending(false);
@@ -102,6 +118,7 @@ export function ChatPage() {
           isSending={isSending}
           streamingContent={streamingContent}
           toolSteps={toolSteps}
+          liveCollectResult={liveCollectResult}
         />
         <ChatMessageInput disabled={!activeSessionId || isSending} onSend={handleSend} />
       </div>

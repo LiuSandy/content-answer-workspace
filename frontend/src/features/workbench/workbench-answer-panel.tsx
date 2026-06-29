@@ -1,0 +1,196 @@
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { Bot, Check, Copy, ExternalLink, LoaderCircle, RefreshCcw, Sparkles } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { MarkdownEditor } from "@/components/ui/markdown-editor";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { useWorkbenchStore } from "@/store/workbench-store";
+import { streamGenerateOneAnswer } from "@/features/workspace/workflow-api";
+import type { WorkbenchItem } from "@/types/workflow";
+
+function QuestionBrief({ item }: { item: WorkbenchItem }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50/60 px-3.5 py-3">
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        {item.sourceTopic && (
+          <span className="rounded-[4px] bg-blue-50 px-1.5 py-[1px] text-[10px] font-semibold text-blue-700 ring-1 ring-blue-200">
+            {item.sourceTopic}
+          </span>
+        )}
+        <span className="text-[11px] text-slate-400">{item.answerCount} 个回答</span>
+        {item.updatedTime && (
+          <span className="text-[11px] text-slate-400">{item.updatedTime}</span>
+        )}
+        <button
+          type="button"
+          onClick={() => window.open(item.url, "_blank", "noreferrer")}
+          className="ml-auto flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+        >
+          打开原链接
+          <ExternalLink className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="text-[14px] font-semibold leading-snug text-slate-900">{item.title}</div>
+      {item.excerpt && (
+        <p className="mt-1.5 text-[12px] leading-relaxed text-slate-500">{item.excerpt}</p>
+      )}
+    </div>
+  );
+}
+
+/** 工作台右侧回答工作区，使用问题自身的 promptConfig 生成回答。 */
+export function WorkbenchAnswerPanel() {
+  const { items, selectedItemId, updateItemAnswer, setItem } = useWorkbenchStore();
+  const item = items.find((i) => i.id === selectedItemId) ?? null;
+  const [contentConstraint, setContentConstraint] = useState("");
+  const [isCopied, setIsCopied] = useState(false);
+
+  const generateMutation = useMutation({
+    mutationFn: (target: WorkbenchItem) => {
+      let accumulated = "";
+      return streamGenerateOneAnswer(
+        {
+          platform: target.sourcePlatform,
+          item: target,
+          answerStyle: target.promptConfig.answerStyle,
+          systemPrompt: target.promptConfig.systemPrompt,
+          generationPrompt: target.promptConfig.generationPrompt,
+          contentConstraint: contentConstraint || undefined,
+        },
+        {
+          onChunk: (text) => {
+            accumulated += text;
+            updateItemAnswer(target.id, accumulated);
+          },
+          onDone: (data) => {
+            setItem(target.id, {
+              ...target,
+              ...data.item,
+              addedAt: target.addedAt,
+              sourcePlatform: target.sourcePlatform,
+              sourceTopic: target.sourceTopic,
+              promptConfig: target.promptConfig,
+            });
+          },
+          onError: () => {},
+        },
+      );
+    },
+  });
+
+  const isGenerating = generateMutation.isPending;
+
+  async function copyAnswer() {
+    if (!item?.answer?.trim()) return;
+    await navigator.clipboard.writeText(item.answer);
+    setIsCopied(true);
+    window.setTimeout(() => setIsCopied(false), 1500);
+  }
+
+  return (
+    <div className="flex min-h-0 flex-col gap-3">
+      {/* 顶部操作栏 */}
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          回答工作区
+        </span>
+        {item && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {item.answer?.trim() ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 rounded-md border-slate-200 px-2.5 text-[12px] font-medium"
+                onClick={() => generateMutation.mutate(item)}
+                disabled={isGenerating}
+              >
+                {isGenerating ? (
+                  <LoaderCircle className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCcw className="h-3 w-3" />
+                )}
+                重新生成
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="h-7 gap-1.5 rounded-md bg-slate-900 px-3 text-[12px] font-medium hover:bg-slate-800"
+                onClick={() => generateMutation.mutate(item)}
+                disabled={isGenerating}
+              >
+                {isGenerating ? (
+                  <LoaderCircle className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3" />
+                )}
+                {isGenerating ? "生成中…" : "AI 生成"}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 内容约束 */}
+      <div className="flex flex-col space-y-1.5">
+        <Label className="text-[11px] font-medium text-slate-600">内容约束</Label>
+        <Textarea
+          rows={2}
+          value={contentConstraint}
+          onChange={(e) => setContentConstraint(e.target.value)}
+          className="resize-none rounded-md border-slate-200 bg-white text-[12px] leading-relaxed shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
+          placeholder="可选：对回答内容的额外约束或要求"
+        />
+      </div>
+
+      {/* 空状态 */}
+      {!item ? (
+        <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 rounded-md border border-dashed border-slate-200 bg-slate-50/50">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+            <Bot className="h-5 w-5 text-slate-400" />
+          </div>
+          <div className="text-center">
+            <div className="text-[13px] font-semibold text-slate-700">未选中问题</div>
+            <div className="mt-1 text-[12px] text-slate-400">从左侧问题列表选择一个题目</div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <QuestionBrief item={item} />
+
+          <div className={cn("relative", isGenerating && "pointer-events-none")}>
+            <MarkdownEditor
+              className={cn(
+                "min-h-[320px] rounded-md border bg-white transition-colors",
+                isGenerating ? "border-blue-300 opacity-60" : "border-slate-200",
+              )}
+              placeholder="点击 AI 生成 按钮自动撰写，或直接手工编辑内容。"
+              value={item.answer || ""}
+              onChange={(v) => updateItemAnswer(item.id, v)}
+            />
+            {item.answer?.trim() && !isGenerating && (
+              <button
+                type="button"
+                onClick={copyAnswer}
+                className="absolute right-2 top-[7px] z-10 flex items-center gap-1 rounded px-1.5 py-[3px] text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                {isCopied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                {isCopied ? "已复制" : "复制"}
+              </button>
+            )}
+            {isGenerating && (
+              <div className="absolute inset-0 flex items-center justify-center rounded-md bg-white/40">
+                <div className="flex items-center gap-2 rounded-full border border-blue-200 bg-white px-3.5 py-2 text-[12px] font-medium text-blue-600 shadow-sm">
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  AI 正在生成回答…
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 
+import yaml
 from langchain_core.tools import tool
 
 _PLATFORM = "xiaohongshu"
 _MAX_CHARS = 6000
+_MAX_ITEMS = 20
 
 
 def _run(args: list[str]) -> str:
@@ -26,11 +29,37 @@ def _run(args: list[str]) -> str:
         return f"[{_PLATFORM}] 调用失败：{e}"
 
 
+def _parse_yaml_list(raw: str) -> list[dict]:
+    """将 opencli YAML 输出解析为 dict 列表；解析失败返回空列表。"""
+    try:
+        data = yaml.safe_load(raw)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _normalize_item(item: dict) -> dict:
+    """规范化小红书条目字段名，兼容 opencli 不同版本的输出差异。"""
+    title = item.get("title") or item.get("name") or ""
+    url = item.get("url") or item.get("link") or item.get("note_url") or ""
+    excerpt = (item.get("desc") or item.get("content") or item.get("summary") or "")[:120]
+    raw_likes = item.get("likes") or item.get("liked_count") or item.get("like_count") or 0
+    likes = int(raw_likes) if str(raw_likes).isdigit() else 0
+    author = str(item.get("author") or item.get("user") or item.get("username") or "")
+    metric = f"{likes:,} 赞" if likes > 0 else ""
+    return {"title": title, "url": url, "excerpt": excerpt, "metric": metric, "author": author}
+
+
 @tool
 def xiaohongshu_search(query: str) -> str:
-    """在小红书搜索笔记，返回标题、作者、点赞数和链接（YAML 格式）。
+    """在小红书搜索笔记，返回结构化 JSON，每条包含标题、链接、摘要、点赞数和作者。
     需要 Chrome 已打开并登录小红书，且安装了 OpenCLI 扩展。"""
-    return _run(["opencli", "xiaohongshu", "search", query, "-f", "yaml"])
+    raw = _run(["opencli", "xiaohongshu", "search", query, "-f", "yaml"])
+    raw_items = _parse_yaml_list(raw)
+    if not raw_items:
+        return raw  # 解析失败时回退到原始文本，LLM 仍可读取
+    items = [_normalize_item(i) for i in raw_items[:_MAX_ITEMS] if i.get("title") or i.get("name")]
+    return json.dumps({"platform": _PLATFORM, "topic": query, "items": items}, ensure_ascii=False)
 
 
 @tool

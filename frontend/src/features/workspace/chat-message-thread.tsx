@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 
 import { cn } from "@/lib/utils";
-import type { ChatMessage } from "@/types/workflow";
+import type { ChatCollectResult, ChatMessage } from "@/types/workflow";
 
+import { ChatCollectResultCard } from "./chat-collect-result-card";
 import { ChatToolProcess } from "./chat-tool-process";
 import { MarkdownMessage } from "./markdown-message";
 
@@ -12,6 +13,8 @@ type Props = {
   isSending: boolean;
   streamingContent?: string;
   toolSteps?: string[];
+  /** 实时采集结果：工具调用完成但 LLM 尚未输出最终回答时展示 */
+  liveCollectResult?: ChatCollectResult | null;
 };
 
 function ThinkingDots() {
@@ -37,6 +40,7 @@ export function ChatMessageThread({
   isSending,
   streamingContent,
   toolSteps = [],
+  liveCollectResult,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -50,12 +54,22 @@ export function ChatMessageThread({
       {!isLoading && messages.length === 0 && (
         <p className="text-sm text-muted-foreground">还没有消息，发一句话开始对话吧。</p>
       )}
-      {messages.map((message, index) =>
-        message.role === "tool" ? (
-          <div key={index} className="flex justify-start">
-            <ChatToolProcess steps={message.steps ?? []} />
-          </div>
-        ) : (
+      {messages.map((message, index) => {
+        if (message.role === "tool") {
+          return (
+            <div key={index} className="flex justify-start">
+              <ChatToolProcess steps={message.steps ?? []} />
+            </div>
+          );
+        }
+        if (message.role === "collect" && message.collectResult) {
+          return (
+            <div key={index} className="flex justify-start">
+              <ChatCollectResultCard result={message.collectResult} />
+            </div>
+          );
+        }
+        return (
           <div
             key={index}
             className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}
@@ -71,14 +85,19 @@ export function ChatMessageThread({
               <MarkdownMessage content={message.content} />
             </div>
           </div>
-        ),
-      )}
+        );
+      })}
       {isSending && toolSteps.length > 0 && (
         <div className="flex justify-start">
           <ChatToolProcess steps={toolSteps} live />
         </div>
       )}
-      {isSending && !streamingContent && toolSteps.length === 0 && (
+      {isSending && liveCollectResult && (
+        <div className="flex justify-start">
+          <ChatCollectResultCard result={liveCollectResult} />
+        </div>
+      )}
+      {isSending && !streamingContent && toolSteps.length === 0 && !liveCollectResult && (
         <div className="flex justify-start">
           <div className="rounded-lg bg-muted">
             <ThinkingDots />
