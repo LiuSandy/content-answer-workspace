@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat 采集结果展示 — 设计稿</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f4f2ee;
+      --surface: #ffffff;
+      --border: #e5e2db;
+      --border-hover: #ccc8bf;
+      --text-1: #1a1917;
+      --text-2: #65605a;
+      --text-3: #a8a29c;
+      --zhihu: #0066cc;
+      --zhihu-bg: rgba(0,102,204,0.07);
+      --zhihu-border: rgba(0,102,204,0.18);
+      --xiaohongshu: #ff2442;
+      --xiaohongshu-bg: rgba(255,36,66,0.07);
+      --xiaohongshu-border: rgba(255,36,66,0.18);
+      --amber: #d97706;
+      --amber-light: rgba(217,119,6,0.1);
+      --selected-bg: rgba(0,102,204,0.04);
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Noto Sans SC', system-ui, sans-serif;
+      --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text-1);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 20px 80px;
+    }
+
+    /* ── Page Header ── */
+    .page-header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .page-label {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-bottom: 10px;
+    }
+    .page-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text-1);
+      margin-bottom: 8px;
+    }
+    .page-desc {
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.7;
+      max-width: 480px;
+    }
+
+    /* ── Chat Window ── */
+    .chat-window {
+      width: 720px;
+      max-width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow-card);
+    }
+
+    .chat-topbar {
+      height: 48px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fafaf8;
+    }
+    .topbar-logo {
+      width: 22px; height: 22px;
+      background: var(--text-1);
+      border-radius: 5px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      flex-shrink: 0;
+    }
+    .topbar-session {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-1);
+    }
+    .topbar-chip {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-3);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 7px;
+    }
+
+    /* ── Messages ── */
+    .chat-body {
+      padding: 24px 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .msg-row { display: flex; }
+    .msg-row.user  { justify-content: flex-end; }
+    .msg-row.assistant { justify-content: flex-start; }
+
+    .msg-bubble {
+      max-width: 68%;
+      padding: 10px 14px;
+      font-size: 13.5px;
+      line-height: 1.65;
+      border-radius: 10px;
+    }
+    .msg-bubble.user {
+      background: var(--text-1);
+      color: #fff;
+      border-bottom-right-radius: 3px;
+    }
+    .msg-bubble.assistant {
+      background: #f5f4f0;
+      color: var(--text-1);
+      border-bottom-left-radius: 3px;
+      border: 1px solid var(--border);
+    }
+
+    /* ── Tool Process ── */
+    .tool-row { display: flex; }
+    .tool-block {
+      max-width: 75%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #faf9f7;
+      overflow: hidden;
+    }
+    .tool-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      color: var(--text-3);
+      font-size: 11.5px;
+      user-select: none;
+      transition: color 0.15s;
+    }
+    .tool-header:hover { color: var(--text-2); }
+    .tool-header .tool-icon {
+      font-size: 12px;
+    }
+    .tool-header .chevron {
+      margin-left: auto;
+      font-size: 10px;
+      transition: transform 0.2s;
+    }
+    .tool-block.open .chevron { transform: rotate(90deg); }
+    .tool-steps {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 8px 12px 10px;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .tool-block.open .tool-steps { display: flex; }
+    .tool-step {
+      font-size: 11.5px;
+      color: var(--text-2);
+      line-height: 1.5;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .tool-step-icon { flex-shrink: 0; }
+
+    /* ════════════════════════════════════════
+       采集结果卡片 — 核心设计
+    ════════════════════════════════════════ */
+    .collect-row { display: flex; }
+
+    .collect-card {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-top: 2.5px solid var(--zhihu);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    /* 卡片头 */
+    .card-head {
+      padding: 13px 16px 11px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .platform-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--zhihu-bg);
+      color: var(--zhihu);
+      border: 1px solid var(--zhihu-border);
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      flex-shrink: 0;
+    }
+    .platform-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--zhihu);
+      flex-shrink: 0;
+    }
+    .card-meta {
+      flex: 1;
+      min-width: 0;
+    }
+    .card-topic {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text-1);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .count-chip {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--text-3);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
+    .card-subtitle {
+      font-size: 11.5px;
+      color: var(--text-3);
+      margin-top: 2px;
+    }
+
+    /* 问题列表 */
+    .question-list { padding: 0; }
+
+    .question-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 11px;
+      padding: 11px 16px;
+      cursor: pointer;
+      border-bottom: 1px solid #f2f0ec;
+      transition: background 0.12s;
+      position: relative;
+    }
+    .question-item:last-child { border-bottom: none; }
+    .question-item:hover { background: #fafaf8; }
+    .question-item.selected { background: var(--selected-bg); }
+
+    /* 排名徽章 */
+    .rank {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      width: 20px;
+      height: 20px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .rank.top1 { background: #fef3c7; color: #92400e; }
+    .rank.top2 { background: #f1f5f9; color: #475569; }
+    .rank.top3 { background: #fdf2ee; color: #9a3412; }
+    .rank.normal { background: var(--bg); color: var(--text-3); }
+
+    .question-content { flex: 1; min-width: 0; }
+    .question-title {
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text-1);
+      margin-bottom: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .question-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--text-3);
+    }
+    .meta-divider {
+      width: 1px; height: 10px;
+      background: var(--border);
+    }
+    .heat-wrap {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .heat-bar-track {
+      width: 48px; height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .heat-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #f59e0b, #ef4444);
+    }
+    .heat-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--amber);
+    }
+
+    /* 复选框 */
+    .q-checkbox {
+      width: 15px; height: 15px;
+      border: 1.5px solid var(--border);
+      border-radius: 3px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      background: var(--surface);
+    }
+    .question-item.selected .q-checkbox {
+      background: var(--zhihu);
+      border-color: var(--zhihu);
+    }
+    .q-checkbox-check {
+      display: none;
+      width: 8px; height: 5px;
+      border-left: 1.5px solid #fff;
+      border-bottom: 1.5px solid #fff;
+      transform: rotate(-45deg) translateY(-1px);
+    }
+    .question-item.selected .q-checkbox-check { display: block; }
+
+    /* 展开控制 */
+    .expand-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 9px;
+      font-size: 11.5px;
+      color: var(--text-3);
+      cursor: pointer;
+      border-top: 1px solid var(--border);
+      background: #fafaf8;
+      user-select: none;
+      transition: color 0.15s, background 0.15s;
+    }
+    .expand-toggle:hover {
+      color: var(--text-2);
+      background: #f5f4f0;
+    }
+    .expand-icon { font-size: 10px; transition: transform 0.2s; }
+    .collect-card.expanded .expand-icon { transform: rotate(180deg); }
+
+    /* 隐藏的问题项 */
+    .question-item.hidden-item { display: none; }
+    .collect-card.expanded .question-item.hidden-item { display: flex; }
+
+    /* 操作栏 */
+    .card-actions {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+    }
+    .action-info {
+      flex: 1;
+      font-size: 11.5px;
+      color: var(--text-3);
+      font-family: var(--mono);
+    }
+    .action-info .sel-count {
+      color: var(--zhihu);
+      font-weight: 500;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 13px;
+      font-size: 12px;
+      font-family: var(--sans);
+      font-weight: 500;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-2);
+    }
+    .btn-outline:hover {
+      border-color: var(--border-hover);
+      color: var(--text-1);
+      background: var(--bg);
+    }
+    .btn-primary {
+      background: var(--text-1);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #3a3632; }
+
+    /* 聊天输入框 */
+    .chat-input-bar {
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      background: #fafaf8;
+    }
+    .chat-input-field {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: var(--sans);
+      color: var(--text-1);
+      background: var(--surface);
+      outline: none;
+      color: var(--text-3);
+    }
+    .btn-send {
+      width: 34px; height: 34px;
+      background: var(--text-1);
+      border: none;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      color: #fff;
+      flex-shrink: 0;
+      transition: background 0.15s;
+      font-size: 14px;
+    }
+    .btn-send:hover { background: #3a3632; }
+
+    /* 设计标注 */
+    .design-notes {
+      width: 720px;
+      max-width: 100%;
+      margin-top: 32px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .note-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .note-label {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-bottom: 6px;
+    }
+    .note-text {
+      font-size: 12px;
+      color: var(--text-2);
+      line-height: 1.6;
+    }
+    .note-text strong { color: var(--text-1); font-weight: 600; }
+
+    /* 小红书变种 */
+    .collect-card.xiaohongshu {
+      border-top-color: var(--xiaohongshu);
+    }
+    .platform-badge.xhs {
+      background: var(--xiaohongshu-bg);
+      color: var(--xiaohongshu);
+      border-color: var(--xiaohongshu-border);
+    }
+    .platform-dot.xhs { background: var(--xiaohongshu); }
+
+    /* 提示: 状态2 展示区 */
+    .section-divider {
+      width: 720px;
+      max-width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 40px 0 28px;
+    }
+    .section-divider::before,
+    .section-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .section-divider-label {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      white-space: nowrap;
+    }
+
+    /* 选中状态 demo */
+    .demo-card-only {
+      width: 720px;
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Page Header ── -->
+  <div class="page-header">
+    <div class="page-label">Chat 采集结果 · 设计方案</div>
+    <h1 class="page-title">采集结果嵌入式展示</h1>
+    <p class="page-desc">
+      当 Agent 完成平台采集后，在 chat 消息流中以结构化卡片呈现结果，
+      支持预览、选择和一键导入工作台，而非仅依赖文字总结。
+    </p>
+  </div>
+
+  <!-- ── Chat Window: 完整对话流 ── -->
+  <div class="chat-window">
+    <div class="chat-topbar">
+      <div class="topbar-logo">CW</div>
+      <span class="topbar-session">独立博客 — 对话</span>
+      <span class="topbar-chip">2026-06-29</span>
+    </div>
+
+    <div class="chat-body">
+
+      <!-- 用户消息 -->
+      <div class="msg-row user">
+        <div class="msg-bubble user">
+          帮我从知乎采集关于「独立博客」的热门问题，要最新的 20 个
+        </div>
+      </div>
+
+      <!-- 工具调用过程（默认折叠） -->
+      <div class="tool-row">
+        <div class="tool-block" id="toolBlock">
+          <div class="tool-header" onclick="toggleTool()">
+            <span class="tool-icon">🔧</span>
+            <span>工具调用过程</span>
+            <span class="chevron">›</span>
+          </div>
+          <div class="tool-steps">
+            <div class="tool-step"><span class="tool-step-icon">🔍</span> 搜索知乎「独立博客」相关问题</div>
+            <div class="tool-step"><span class="tool-step-icon">📡</span> 发现 27 个候选问题</div>
+            <div class="tool-step"><span class="tool-step-icon">🔽</span> 按综合热度排序，截取前 20 个</div>
+            <div class="tool-step"><span class="tool-step-icon">✅</span> 采集完成，共获取 20 个问题</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ████████████████████████████████
+           采集结果卡片（核心设计）
+      ████████████████████████████████ -->
+      <div class="collect-row">
+        <div class="collect-card" id="collectCard">
+
+          <!-- 卡片头 -->
+          <div class="card-head">
+            <span class="platform-badge">
+              <span class="platform-dot"></span>
+              知乎
+            </span>
+            <div class="card-meta">
+              <div class="card-topic">
+                独立博客
+                <span class="count-chip">20 个问题</span>
+              </div>
+              <div class="card-subtitle">按回答数降序 · 采集于 2026-06-29</div>
+            </div>
+          </div>
+
+          <!-- 问题列表 -->
+          <div class="question-list" id="questionList">
+
+            <div class="question-item" onclick="toggleSelect(this)">
+              <span class="rank top1">1</span>
+              <div class="question-content">
+                <div class="question-title">有哪些值得关注的中文独立博客推荐？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 445 个回答</span>
+                  <span class="meta-divider"></span>
+                  <span class="heat-wrap">
+                    <div class="heat-bar-track"><div class="heat-bar-fill" style="width:100%"></div></div>
+                    <span class="heat-label">热</span>
+                  </span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+            <div class="question-item" onclick="toggleSelect(this)">
+              <span class="rank top2">2</span>
+              <div class="question-content">
+                <div class="question-title">你们是如何坚持独立博客写作的？已经写了多久了？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 312 个回答</span>
+                  <span class="meta-divider"></span>
+                  <span class="heat-wrap">
+                    <div class="heat-bar-track"><div class="heat-bar-fill" style="width:70%"></div></div>
+                    <span class="heat-label">热</span>
+                  </span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+            <div class="question-item" onclick="toggleSelect(this)">
+              <span class="rank top3">3</span>
+              <div class="question-content">
+                <div class="question-title">独立博客和公众号，技术人应该怎么选？各有哪些优缺点？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 256 个回答</span>
+                  <span class="meta-divider"></span>
+                  <span class="heat-wrap">
+                    <div class="heat-bar-track"><div class="heat-bar-fill" style="width:57%"></div></div>
+                    <span class="heat-label">热</span>
+                  </span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+            <div class="question-item" onclick="toggleSelect(this)">
+              <span class="rank normal">4</span>
+              <div class="question-content">
+                <div class="question-title">2024 年了，还有没有必要写独立博客？有哪些平台值得考虑？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 189 个回答</span>
+                  <span class="meta-divider"></span>
+                  <span class="heat-wrap">
+                    <div class="heat-bar-track"><div class="heat-bar-fill" style="width:42%"></div></div>
+                  </span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+            <div class="question-item" onclick="toggleSelect(this)">
+              <span class="rank normal">5</span>
+              <div class="question-content">
+                <div class="question-title">如何让独立博客获得更多流量和忠实读者？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 134 个回答</span>
+                  <span class="meta-divider"></span>
+                  <span class="heat-wrap">
+                    <div class="heat-bar-track"><div class="heat-bar-fill" style="width:30%"></div></div>
+                  </span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+            <!-- 折叠项（默认隐藏） -->
+            <div class="question-item hidden-item" onclick="toggleSelect(this)">
+              <span class="rank normal">6</span>
+              <div class="question-content">
+                <div class="question-title">独立博客用什么框架搭建比较好？Hugo、Jekyll 还是 Hexo？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 118 个回答</span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+            <div class="question-item hidden-item" onclick="toggleSelect(this)">
+              <span class="rank normal">7</span>
+              <div class="question-content">
+                <div class="question-title">写独立博客对程序员职业发展有多大帮助？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 97 个回答</span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+            <div class="question-item hidden-item" onclick="toggleSelect(this)">
+              <span class="rank normal">8</span>
+              <div class="question-content">
+                <div class="question-title">独立博客如何通过广告和赞助实现变现？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 88 个回答</span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+            <div class="question-item hidden-item" onclick="toggleSelect(this)">
+              <span class="rank normal">9</span>
+              <div class="question-content">
+                <div class="question-title">国内独立博客的 SEO 优化有哪些实用技巧？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 76 个回答</span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+            <div class="question-item hidden-item" onclick="toggleSelect(this)">
+              <span class="rank normal">10</span>
+              <div class="question-content">
+                <div class="question-title">博客评论区应该用 Disqus 还是自建，有哪些方案？</div>
+                <div class="question-meta">
+                  <span class="meta-item">💬 65 个回答</span>
+                </div>
+              </div>
+              <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+            </div>
+
+          </div><!-- /question-list -->
+
+          <!-- 展开/折叠 -->
+          <div class="expand-toggle" id="expandToggle" onclick="toggleExpand()">
+            <span>查看全部 20 个问题</span>
+            <span class="expand-icon">▾</span>
+          </div>
+
+          <!-- 操作栏 -->
+          <div class="card-actions">
+            <div class="action-info" id="actionInfo">
+              已选 <span class="sel-count" id="selCount">0</span> / 20 个问题
+            </div>
+            <button class="btn btn-outline" onclick="selectAll()">全选</button>
+            <button class="btn btn-primary" onclick="handleImport()">
+              导入工作台
+            </button>
+          </div>
+
+        </div><!-- /collect-card -->
+      </div><!-- /collect-row -->
+
+      <!-- AI 文字总结 -->
+      <div class="msg-row assistant">
+        <div class="msg-bubble assistant">
+          已从知乎为你采集到 20 个关于「独立博客」的热门问题，按回答数排序展示。<br><br>
+          可以选择感兴趣的问题导入工作台批量生成回答，也可以直接点击「全选 → 导入」快速开始。
+        </div>
+      </div>
+
+    </div><!-- /chat-body -->
+
+    <div class="chat-input-bar">
+      <div class="chat-input-field">继续对话，或告诉我调整采集条件…</div>
+      <button class="btn-send">↑</button>
+    </div>
+  </div><!-- /chat-window -->
+
+  <!-- ── 设计说明 ── -->
+  <div class="design-notes">
+    <div class="note-card">
+      <div class="note-label">卡片结构</div>
+      <div class="note-text">
+        <strong>顶部色条</strong>区分平台（知乎蓝 / 小红书红）。
+        头部显示平台、主题、数量三要素，让用户无需阅读正文即可定位上下文。
+      </div>
+    </div>
+    <div class="note-card">
+      <div class="note-label">问题列表</div>
+      <div class="note-text">
+        默认展示 <strong>前 5 条</strong>（热度最高），其余折叠。
+        排名徽章 + 热度条快速传达相对价值，避免纯数字的认知负担。
+      </div>
+    </div>
+    <div class="note-card">
+      <div class="note-label">操作设计</div>
+      <div class="note-text">
+        <strong>复选框</strong>支持精选导入；「全选」一键操作；
+        操作栏实时显示已选数量，主按钮始终可见，降低操作步骤。
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 状态 2: 小红书变体 ── -->
+  <div class="section-divider">
+    <span class="section-divider-label">变体 — 小红书平台</span>
+  </div>
+
+  <div class="demo-card-only">
+    <div class="collect-card xiaohongshu">
+      <div class="card-head">
+        <span class="platform-badge xhs">
+          <span class="platform-dot xhs"></span>
+          小红书
+        </span>
+        <div class="card-meta">
+          <div class="card-topic">
+            博主成长
+            <span class="count-chip">15 个帖子</span>
+          </div>
+          <div class="card-subtitle">按点赞数降序 · 采集于 2026-06-29</div>
+        </div>
+      </div>
+      <div class="question-list">
+        <div class="question-item" onclick="toggleSelect(this)">
+          <span class="rank top1">1</span>
+          <div class="question-content">
+            <div class="question-title">我是如何从 0 粉到 10 万粉的？真实成长经历分享</div>
+            <div class="question-meta">
+              <span class="meta-item">❤️ 2.3万 赞</span>
+              <span class="meta-divider"></span>
+              <span class="heat-wrap">
+                <div class="heat-bar-track"><div class="heat-bar-fill" style="width:100%"></div></div>
+                <span class="heat-label">热</span>
+              </span>
+            </div>
+          </div>
+          <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+        </div>
+        <div class="question-item" onclick="toggleSelect(this)">
+          <span class="rank top2">2</span>
+          <div class="question-content">
+            <div class="question-title">小红书博主必看！这 5 个数据指标决定你的内容能不能爆</div>
+            <div class="question-meta">
+              <span class="meta-item">❤️ 1.8万 赞</span>
+              <span class="meta-divider"></span>
+              <span class="heat-wrap">
+                <div class="heat-bar-track"><div class="heat-bar-fill" style="width:78%"></div></div>
+              </span>
+            </div>
+          </div>
+          <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+        </div>
+        <div class="question-item" onclick="toggleSelect(this)">
+          <span class="rank top3">3</span>
+          <div class="question-content">
+            <div class="question-title">坚持更新 300 天，我总结的博主成长方法论</div>
+            <div class="question-meta">
+              <span class="meta-item">❤️ 1.4万 赞</span>
+              <span class="meta-divider"></span>
+              <span class="heat-wrap">
+                <div class="heat-bar-track"><div class="heat-bar-fill" style="width:61%"></div></div>
+              </span>
+            </div>
+          </div>
+          <div class="q-checkbox"><div class="q-checkbox-check"></div></div>
+        </div>
+      </div>
+      <div class="expand-toggle" onclick="toggleExpand(this.closest('.collect-card'))">
+        <span>查看全部 15 个帖子</span>
+        <span class="expand-icon">▾</span>
+      </div>
+      <div class="card-actions">
+        <div class="action-info">已选 <span class="sel-count">0</span> / 15 个帖子</div>
+        <button class="btn btn-outline">全选</button>
+        <button class="btn btn-primary">导入工作台</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 工具调用折叠
+    function toggleTool() {
+      document.getElementById('toolBlock').classList.toggle('open');
+    }
+
+    // 问题展开/折叠
+    let expanded = false;
+    function toggleExpand(card) {
+      const c = card || document.getElementById('collectCard');
+      const toggle = c.querySelector('.expand-toggle span:first-child');
+      const icon = c.querySelector('.expand-icon');
+
+      c.classList.toggle('expanded');
+      expanded = c.classList.contains('expanded');
+
+      if (expanded) {
+        toggle.textContent = '收起';
+        icon.style.transform = 'rotate(180deg)';
+      } else {
+        toggle.textContent = '查看全部 20 个问题';
+        icon.style.transform = '';
+      }
+    }
+
+    // 选中/取消选中
+    let selectedCount = 0;
+    function toggleSelect(item) {
+      item.classList.toggle('selected');
+      const cards = item.closest('.collect-card');
+      const allItems = cards.querySelectorAll('.question-item');
+      const count = cards.querySelectorAll('.question-item.selected').length;
+      const countEl = cards.querySelector('.sel-count');
+      if (countEl) countEl.textContent = count;
+    }
+
+    // 全选
+    function selectAll() {
+      const card = document.getElementById('collectCard');
+      const items = card.querySelectorAll('.question-item');
+      const allSelected = [...items].every(i => i.classList.contains('selected'));
+      items.forEach(i => {
+        if (allSelected) {
+          i.classList.remove('selected');
+        } else {
+          i.classList.add('selected');
+        }
+      });
+      const count = card.querySelectorAll('.question-item.selected').length;
+      document.getElementById('selCount').textContent = count;
+    }
+
+    // 导入
+    function handleImport() {
+      const count = document.querySelectorAll('#collectCard .question-item.selected').length;
+      const msg = count > 0
+        ? `已将 ${count} 个问题导入工作台`
+        : '请先选择要导入的问题';
+      alert(msg);
+    }
+  </script>
+</body>
+</html>

@@ -4,6 +4,7 @@ export type SseEvent<T> =
   | { type: "item_done"; itemId: string; item: unknown }
   | { type: "tool_start"; text: string }
   | { type: "tool_end"; text: string }
+  | { type: "collect_result"; platform: string; topic: string; items: unknown[] }
   | { type: "done"; data: T }
   | { type: "error"; message: string };
 
@@ -13,6 +14,7 @@ export type SseCallbacks<T> = {
   onItemDone?: (itemId: string, item: unknown) => void;
   onToolStart?: (text: string) => void;
   onToolEnd?: (text: string) => void;
+  onCollectResult?: (platform: string, topic: string, items: unknown[]) => void;
   onDone?: (data: T) => void;
   onError?: (message: string) => void;
 };
@@ -63,6 +65,7 @@ export async function streamPost<T>(
         else if (event.type === "item_done") callbacks.onItemDone?.(event.itemId, event.item);
         else if (event.type === "tool_start") callbacks.onToolStart?.(event.text);
         else if (event.type === "tool_end") callbacks.onToolEnd?.(event.text);
+        else if (event.type === "collect_result") callbacks.onCollectResult?.(event.platform, event.topic, event.items);
         else if (event.type === "done") callbacks.onDone?.(event.data);
         else if (event.type === "error") callbacks.onError?.(event.message);
       } catch {

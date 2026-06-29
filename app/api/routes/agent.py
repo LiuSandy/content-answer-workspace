@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Request
@@ -20,6 +21,9 @@ from ...services.session_service import update_session_title
 router = APIRouter()
 
 _answer_gen = DeepSeekAnswerGenerator()
+
+# 返回结构化 JSON 的采集工具集合；on_tool_end 时解析并发射 collect_result 事件
+_COLLECT_TOOLS = {"xiaohongshu_search"}
 
 _ANALYSIS_SYSTEM_PROMPT = """
 你是内容策略分析师。分析知乎热榜数据，严格按以下 JSON 格式输出：
@@ -180,7 +184,26 @@ async def agent_conversation_stream(request: ConversationRequest, http_request: 
                 if kind == "on_tool_start":
                     yield sse_event({"type": "tool_start", "text": tool_start_step(event.get("name", ""))})
                 elif kind == "on_tool_end":
-                    yield sse_event({"type": "tool_end", "text": tool_end_step(event.get("name", ""))})
+                    tool_name = event.get("name", "")
+                    yield sse_event({"type": "tool_end", "text": tool_end_step(tool_name)})
+                    if tool_name in _COLLECT_TOOLS:
+                        raw_output = (event.get("data") or {}).get("output", "")
+                        # astream_events v2 wraps tool output in ToolMessage; extract .content if needed
+                        if not isinstance(raw_output, str):
+                            raw_output = getattr(raw_output, "content", "") or ""
+                        if isinstance(raw_output, str):
+                            try:
+                                parsed = json.loads(raw_output)
+                                items = parsed.get("items") or []
+                                if items:
+                                    yield sse_event({
+                                        "type": "collect_result",
+                                        "platform": parsed.get("platform", "unknown"),
+                                        "topic": parsed.get("topic", ""),
+                                        "items": items,
+                                    })
+                            except (json.JSONDecodeError, AttributeError):
+                                pass
                 elif kind == "on_chat_model_stream":
                     chunk = event["data"].get("chunk")
                     if chunk and hasattr(chunk, "content") and chunk.content:

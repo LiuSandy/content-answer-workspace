@@ -206,11 +206,30 @@ export type SessionSummary = {
   createdAt: string;
 };
 
+/** Chat 采集结果卡片的单条内容项 */
+export type ChatCollectItem = {
+  title: string;
+  url: string;
+  excerpt?: string;
+  /** 格式化后的核心指标，如 "1.2万 赞" 或 "312 个回答" */
+  metric?: string;
+  author?: string;
+};
+
+/** Chat 消息中嵌入的采集结果数据（role === "collect" 时存在） */
+export type ChatCollectResult = {
+  platform: Platform | string;
+  topic: string;
+  items: ChatCollectItem[];
+};
+
 export type ChatMessage = {
-  role: "user" | "assistant" | "tool";
+  role: "user" | "assistant" | "tool" | "collect";
   content: string;
-  // tool 角色专用：工具调用过程的逐步文案
+  /** tool 角色专用：工具调用过程的逐步文案 */
   steps?: string[];
+  /** collect 角色专用：结构化采集结果 */
+  collectResult?: ChatCollectResult;
 };
 
 export type ConversationPayload = {
@@ -229,4 +248,20 @@ export type ConversationHistoryResponse = {
 export type AgentTool = {
   name: string;
   description: string;
+};
+
+/** 工作台问题条目，在 QuestionItem 基础上附加来源元数据与提示词快照。 */
+export type WorkbenchItem = QuestionItem & {
+  /** 加入工作台的时间，用于排序 */
+  addedAt: string;
+  /** 来源平台 */
+  sourcePlatform: Platform;
+  /** 来源主题名称 */
+  sourceTopic: string;
+  /** 采集时的提示词快照，生成回答时使用 */
+  promptConfig: {
+    answerStyle: string;
+    systemPrompt: string;
+    generationPrompt: string;
+  };
 };
