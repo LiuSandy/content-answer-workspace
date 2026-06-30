@@ -23,7 +23,16 @@ router = APIRouter()
 _answer_gen = DeepSeekAnswerGenerator()
 
 # 返回结构化 JSON 的采集工具集合；on_tool_end 时解析并发射 collect_result 事件
-_COLLECT_TOOLS = {"xiaohongshu_search"}
+_COLLECT_TOOLS = {
+    "zhihu_search",
+    "xiaohongshu_search", "xiaohongshu_feed",
+    "bilibili_search", "bilibili_hot",
+    "twitter_search", "twitter_feed", "twitter_user_posts",
+    "reddit_search", "reddit_hot", "reddit_subreddit",
+    "github_search_repos",
+    "rss_fetch",
+    "v2ex_hot", "v2ex_node",
+}
 
 _ANALYSIS_SYSTEM_PROMPT = """
 你是内容策略分析师。分析知乎热榜数据，严格按以下 JSON 格式输出：
@@ -130,17 +139,21 @@ async def agent_conversation_history(session_id: str, http_request: Request) -> 
 def _build_history_messages(raw_messages: list) -> list[dict]:
     """把 LangGraph 持久化的消息流重建成前端消息列表；
     单独定义是因为 ReAct 历史里混有工具调用与工具结果，需要把它们折叠成一条 tool 过程消息，
-    而不是把原始结果误当成用户输入展示。"""
+    并从采集工具的 ToolMessage 中重建 collect 角色卡片，保证历史与实时渲染一致。"""
 
     result: list[dict] = []
     pending_steps: list[str] = []
+    pending_collect_results: list[dict] = []
 
     def flush_tool_steps() -> None:
-        """把累积的工具过程步骤落成一条 tool 角色消息；在出现最终回答或新一轮用户消息前调用。"""
-        nonlocal pending_steps
+        """把累积的工具步骤和采集卡片落入结果列表；在出现最终回答或新一轮用户消息前调用。"""
+        nonlocal pending_steps, pending_collect_results
         if pending_steps:
             result.append({"role": "tool", "content": "", "steps": pending_steps})
             pending_steps = []
+        for card in pending_collect_results:
+            result.append(card)
+        pending_collect_results = []
 
     for message in raw_messages:
         mtype = getattr(message, "type", "")
@@ -148,7 +161,24 @@ def _build_history_messages(raw_messages: list) -> list[dict]:
             flush_tool_steps()
             result.append({"role": "user", "content": message.content})
         elif mtype == "tool":
-            pending_steps.append(tool_end_step(getattr(message, "name", "")))
+            tool_name = getattr(message, "name", "")
+            pending_steps.append(tool_end_step(tool_name))
+            if tool_name in _COLLECT_TOOLS:
+                try:
+                    parsed = json.loads(getattr(message, "content", "") or "")
+                    items = parsed.get("items") or []
+                    if items:
+                        pending_collect_results.append({
+                            "role": "collect",
+                            "content": "",
+                            "collectResult": {
+                                "platform": parsed.get("platform", "unknown"),
+                                "topic": parsed.get("topic", ""),
+                                "items": items,
+                            },
+                        })
+                except (json.JSONDecodeError, AttributeError, TypeError):
+                    pass
         elif mtype == "ai":
             tool_calls = getattr(message, "tool_calls", None) or []
             if tool_calls:

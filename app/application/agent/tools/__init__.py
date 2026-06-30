@@ -37,13 +37,15 @@ def _load_platform_tool_map() -> dict:
     from .v2ex_tool import v2ex_hot, v2ex_node
     from .xiaohongshu_tool import xiaohongshu_feed, xiaohongshu_note, xiaohongshu_search
     from .youtube_tool import youtube_fetch
+    from .zhihu_tool import zhihu_search
 
     return {
+        "zhihu": [zhihu_search],
         "bilibili": [bilibili_search, bilibili_hot, bilibili_video],
         "youtube": [youtube_fetch],
-        "twitter": [twitter_feed, twitter_search, twitter_read, twitter_user_posts],
-        "xiaohongshu": [xiaohongshu_search, xiaohongshu_note, xiaohongshu_feed],
-        "reddit": [reddit_search, reddit_read, reddit_hot, reddit_subreddit],
+        "twitter": [twitter_search, twitter_feed, twitter_user_posts, twitter_read],
+        "xiaohongshu": [xiaohongshu_search, xiaohongshu_feed, xiaohongshu_note],
+        "reddit": [reddit_search, reddit_hot, reddit_subreddit, reddit_read],
         "github": [github_search_repos, github_repo_info],
         "rss": [rss_fetch],
         "v2ex": [v2ex_hot, v2ex_node],
