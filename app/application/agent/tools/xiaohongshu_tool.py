@@ -70,5 +70,10 @@ def xiaohongshu_note(note_url: str) -> str:
 
 @tool
 def xiaohongshu_feed() -> str:
-    """获取小红书首页推荐 feed。"""
-    return _run(["opencli", "xiaohongshu", "feed", "-f", "yaml"])
+    """获取小红书首页推荐 feed，返回标题、链接、点赞数等结构化结果。"""
+    raw = _run(["opencli", "xiaohongshu", "feed", "-f", "yaml"])
+    raw_items = _parse_yaml_list(raw)
+    if not raw_items:
+        return json.dumps({"platform": _PLATFORM, "topic": "推荐", "error": raw or "无结果", "items": []}, ensure_ascii=False)
+    items = [_normalize_item(i) for i in raw_items[:_MAX_ITEMS] if i.get("title") or i.get("name")]
+    return json.dumps({"platform": _PLATFORM, "topic": "推荐", "items": items}, ensure_ascii=False)
