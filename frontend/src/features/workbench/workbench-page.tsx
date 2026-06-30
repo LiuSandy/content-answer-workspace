@@ -1,7 +1,11 @@
+import { useEffect } from "react";
 import { LayoutDashboard } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import { PromptConfigPanel } from "@/features/workspace/workspace-shell";
+import { getWorkspaceConfig } from "@/features/workspace/workflow-api";
 
 import { WorkbenchAnswerPanel } from "./workbench-answer-panel";
 import { WorkbenchQuestionList } from "./workbench-question-list";
@@ -9,8 +13,24 @@ import { WorkbenchUrlImportBar } from "./workbench-url-import-bar";
 
 /** 工作台页面：汇聚采集页和 URL 导入的问题，统一生成 AI 回答。 */
 export function WorkbenchPage() {
-  const { items } = useWorkbenchStore();
+  const { items, globalPromptConfig, setGlobalPromptConfig } = useWorkbenchStore();
   const doneCount = items.filter((i) => Boolean(i.answer?.trim())).length;
+
+  const configQuery = useQuery({ queryKey: ["workspace-config"], queryFn: getWorkspaceConfig });
+
+  // 首次打开工作台（三个字段均为空）时，从后端 workflow 默认配置初始化提示词
+  useEffect(() => {
+    const cfg = configQuery.data?.workflow;
+    if (!cfg) return;
+    const isEmpty = !globalPromptConfig.answerStyle && !globalPromptConfig.systemPrompt && !globalPromptConfig.generationPrompt;
+    if (isEmpty) {
+      setGlobalPromptConfig({
+        answerStyle: cfg.answerStyle,
+        systemPrompt: cfg.systemPrompt,
+        generationPrompt: cfg.generationPrompt,
+      });
+    }
+  }, [configQuery.data]);
 
   return (
     <section className="flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -45,10 +65,24 @@ export function WorkbenchPage() {
       {/* URL 导入栏 */}
       <WorkbenchUrlImportBar />
 
-      {/* 主体：左侧列表 + 右侧回答区 */}
+      {/* 主体：左侧列表+提示词 + 右侧回答区 */}
       <div className="flex-1 min-h-0 grid xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="flex flex-col overflow-hidden border-r border-slate-200 p-4">
-          <WorkbenchQuestionList />
+        <div className="flex flex-col overflow-hidden border-r border-slate-200">
+          {/* 问题列表：占满剩余高度 */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-4">
+            <WorkbenchQuestionList />
+          </div>
+          {/* 提示词配置：固定在底部，最高占列高 40%，内部可滚动，不压缩列表区 */}
+          <div className="shrink-0 border-t border-slate-200 p-4 max-h-[40%] overflow-y-auto">
+            <PromptConfigPanel
+              answerStyle={globalPromptConfig.answerStyle}
+              systemPrompt={globalPromptConfig.systemPrompt}
+              generationPrompt={globalPromptConfig.generationPrompt}
+              onAnswerStyleChange={(v) => setGlobalPromptConfig({ answerStyle: v })}
+              onSystemPromptChange={(v) => setGlobalPromptConfig({ systemPrompt: v })}
+              onGenerationPromptChange={(v) => setGlobalPromptConfig({ generationPrompt: v })}
+            />
+          </div>
         </div>
         <div className="overflow-y-auto p-4">
           <WorkbenchAnswerPanel />
