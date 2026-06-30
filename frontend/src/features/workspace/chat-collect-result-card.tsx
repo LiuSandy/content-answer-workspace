@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ChatCollectItem, ChatCollectResult } from "@/types/workflow";
+import { useWorkbenchStore } from "@/store/workbench-store";
+import type { ChatCollectItem, ChatCollectResult, Platform, WorkbenchItem } from "@/types/workflow";
 
 type Props = {
   result: ChatCollectResult;
@@ -35,6 +37,27 @@ const RANK_STYLE = [
 /** 默认只展示前 5 条，其余折叠 */
 const VISIBLE_COUNT = 5;
 
+/** 把采集卡片条目转换为工作台格式；url 作为去重 id。 */
+function toWorkbenchItems(result: ChatCollectResult, selectedItems: ChatCollectItem[]): WorkbenchItem[] {
+  const now = new Date().toISOString();
+  return selectedItems.map((item) => ({
+    id: item.url || `${result.platform}-${item.title}`,
+    title: item.title,
+    url: item.url,
+    platform: result.platform as Platform,
+    topic: result.topic,
+    answerCount: 0,
+    updatedTime: null,
+    excerpt: item.excerpt ?? "",
+    detail: "",
+    answer: "",
+    addedAt: now,
+    sourcePlatform: result.platform as Platform,
+    sourceTopic: result.topic,
+    promptConfig: { answerStyle: "", systemPrompt: "", generationPrompt: "" },
+  }));
+}
+
 /**
  * Chat 消息流中嵌入的采集结果卡片。
  * 单独定义是因为采集结果属于结构化数据，与普通文字气泡渲染逻辑完全不同，
@@ -43,6 +66,9 @@ const VISIBLE_COUNT = 5;
 export function ChatCollectResultCard({ result, onImport }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [importFeedback, setImportFeedback] = useState<string | null>(null);
+  const addItems = useWorkbenchStore((s) => s.addItems);
+  const navigate = useNavigate();
 
   const platform = result.platform ?? "unknown";
   const items = result.items ?? [];
@@ -67,7 +93,15 @@ export function ChatCollectResultCard({ result, onImport }: Props) {
 
   function handleImport() {
     const targets = selected.size > 0 ? items.filter((_, i) => selected.has(i)) : items;
+    const { added, skipped } = addItems(toWorkbenchItems(result, targets));
     onImport?.(targets);
+    if (added > 0) {
+      navigate("/workbench");
+    } else {
+      const msg = skipped > 0 ? `已跳过 ${skipped} 条重复（已在工作台）` : "没有可导入的条目";
+      setImportFeedback(msg);
+      setTimeout(() => setImportFeedback(null), 3000);
+    }
   }
 
   return (
@@ -171,7 +205,10 @@ export function ChatCollectResultCard({ result, onImport }: Props) {
       {/* 操作栏 */}
       <div className="flex items-center gap-2 border-t bg-white px-4 py-2.5">
         <span className="flex-1 font-mono text-[11px] text-muted-foreground">
-          已选 <span className="font-medium text-foreground">{selected.size}</span> / {items.length} 条
+          {importFeedback
+            ? <span className="text-green-600 font-medium">{importFeedback}</span>
+            : <>已选 <span className="font-medium text-foreground">{selected.size}</span> / {items.length} 条</>
+          }
         </span>
         <Button variant="outline" size="sm" className="h-7 text-[12px]" onClick={toggleSelectAll}>
           {selected.size === items.length && items.length > 0 ? "取消全选" : "全选"}

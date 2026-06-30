@@ -265,7 +265,7 @@ function PromptField({
 // Prompt config (left panel reusable)
 // ──────────────────────────────────────────────────────────
 
-function PromptConfigPanel({
+export function PromptConfigPanel({
   answerStyle,
   systemPrompt,
   generationPrompt,

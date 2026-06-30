@@ -5,6 +5,12 @@ import type { Platform, WorkbenchItem } from "@/types/workflow";
 export type StatusFilter = "all" | "pending" | "done";
 export type PlatformFilter = Platform | "all";
 
+export type GlobalPromptConfig = {
+  answerStyle: string;
+  systemPrompt: string;
+  generationPrompt: string;
+};
+
 type WorkbenchState = {
   items: WorkbenchItem[];
   selectedItemId: string | null;
@@ -12,6 +18,7 @@ type WorkbenchState = {
   platformFilter: PlatformFilter;
   searchKeyword: string;
   isGenerating: boolean;
+  globalPromptConfig: GlobalPromptConfig;
 
   /** 批量加入，按 id 去重，返回实际加入和跳过的数量。 */
   addItems: (items: WorkbenchItem[]) => { added: number; skipped: number };
@@ -23,6 +30,7 @@ type WorkbenchState = {
   setPlatformFilter: (p: PlatformFilter) => void;
   setSearchKeyword: (kw: string) => void;
   setIsGenerating: (v: boolean) => void;
+  setGlobalPromptConfig: (config: Partial<GlobalPromptConfig>) => void;
 };
 
 export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
@@ -32,6 +40,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   platformFilter: "all",
   searchKeyword: "",
   isGenerating: false,
+  globalPromptConfig: { answerStyle: "", systemPrompt: "", generationPrompt: "" },
 
   addItems: (newItems) => {
     const existingIds = new Set(get().items.map((i) => i.id));
@@ -62,4 +71,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   setPlatformFilter: (platformFilter) => set({ platformFilter }),
   setSearchKeyword: (searchKeyword) => set({ searchKeyword }),
   setIsGenerating: (isGenerating) => set({ isGenerating }),
+  setGlobalPromptConfig: (config) =>
+    set((state) => ({ globalPromptConfig: { ...state.globalPromptConfig, ...config } })),
 }));

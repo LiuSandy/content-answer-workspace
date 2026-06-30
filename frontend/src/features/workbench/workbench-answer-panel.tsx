@@ -43,10 +43,16 @@ function QuestionBrief({ item }: { item: WorkbenchItem }) {
 
 /** 工作台右侧回答工作区，使用问题自身的 promptConfig 生成回答。 */
 export function WorkbenchAnswerPanel() {
-  const { items, selectedItemId, updateItemAnswer, setItem } = useWorkbenchStore();
+  const { items, selectedItemId, updateItemAnswer, setItem, globalPromptConfig } = useWorkbenchStore();
   const item = items.find((i) => i.id === selectedItemId) ?? null;
   const [contentConstraint, setContentConstraint] = useState("");
   const [isCopied, setIsCopied] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  function showStatus(type: "success" | "error", text: string) {
+    setStatusMsg({ type, text });
+    window.setTimeout(() => setStatusMsg(null), 3000);
+  }
 
   const generateMutation = useMutation({
     mutationFn: (target: WorkbenchItem) => {
@@ -55,9 +61,9 @@ export function WorkbenchAnswerPanel() {
         {
           platform: target.sourcePlatform,
           item: target,
-          answerStyle: target.promptConfig.answerStyle,
-          systemPrompt: target.promptConfig.systemPrompt,
-          generationPrompt: target.promptConfig.generationPrompt,
+          answerStyle: globalPromptConfig.answerStyle,
+          systemPrompt: globalPromptConfig.systemPrompt,
+          generationPrompt: globalPromptConfig.generationPrompt,
           contentConstraint: contentConstraint || undefined,
         },
         {
@@ -74,8 +80,11 @@ export function WorkbenchAnswerPanel() {
               sourceTopic: target.sourceTopic,
               promptConfig: target.promptConfig,
             });
+            showStatus("success", `已生成：${target.title}`);
           },
-          onError: () => {},
+          onError: (message) => {
+            showStatus("error", message || "生成失败，请重试");
+          },
         },
       );
     },
@@ -94,8 +103,13 @@ export function WorkbenchAnswerPanel() {
     <div className="flex min-h-0 flex-col gap-3">
       {/* 顶部操作栏 */}
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-          回答工作区
+        <span className={cn(
+          "text-[11px] font-semibold tracking-wide transition-colors",
+          statusMsg?.type === "error" ? "text-red-500" :
+          statusMsg?.type === "success" ? "text-emerald-600" :
+          "uppercase text-slate-400",
+        )}>
+          {statusMsg ? statusMsg.text : "回答工作区"}
         </span>
         {item && (
           <div className="flex shrink-0 items-center gap-1.5">
