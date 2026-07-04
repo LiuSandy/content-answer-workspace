@@ -250,7 +250,42 @@ export type AgentTool = {
   description: string;
 };
 
-export type GenerationStatus = "idle" | "generating" | "done" | "error" | "interrupted";
+export type GenerationJobStatus = "pending" | "running" | "done" | "error" | "canceled";
+
+export type GenerationJobSnapshot = {
+  jobId: string;
+  kind: "generate_one";
+  status: GenerationJobStatus;
+  itemId: string;
+  finalItem: QuestionItem | null;
+  error: string | null;
+  lastEventId: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string | null;
+};
+
+export type CreateGenerationJobResponse = {
+  jobId: string;
+  status: GenerationJobStatus;
+};
+
+export type GenerationJobSseEvent =
+  | { id: number; event: "chunk"; data: { text: string } }
+  | { id: number; event: "done"; data: { item: QuestionItem } }
+  | { id: number; event: "job_error"; data: { message: string } }
+  | { id: number; event: "canceled"; data: { message: string } };
+
+export type GenerationUiStatus =
+  | "idle"
+  | "creating"
+  | "generating"
+  | "done"
+  | "error"
+  | "interrupted"
+  | "canceled";
+
+export type GenerationStatus = GenerationUiStatus;
 
 /** 工作台问题条目，在 QuestionItem 基础上附加来源元数据与提示词快照。 */
 export type WorkbenchItem = QuestionItem & {
@@ -270,4 +305,14 @@ export type WorkbenchItem = QuestionItem & {
   generationStatus?: GenerationStatus;
   /** 生成失败或中断时的可展示错误。 */
   generationError?: string;
+  /** 当前或最近一次可靠生成 job 的 UI 状态。 */
+  generationJob?: {
+    jobId: string;
+    status: GenerationUiStatus;
+    lastEventId: number;
+    streamingAnswer: string;
+    finalAnswer: string;
+    draftAnswer: string;
+    error: string | null;
+  };
 };

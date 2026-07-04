@@ -10,8 +10,10 @@ import type {
   ConversationHistoryResponse,
   ConversationPayload,
   ConversationResponse,
+  CreateGenerationJobResponse,
   GenerateAllPayload,
   GenerateAllResponse,
+  GenerationJobSnapshot,
   GenerateOnePayload,
   GenerateOneResponse,
   HotlistResponse,
@@ -42,6 +44,18 @@ export function parseQuestionUrl(payload: ParseQuestionUrlPayload) {
 
 export function generateOneAnswer(payload: GenerateOnePayload) {
   return apiPost<GenerateOneResponse>("/api/workflow/generate-one", payload);
+}
+
+export function createGenerationJob(payload: GenerateOnePayload) {
+  return apiPost<CreateGenerationJobResponse>("/api/workflow/generate-one/jobs", payload);
+}
+
+export function getGenerationJob(jobId: string) {
+  return apiGet<GenerationJobSnapshot>(`/api/workflow/generate-one/jobs/${jobId}`);
+}
+
+export function cancelGenerationJob(jobId: string) {
+  return apiDelete<{ jobId: string; status: "canceled" }>(`/api/workflow/generate-one/jobs/${jobId}`);
 }
 
 export function polishOneAnswer(payload: PolishOnePayload) {
