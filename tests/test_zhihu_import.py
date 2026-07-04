@@ -8,6 +8,7 @@ from app.models import ParseQuestionUrlPayload, QuestionItem, Topic
 from app.services.zhihu_service import (
     extract_zhihu_question_id,
     extract_zhihu_question_snapshot_from_html,
+    extract_zhihu_question_snapshot_from_state,
     fetch_zhihu_question_by_url,
     map_zhihu_question_detail_payload,
 )
@@ -34,8 +35,8 @@ class ZhihuImportTests(unittest.IsolatedAsyncioTestCase):
             "4497183579",
         )
 
-    async def test_fetch_zhihu_question_by_url_keeps_fallback_item_when_detail_parse_fails(self) -> None:
-        """验证详情解析失败时仍返回兜底问题对象；这样抓不到标题时也不会再抛 400。"""
+    async def test_fetch_zhihu_question_by_url_rejects_placeholder_when_detail_parse_fails(self) -> None:
+        """验证详情解析失败时不会把兜底标题伪装成成功导入。"""
 
         fallback_item = QuestionItem(
             id="4497183579",
@@ -47,6 +48,26 @@ class ZhihuImportTests(unittest.IsolatedAsyncioTestCase):
             detail="",
         )
         with patch("app.services.zhihu_service.fetch_question_details", new=AsyncMock(return_value=fallback_item)):
+            with self.assertRaisesRegex(ValueError, "未能解析知乎问题内容"):
+                await fetch_zhihu_question_by_url(
+                    "https://www.zhihu.com/question/4497183579",
+                    "Mozilla/5.0",
+                    "链接导入",
+                )
+
+    async def test_fetch_zhihu_question_by_url_accepts_resolved_detail(self) -> None:
+        """验证只要补抓到真实标题，链接导入就正常返回问题对象。"""
+
+        resolved_item = QuestionItem(
+            id="4497183579",
+            title="想要搭建一个个人网站需要做哪些准备？",
+            url="https://www.zhihu.com/question/4497183579",
+            topic="个人网站 / Web 开发",
+            answerCount=34,
+            excerpt="除了网站本身外，还需要做那些工作。",
+            detail="除了网站本身外，还需要做那些工作。",
+        )
+        with patch("app.services.zhihu_service.fetch_question_details", new=AsyncMock(return_value=resolved_item)):
             item = await fetch_zhihu_question_by_url(
                 "https://www.zhihu.com/question/4497183579",
                 "Mozilla/5.0",
@@ -54,8 +75,8 @@ class ZhihuImportTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(item.id, "4497183579")
-        self.assertEqual(item.title, "知乎问题 4497183579")
-        self.assertEqual(item.url, "https://www.zhihu.com/question/4497183579")
+        self.assertEqual(item.title, "想要搭建一个个人网站需要做哪些准备？")
+        self.assertEqual(item.topic, "个人网站 / Web 开发")
 
     def test_map_zhihu_question_detail_payload_extracts_core_fields(self) -> None:
         """验证知乎详情接口字段会被完整映射；这样链接导入能稳定拿到真实标题、摘要、描述和标签。"""
@@ -77,6 +98,55 @@ class ZhihuImportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snapshot["answer_count"], 34)
         self.assertEqual(snapshot["topics"], ["个人网站", "Web 开发"])
         self.assertIsNotNone(snapshot["updated_time"])
+
+    def test_map_zhihu_question_detail_payload_supports_camel_case_fields(self) -> None:
+        """验证网页端/前端状态常见 camelCase 字段也能映射；这样接口形状变化不会导致导入空内容。"""
+
+        payload = {
+            "title": "如何看待 AI 辅助写作？",
+            "questionExcerpt": "想了解 AI 写作工具对创作者的影响。",
+            "questionDetail": "<p>尤其关注效率、原创性和平台分发。</p>",
+            "answerCount": 128,
+            "updatedTime": 1731922644,
+            "topicList": [{"name": "人工智能"}, {"name": "内容创作"}],
+        }
+
+        snapshot = map_zhihu_question_detail_payload(payload)
+
+        self.assertEqual(snapshot["title"], "如何看待 AI 辅助写作？")
+        self.assertEqual(snapshot["excerpt"], "想了解 AI 写作工具对创作者的影响。")
+        self.assertEqual(snapshot["detail"], "尤其关注效率、原创性和平台分发。")
+        self.assertEqual(snapshot["answer_count"], 128)
+        self.assertEqual(snapshot["topics"], ["人工智能", "内容创作"])
+
+    def test_extract_zhihu_question_snapshot_from_state_uses_question_id(self) -> None:
+        """验证 initialState 中多个 question 实体时会按 URL id 选择目标问题。"""
+
+        state = {
+            "initialState": {
+                "entities": {
+                    "questions": {
+                        "1": {"title": "错误问题", "answerCount": 1},
+                        "1893036825116922687": {
+                            "title": "年轻人应该如何做长期职业规划？",
+                            "excerpt": "想知道如何选择行业和能力方向。",
+                            "detail": "<p>希望得到可执行建议。</p>",
+                            "answerCount": 42,
+                            "updatedTime": 1731922644,
+                            "topics": [{"name": "职业规划"}, {"name": "年轻人"}],
+                        },
+                    }
+                }
+            }
+        }
+
+        snapshot = extract_zhihu_question_snapshot_from_state(state, "1893036825116922687")
+
+        self.assertEqual(snapshot["title"], "年轻人应该如何做长期职业规划？")
+        self.assertEqual(snapshot["excerpt"], "想知道如何选择行业和能力方向。")
+        self.assertEqual(snapshot["detail"], "希望得到可执行建议。")
+        self.assertEqual(snapshot["answer_count"], 42)
+        self.assertEqual(snapshot["topics"], ["职业规划", "年轻人"])
 
     def test_extract_zhihu_question_snapshot_from_html_prefers_h1_and_topics(self) -> None:
         """验证 HTML 快照提取会补齐标题、摘要、描述和标签；这样页面兜底解析不只依赖单一 meta 标签。"""
@@ -108,6 +178,62 @@ class ZhihuImportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snapshot["answer_count"], 34)
         self.assertEqual(snapshot["topics"], ["个人网站", "前端开发"])
         self.assertIsNotNone(snapshot["updated_time"])
+
+    def test_extract_zhihu_question_snapshot_from_html_reads_js_initial_data(self) -> None:
+        """验证知乎 js-initialData 能补出问题核心字段；这是 URL 导入最重要的页面兜底来源。"""
+
+        html = """
+        <html>
+          <head><title>安全验证 - 知乎</title></head>
+          <body>
+            <script id="js-initialData" type="text/json">
+              {
+                "initialState": {
+                  "entities": {
+                    "questions": {
+                      "1893036825116922687": {
+                        "title": "如何评价这个职业选择？",
+                        "questionExcerpt": "题主希望了解未来发展。",
+                        "questionDetail": "<p>补充：更关心长期成长。</p>",
+                        "answerCount": 18,
+                        "updatedTime": 1731922644,
+                        "topics": [{"name": "职业发展"}]
+                      }
+                    }
+                  }
+                }
+              }
+            </script>
+          </body>
+        </html>
+        """
+
+        snapshot = extract_zhihu_question_snapshot_from_html(html, "1893036825116922687")
+
+        self.assertEqual(snapshot["title"], "如何评价这个职业选择？")
+        self.assertEqual(snapshot["excerpt"], "题主希望了解未来发展。")
+        self.assertEqual(snapshot["detail"], "补充：更关心长期成长。")
+        self.assertEqual(snapshot["answer_count"], 18)
+        self.assertEqual(snapshot["topics"], ["职业发展"])
+
+    def test_extract_zhihu_question_snapshot_from_html_ignores_security_page(self) -> None:
+        """验证知乎安全验证页不会被误识别为真实问题标题。"""
+
+        html = """
+        <html>
+          <head>
+            <title>安全验证 - 知乎</title>
+            <meta name="description" content="请您登录后查看更多专业优质内容。">
+          </head>
+          <body>请您登录后查看更多专业优质内容。</body>
+        </html>
+        """
+
+        snapshot = extract_zhihu_question_snapshot_from_html(html, "1893036825116922687")
+
+        self.assertIsNone(snapshot["title"])
+        self.assertEqual(snapshot["excerpt"], "")
+        self.assertEqual(snapshot["detail"], "")
 
     async def test_parse_question_url_does_not_inherit_selected_topic_name(self) -> None:
         """验证链接导入不会错误继承当前工作区主题；这样导入个人网站问题时不会显示成数据结构与算法。"""

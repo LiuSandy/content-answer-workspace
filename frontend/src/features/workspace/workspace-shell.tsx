@@ -872,6 +872,7 @@ function CollectPage() {
       sourcePlatform: selectedPlatform,
       sourceTopic: selectedTopic?.name ?? q.topic ?? "",
       promptConfig: { answerStyle, systemPrompt, generationPrompt },
+      generationStatus: "idle" as const,
     }));
     const { added, skipped } = addItems(workbenchItems);
     setSelectedIds(new Set());

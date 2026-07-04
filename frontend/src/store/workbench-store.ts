@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { Platform, WorkbenchItem } from "@/types/workflow";
+import type { GenerationStatus, Platform, WorkbenchItem } from "@/types/workflow";
 
 export type StatusFilter = "all" | "pending" | "done";
 export type PlatformFilter = Platform | "all";
@@ -26,6 +26,7 @@ type WorkbenchState = {
   selectItem: (id: string | null) => void;
   updateItemAnswer: (id: string, answer: string) => void;
   setItem: (id: string, item: WorkbenchItem) => void;
+  setItemGenerationStatus: (id: string, status: GenerationStatus, error?: string) => void;
   setStatusFilter: (f: StatusFilter) => void;
   setPlatformFilter: (p: PlatformFilter) => void;
   setSearchKeyword: (kw: string) => void;
@@ -44,7 +45,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
 
   addItems: (newItems) => {
     const existingIds = new Set(get().items.map((i) => i.id));
-    const toAdd = newItems.filter((i) => !existingIds.has(i.id));
+    const toAdd = newItems
+      .filter((i) => !existingIds.has(i.id))
+      .map((item) => ({ ...item, generationStatus: item.generationStatus ?? "idle" as const }));
     set((state) => ({ items: [...toAdd, ...state.items] }));
     return { added: toAdd.length, skipped: newItems.length - toAdd.length };
   },
@@ -65,6 +68,19 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   setItem: (id, item) =>
     set((state) => ({
       items: state.items.map((i) => (i.id === id ? item : i)),
+    })),
+
+  setItemGenerationStatus: (id, generationStatus, generationError) =>
+    set((state) => ({
+      items: state.items.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              generationStatus,
+              generationError: generationStatus === "error" || generationStatus === "interrupted" ? generationError : undefined,
+            }
+          : i,
+      ),
     })),
 
   setStatusFilter: (statusFilter) => set({ statusFilter }),

@@ -136,27 +136,34 @@
     border-radius: 0.5rem;
   }
 
-  .markdown-editor {
-    min-height: inherit;
-    background: transparent;
-    color: var(--foreground);
-  }
-
-  .markdown-editor .mdxeditor-toolbar {
+  .markdown-editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
     border-bottom: 1px solid var(--surface-line);
     background: rgba(248, 250, 252, 0.95);
     padding: 0.25rem 0.4rem;
+    min-height: 2.45rem;
   }
 
-  .markdown-editor .mdxeditor-toolbar button,
-  .markdown-editor .mdxeditor-toolbar [role="button"] {
+  .markdown-editor-mode-button {
     border-radius: 0.3rem;
+    border: 0;
+    background: transparent;
     color: rgba(39, 58, 70, 0.88);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.28rem 0.65rem;
   }
 
-  .markdown-editor .mdxeditor-toolbar button:hover,
-  .markdown-editor .mdxeditor-toolbar [role="button"]:hover {
+  .markdown-editor-mode-button:hover {
     background: rgba(226, 232, 240, 0.85);
+  }
+
+  .markdown-editor-mode-button.is-active {
+    background: white;
+    box-shadow: var(--shadow-soft);
+    color: rgba(15, 23, 42, 0.94);
   }
 
   .markdown-editor__content {
@@ -171,7 +178,26 @@
     color: rgba(15, 23, 42, 0.92);
   }
 
-  .markdown-editor__content:focus {
+  .markdown-editor__source {
+    display: block;
+    min-height: 16rem;
+    width: 100%;
+    resize: vertical;
+    border: 0;
+    background: transparent;
+    padding: 0.75rem 0.85rem;
+    font-family:
+      "SFMono-Regular",
+      "Consolas",
+      "Liberation Mono",
+      monospace;
+    font-size: 0.8125rem;
+    line-height: 1.7;
+    color: rgba(15, 23, 42, 0.92);
+  }
+
+  .markdown-editor__content:focus,
+  .markdown-editor__source:focus {
     outline: none;
   }
 

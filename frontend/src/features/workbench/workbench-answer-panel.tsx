@@ -43,7 +43,7 @@ function QuestionBrief({ item }: { item: WorkbenchItem }) {
 
 /** 工作台右侧回答工作区，使用问题自身的 promptConfig 生成回答。 */
 export function WorkbenchAnswerPanel() {
-  const { items, selectedItemId, updateItemAnswer, setItem, globalPromptConfig } = useWorkbenchStore();
+  const { items, selectedItemId, updateItemAnswer, setItem, setItemGenerationStatus, globalPromptConfig } = useWorkbenchStore();
   const item = items.find((i) => i.id === selectedItemId) ?? null;
   const [contentConstraint, setContentConstraint] = useState("");
   const [isCopied, setIsCopied] = useState(false);
@@ -57,6 +57,8 @@ export function WorkbenchAnswerPanel() {
   const generateMutation = useMutation({
     mutationFn: (target: WorkbenchItem) => {
       let accumulated = "";
+      setItemGenerationStatus(target.id, "generating");
+      updateItemAnswer(target.id, "");
       return streamGenerateOneAnswer(
         {
           platform: target.sourcePlatform,
@@ -79,10 +81,17 @@ export function WorkbenchAnswerPanel() {
               sourcePlatform: target.sourcePlatform,
               sourceTopic: target.sourceTopic,
               promptConfig: target.promptConfig,
+              generationStatus: "done",
+              generationError: undefined,
             });
             showStatus("success", `已生成：${target.title}`);
           },
           onError: (message) => {
+            setItemGenerationStatus(
+              target.id,
+              message.includes("未收到完成事件") ? "interrupted" : "error",
+              message || "生成失败，请重试",
+            );
             showStatus("error", message || "生成失败，请重试");
           },
         },
@@ -174,16 +183,23 @@ export function WorkbenchAnswerPanel() {
         <div className="space-y-3">
           <QuestionBrief item={item} />
 
-          <div className={cn("relative", isGenerating && "pointer-events-none")}>
-            <MarkdownEditor
-              className={cn(
-                "min-h-[320px] rounded-md border bg-white transition-colors",
-                isGenerating ? "border-blue-300 opacity-60" : "border-slate-200",
-              )}
-              placeholder="点击 AI 生成 按钮自动撰写，或直接手工编辑内容。"
-              value={item.answer || ""}
-              onChange={(v) => updateItemAnswer(item.id, v)}
-            />
+          <div className="relative">
+            {isGenerating ? (
+              <div className="min-h-[320px] rounded-md border border-blue-300 bg-white px-3 py-3 text-[14px] leading-7 text-slate-800">
+                {item.answer?.trim() ? (
+                  <div className="whitespace-pre-wrap break-words">{item.answer}</div>
+                ) : (
+                  <div className="text-slate-400">AI 正在生成回答…</div>
+                )}
+              </div>
+            ) : (
+              <MarkdownEditor
+                className="min-h-[320px] rounded-md border border-slate-200 bg-white transition-colors"
+                placeholder="点击 AI 生成 按钮自动撰写，或直接手工编辑内容。"
+                value={item.answer || ""}
+                onChange={(v) => updateItemAnswer(item.id, v)}
+              />
+            )}
             {item.answer?.trim() && !isGenerating && (
               <button
                 type="button"
@@ -195,8 +211,8 @@ export function WorkbenchAnswerPanel() {
               </button>
             )}
             {isGenerating && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-md bg-white/40">
-                <div className="flex items-center gap-2 rounded-full border border-blue-200 bg-white px-3.5 py-2 text-[12px] font-medium text-blue-600 shadow-sm">
+              <div className="pointer-events-none absolute right-3 top-3">
+                <div className="flex items-center gap-2 rounded-full border border-blue-200 bg-white/95 px-3.5 py-2 text-[12px] font-medium text-blue-600 shadow-sm">
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                   AI 正在生成回答…
                 </div>

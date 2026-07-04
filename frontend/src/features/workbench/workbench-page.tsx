@@ -14,7 +14,7 @@ import { WorkbenchUrlImportBar } from "./workbench-url-import-bar";
 /** 工作台页面：汇聚采集页和 URL 导入的问题，统一生成 AI 回答。 */
 export function WorkbenchPage() {
   const { items, globalPromptConfig, setGlobalPromptConfig } = useWorkbenchStore();
-  const doneCount = items.filter((i) => Boolean(i.answer?.trim())).length;
+  const doneCount = items.filter((i) => (i.generationStatus ?? (i.answer?.trim() ? "done" : "idle")) === "done").length;
 
   const configQuery = useQuery({ queryKey: ["workspace-config"], queryFn: getWorkspaceConfig });
 

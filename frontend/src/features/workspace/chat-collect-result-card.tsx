@@ -55,6 +55,7 @@ function toWorkbenchItems(result: ChatCollectResult, selectedItems: ChatCollectI
     sourcePlatform: result.platform as Platform,
     sourceTopic: result.topic,
     promptConfig: { answerStyle: "", systemPrompt: "", generationPrompt: "" },
+    generationStatus: "idle",
   }));
 }
 
