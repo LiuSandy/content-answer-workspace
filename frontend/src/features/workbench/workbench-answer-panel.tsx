@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Bot, Check, Copy, ExternalLink, LoaderCircle, RefreshCcw, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Bot, Check, Copy, ExternalLink, LoaderCircle, RefreshCcw, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -8,8 +7,15 @@ import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import { streamGenerateOneAnswer } from "@/features/workspace/workflow-api";
-import type { WorkbenchItem } from "@/types/workflow";
+import {
+  clearStoredGenerationJob,
+  readStoredGenerationJob,
+  saveStoredGenerationJob,
+  subscribeGenerationJob,
+  type GenerationJobSubscription,
+} from "@/features/workspace/generation-job-client";
+import { cancelGenerationJob, createGenerationJob, getGenerationJob } from "@/features/workspace/workflow-api";
+import type { GenerateOnePayload, WorkbenchItem } from "@/types/workflow";
 
 function QuestionBrief({ item }: { item: WorkbenchItem }) {
   return (
@@ -43,63 +49,176 @@ function QuestionBrief({ item }: { item: WorkbenchItem }) {
 
 /** 工作台右侧回答工作区，使用问题自身的 promptConfig 生成回答。 */
 export function WorkbenchAnswerPanel() {
-  const { items, selectedItemId, updateItemAnswer, setItem, setItemGenerationStatus, globalPromptConfig } = useWorkbenchStore();
+  const {
+    items,
+    selectedItemId,
+    updateItemAnswer,
+    setItemGenerationStatus,
+    startItemGenerationJob,
+    restoreItemGenerationJob,
+    appendItemStreamingAnswer,
+    finishItemGenerationJob,
+    failItemGenerationJob,
+    interruptItemGenerationJob,
+    cancelItemGenerationJob,
+    globalPromptConfig,
+  } = useWorkbenchStore();
   const item = items.find((i) => i.id === selectedItemId) ?? null;
   const [contentConstraint, setContentConstraint] = useState("");
   const [isCopied, setIsCopied] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
+  const subscriptionRef = useRef<GenerationJobSubscription | null>(null);
+  const restoredRef = useRef(false);
 
-  function showStatus(type: "success" | "error", text: string) {
+  function showStatus(type: "success" | "error" | "info", text: string) {
     setStatusMsg({ type, text });
     window.setTimeout(() => setStatusMsg(null), 3000);
   }
 
-  const generateMutation = useMutation({
-    mutationFn: (target: WorkbenchItem) => {
-      let accumulated = "";
-      setItemGenerationStatus(target.id, "generating");
-      updateItemAnswer(target.id, "");
-      return streamGenerateOneAnswer(
-        {
-          platform: target.sourcePlatform,
-          item: target,
-          answerStyle: globalPromptConfig.answerStyle,
-          systemPrompt: globalPromptConfig.systemPrompt,
-          generationPrompt: globalPromptConfig.generationPrompt,
-          contentConstraint: contentConstraint || undefined,
-        },
-        {
-          onChunk: (text) => {
-            accumulated += text;
-            updateItemAnswer(target.id, accumulated);
-          },
-          onDone: (data) => {
-            setItem(target.id, {
-              ...target,
-              ...data.item,
-              addedAt: target.addedAt,
-              sourcePlatform: target.sourcePlatform,
-              sourceTopic: target.sourceTopic,
-              promptConfig: target.promptConfig,
-              generationStatus: "done",
-              generationError: undefined,
-            });
-            showStatus("success", `已生成：${target.title}`);
-          },
-          onError: (message) => {
-            setItemGenerationStatus(
-              target.id,
-              message.includes("未收到完成事件") ? "interrupted" : "error",
-              message || "生成失败，请重试",
-            );
-            showStatus("error", message || "生成失败，请重试");
-          },
-        },
-      );
-    },
-  });
+  function closeCurrentSubscription() {
+    subscriptionRef.current?.close();
+    subscriptionRef.current = null;
+  }
 
-  const isGenerating = generateMutation.isPending;
+  function buildGenerateOnePayload(target: WorkbenchItem): GenerateOnePayload {
+    return {
+      platform: target.sourcePlatform,
+      item: target,
+      answerStyle: globalPromptConfig.answerStyle,
+      systemPrompt: globalPromptConfig.systemPrompt,
+      generationPrompt: globalPromptConfig.generationPrompt,
+      contentConstraint: contentConstraint || undefined,
+    };
+  }
+
+  function persistJobProgress(targetId: string, jobId: string, eventId: number) {
+    const latest = useWorkbenchStore.getState().items.find((i) => i.id === targetId);
+    saveStoredGenerationJob({
+      jobId,
+      itemId: targetId,
+      lastEventId: eventId,
+      streamingAnswer: latest?.generationJob?.streamingAnswer || "",
+    });
+  }
+
+  function subscribeToJob(target: WorkbenchItem, jobId: string, lastEventId: number) {
+    closeCurrentSubscription();
+    subscriptionRef.current = subscribeGenerationJob(jobId, lastEventId, {
+      onChunk: (text, eventId) => {
+        appendItemStreamingAnswer(target.id, text, eventId);
+        persistJobProgress(target.id, jobId, eventId);
+      },
+      onDone: ({ data, id }) => {
+        finishItemGenerationJob(target.id, {
+          ...target,
+          ...data.item,
+          addedAt: target.addedAt,
+          sourcePlatform: target.sourcePlatform,
+          sourceTopic: target.sourceTopic,
+          promptConfig: target.promptConfig,
+        }, id);
+        clearStoredGenerationJob();
+        closeCurrentSubscription();
+        showStatus("success", `已生成：${target.title}`);
+      },
+      onJobError: (message, eventId) => {
+        failItemGenerationJob(target.id, message, eventId);
+        clearStoredGenerationJob();
+        closeCurrentSubscription();
+        showStatus("error", message || "生成失败，请重试");
+      },
+      onCanceled: (message, eventId) => {
+        cancelItemGenerationJob(target.id, message, eventId);
+        clearStoredGenerationJob();
+        closeCurrentSubscription();
+        showStatus("info", message || "生成已取消");
+      },
+      onRecovering: () => {
+        showStatus("info", "正在恢复生成连接...");
+      },
+      onInterrupted: (message) => {
+        interruptItemGenerationJob(target.id, message);
+        showStatus("error", message);
+      },
+    });
+  }
+
+  async function startGeneration(target: WorkbenchItem) {
+    try {
+      closeCurrentSubscription();
+      setItemGenerationStatus(target.id, "creating");
+      const { jobId } = await createGenerationJob(buildGenerateOnePayload(target));
+      startItemGenerationJob(target.id, jobId);
+      saveStoredGenerationJob({ jobId, itemId: target.id, lastEventId: 0, streamingAnswer: "" });
+      subscribeToJob(target, jobId, 0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "创建生成任务失败";
+      failItemGenerationJob(target.id, message);
+      showStatus("error", message);
+    }
+  }
+
+  async function cancelGeneration(target: WorkbenchItem) {
+    const jobId = target.generationJob?.jobId;
+    if (!jobId) return;
+    try {
+      await cancelGenerationJob(jobId);
+      cancelItemGenerationJob(target.id);
+      clearStoredGenerationJob();
+      closeCurrentSubscription();
+      showStatus("info", "生成已取消");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "取消生成失败";
+      showStatus("error", message);
+    }
+  }
+
+  useEffect(() => {
+    return () => closeCurrentSubscription();
+  }, []);
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    const stored = readStoredGenerationJob();
+    if (!stored) return;
+    const target = items.find((i) => i.id === stored.itemId);
+    if (!target) return;
+    restoredRef.current = true;
+    void (async () => {
+      try {
+        const snapshot = await getGenerationJob(stored.jobId);
+        if (snapshot.status === "done" && snapshot.finalItem) {
+          finishItemGenerationJob(target.id, {
+            ...target,
+            ...snapshot.finalItem,
+            addedAt: target.addedAt,
+            sourcePlatform: target.sourcePlatform,
+            sourceTopic: target.sourceTopic,
+            promptConfig: target.promptConfig,
+          }, snapshot.lastEventId);
+          clearStoredGenerationJob();
+          return;
+        }
+        if (snapshot.status === "pending" || snapshot.status === "running") {
+          restoreItemGenerationJob(target.id, {
+            jobId: stored.jobId,
+            status: "generating",
+            lastEventId: stored.lastEventId,
+            streamingAnswer: stored.streamingAnswer,
+          });
+          subscribeToJob(target, stored.jobId, stored.lastEventId);
+          return;
+        }
+        clearStoredGenerationJob();
+      } catch {
+        clearStoredGenerationJob();
+        interruptItemGenerationJob(target.id, "任务不存在或已过期，可重新生成");
+      }
+    })();
+  }, [items, finishItemGenerationJob, interruptItemGenerationJob, restoreItemGenerationJob]);
+
+  const isGenerating = item?.generationStatus === "creating" || item?.generationStatus === "generating";
+  const preview = item?.generationJob?.streamingAnswer || "";
 
   async function copyAnswer() {
     if (!item?.answer?.trim()) return;
@@ -116,40 +235,41 @@ export function WorkbenchAnswerPanel() {
           "text-[11px] font-semibold tracking-wide transition-colors",
           statusMsg?.type === "error" ? "text-red-500" :
           statusMsg?.type === "success" ? "text-emerald-600" :
+          statusMsg?.type === "info" ? "text-blue-600" :
           "uppercase text-slate-400",
         )}>
           {statusMsg ? statusMsg.text : "回答工作区"}
         </span>
         {item && (
           <div className="flex shrink-0 items-center gap-1.5">
-            {item.answer?.trim() ? (
+            {isGenerating ? (
               <Button
                 variant="outline"
                 size="sm"
                 className="h-7 gap-1.5 rounded-md border-slate-200 px-2.5 text-[12px] font-medium"
-                onClick={() => generateMutation.mutate(item)}
-                disabled={isGenerating}
+                onClick={() => cancelGeneration(item)}
               >
-                {isGenerating ? (
-                  <LoaderCircle className="h-3 w-3 animate-spin" />
-                ) : (
-                  <RefreshCcw className="h-3 w-3" />
-                )}
+                <X className="h-3 w-3" />
+                取消
+              </Button>
+            ) : item.answer?.trim() ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 rounded-md border-slate-200 px-2.5 text-[12px] font-medium"
+                onClick={() => startGeneration(item)}
+              >
+                <RefreshCcw className="h-3 w-3" />
                 重新生成
               </Button>
             ) : (
               <Button
                 size="sm"
                 className="h-7 gap-1.5 rounded-md bg-slate-900 px-3 text-[12px] font-medium hover:bg-slate-800"
-                onClick={() => generateMutation.mutate(item)}
-                disabled={isGenerating}
+                onClick={() => startGeneration(item)}
               >
-                {isGenerating ? (
-                  <LoaderCircle className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3 w-3" />
-                )}
-                {isGenerating ? "生成中…" : "AI 生成"}
+                <Sparkles className="h-3 w-3" />
+                AI 生成
               </Button>
             )}
           </div>
@@ -186,8 +306,8 @@ export function WorkbenchAnswerPanel() {
           <div className="relative">
             {isGenerating ? (
               <div className="min-h-[320px] rounded-md border border-blue-300 bg-white px-3 py-3 text-[14px] leading-7 text-slate-800">
-                {item.answer?.trim() ? (
-                  <div className="whitespace-pre-wrap break-words">{item.answer}</div>
+                {preview.trim() ? (
+                  <div className="whitespace-pre-wrap break-words">{preview}</div>
                 ) : (
                   <div className="text-slate-400">AI 正在生成回答…</div>
                 )}

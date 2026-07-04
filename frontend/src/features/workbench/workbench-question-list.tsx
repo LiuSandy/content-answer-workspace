@@ -34,17 +34,19 @@ function WorkbenchQuestionRow({
   const generated = status === "done";
   const statusLabel: Record<typeof status, string> = {
     idle: "待生成",
+    creating: "创建中",
     generating: "生成中",
     done: "已生成",
     error: "生成失败",
     interrupted: "已中断",
+    canceled: "已取消",
   };
   const statusClass =
     status === "done"
       ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-      : status === "error" || status === "interrupted"
+      : status === "error" || status === "interrupted" || status === "canceled"
         ? "bg-red-50 text-red-700 ring-1 ring-red-200"
-        : status === "generating"
+        : status === "generating" || status === "creating"
           ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
           : "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   return (
@@ -90,9 +92,9 @@ function WorkbenchQuestionRow({
             "mt-1 h-[7px] w-[7px] shrink-0 rounded-full",
             generated
               ? "bg-emerald-400"
-              : status === "error" || status === "interrupted"
+              : status === "error" || status === "interrupted" || status === "canceled"
                 ? "bg-red-400"
-                : status === "generating"
+                : status === "generating" || status === "creating"
                   ? "bg-blue-400"
                   : "bg-amber-300",
           )}
