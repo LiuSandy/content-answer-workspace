@@ -12,6 +12,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from .api.routes.agent import router as agent_router
 from .api.routes.config import router as config_router
+from .api.routes.generation_jobs import router as generation_jobs_router
 from .api.routes.hotlist import router as hotlist_router
 from .api.routes.session import router as session_router
 from .api.routes.settings import router as settings_router
@@ -67,6 +68,7 @@ async def health() -> JSONResponse:
 
 app.include_router(agent_router)
 app.include_router(config_router)
+app.include_router(generation_jobs_router)
 app.include_router(hotlist_router)
 app.include_router(session_router)
 app.include_router(settings_router)
