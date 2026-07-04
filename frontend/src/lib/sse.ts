@@ -31,13 +31,47 @@ export async function streamPost<T>(
   });
 
   if (!response.ok || !response.body) {
-    callbacks.onError?.(`HTTP ${response.status}`);
-    return;
+    const message = `HTTP ${response.status}`;
+    callbacks.onError?.(message);
+    throw new Error(message);
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let receivedDone = false;
+  let doneData: T | null = null;
+  let streamError: string | null = null;
+
+  function handleEventBlock(eventBlock: string) {
+    if (!eventBlock.trim()) return;
+    // 提取所有 data: 行并拼接
+    const dataLines = eventBlock
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim());
+    if (dataLines.length === 0) return;
+    const raw = dataLines.join("");
+    if (!raw) return;
+    try {
+      const event = JSON.parse(raw) as SseEvent<T>;
+      if (event.type === "chunk") callbacks.onChunk?.(event.text, event.itemId);
+      else if (event.type === "item_start") callbacks.onItemStart?.(event.itemId);
+      else if (event.type === "item_done") callbacks.onItemDone?.(event.itemId, event.item);
+      else if (event.type === "tool_start") callbacks.onToolStart?.(event.text);
+      else if (event.type === "tool_end") callbacks.onToolEnd?.(event.text);
+      else if (event.type === "collect_result") callbacks.onCollectResult?.(event.platform, event.topic, event.items);
+      else if (event.type === "done") {
+        receivedDone = true;
+        doneData = event.data;
+      } else if (event.type === "error") {
+        streamError = event.message || "流式请求失败";
+        callbacks.onError?.(streamError);
+      }
+    } catch {
+      // 忽略非 JSON 行
+    }
+  }
 
   while (true) {
     const { done, value } = await reader.read();
@@ -49,28 +83,23 @@ export async function streamPost<T>(
     buffer = events.pop() ?? "";
 
     for (const eventBlock of events) {
-      if (!eventBlock.trim()) continue;
-      // 提取所有 data: 行并拼接
-      const dataLines = eventBlock
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trim());
-      if (dataLines.length === 0) continue;
-      const raw = dataLines.join("");
-      if (!raw) continue;
-      try {
-        const event = JSON.parse(raw) as SseEvent<T>;
-        if (event.type === "chunk") callbacks.onChunk?.(event.text, event.itemId);
-        else if (event.type === "item_start") callbacks.onItemStart?.(event.itemId);
-        else if (event.type === "item_done") callbacks.onItemDone?.(event.itemId, event.item);
-        else if (event.type === "tool_start") callbacks.onToolStart?.(event.text);
-        else if (event.type === "tool_end") callbacks.onToolEnd?.(event.text);
-        else if (event.type === "collect_result") callbacks.onCollectResult?.(event.platform, event.topic, event.items);
-        else if (event.type === "done") callbacks.onDone?.(event.data);
-        else if (event.type === "error") callbacks.onError?.(event.message);
-      } catch {
-        // 忽略非 JSON 行
-      }
+      handleEventBlock(eventBlock);
     }
+  }
+
+  if (buffer.trim()) {
+    handleEventBlock(buffer);
+  }
+
+  if (streamError) {
+    throw new Error(streamError);
+  }
+  if (!receivedDone) {
+    const message = "生成流中断，未收到完成事件";
+    callbacks.onError?.(message);
+    throw new Error(message);
+  }
+  if (doneData) {
+    callbacks.onDone?.(doneData);
   }
 }

@@ -30,7 +30,23 @@ function WorkbenchQuestionRow({
   active: boolean;
   onSelect: (id: string) => void;
 }) {
-  const generated = Boolean(item.answer?.trim());
+  const status = item.generationStatus ?? (item.answer?.trim() ? "done" : "idle");
+  const generated = status === "done";
+  const statusLabel: Record<typeof status, string> = {
+    idle: "待生成",
+    generating: "生成中",
+    done: "已生成",
+    error: "生成失败",
+    interrupted: "已中断",
+  };
+  const statusClass =
+    status === "done"
+      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+      : status === "error" || status === "interrupted"
+        ? "bg-red-50 text-red-700 ring-1 ring-red-200"
+        : status === "generating"
+          ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
+          : "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   return (
     <button
       type="button"
@@ -48,12 +64,10 @@ function WorkbenchQuestionRow({
             <span
               className={cn(
                 "inline-flex items-center rounded-[4px] px-1.5 py-[1px] text-[10px] font-semibold",
-                generated
-                  ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                  : "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+                statusClass,
               )}
             >
-              {generated ? "已生成" : "待生成"}
+              {statusLabel[status]}
             </span>
             <span className="text-[11px] text-slate-400">
               {PLATFORM_LABELS[item.sourcePlatform] ?? item.sourcePlatform}
@@ -74,7 +88,13 @@ function WorkbenchQuestionRow({
         <span
           className={cn(
             "mt-1 h-[7px] w-[7px] shrink-0 rounded-full",
-            generated ? "bg-emerald-400" : "bg-amber-300",
+            generated
+              ? "bg-emerald-400"
+              : status === "error" || status === "interrupted"
+                ? "bg-red-400"
+                : status === "generating"
+                  ? "bg-blue-400"
+                  : "bg-amber-300",
           )}
         />
       </div>
@@ -106,9 +126,9 @@ export function WorkbenchQuestionList() {
       result = result.filter((i) => i.sourcePlatform === platformFilter);
     }
     if (statusFilter === "pending") {
-      result = result.filter((i) => !i.answer?.trim());
+      result = result.filter((i) => (i.generationStatus ?? (i.answer?.trim() ? "done" : "idle")) !== "done");
     } else if (statusFilter === "done") {
-      result = result.filter((i) => Boolean(i.answer?.trim()));
+      result = result.filter((i) => (i.generationStatus ?? (i.answer?.trim() ? "done" : "idle")) === "done");
     }
     const kw = deferredKeyword.trim().toLowerCase();
     if (kw) {

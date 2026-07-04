@@ -52,6 +52,7 @@ export function WorkbenchUrlImportBar() {
         sourcePlatform: platform,
         sourceTopic: "",
         promptConfig: { answerStyle: "", systemPrompt: "", generationPrompt: "" },
+        generationStatus: "idle",
       };
       const { added, skipped } = addItems([item]);
       setLastMessage(

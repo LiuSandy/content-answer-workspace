@@ -5,6 +5,7 @@ import os
 import re
 from datetime import datetime
 from functools import lru_cache
+from html import unescape
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ import httpx
 
 from ..config.loader import get_settings
 from ..core.config import COOKIE_PATH_DEFAULT, get_default_topics, get_workflow_config, load_env_file
+from ..infrastructure.collectors.fetchers.playwright_fetcher import PlaywrightFetcher
 from ..models import QuestionItem, Topic, WorkflowResult, ZhihuSearchResponse
 
 TOPIC_HINTS_PATH = Path(__file__).resolve().parent.parent / "core" / "topic_hints.json"
@@ -45,6 +47,234 @@ def clean_text(value: Any) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def is_zhihu_block_text(value: str) -> bool:
+    """识别知乎登录/安全验证占位文本；这样风控页不会被误当成真实问题内容。"""
+
+    text = clean_text(value)
+    blocked_markers = [
+        "安全验证",
+        "请您登录后查看更多专业优质内容",
+        "请登录后查看更多",
+        "知乎 - 有问题，就会有答案",
+    ]
+    return not text or any(marker in text for marker in blocked_markers)
+
+
+def is_zhihu_challenge_html(html: str) -> bool:
+    """识别知乎风控挑战页；这样 URL 导入可以触发浏览器兜底或返回明确错误。"""
+
+    markers = ("zse-ck", "zh-zse-ck", "请求存在异常", "code\":40362", "请您登录后查看更多专业优质内容")
+    return any(marker in html for marker in markers)
+
+
+def is_placeholder_question(item: QuestionItem) -> bool:
+    """判断问题对象是否仍只是 URL 兜底值；这样导入失败不会在前端伪装成成功。"""
+
+    return (
+        re.fullmatch(r"知乎问题\s*\d+", item.title.strip()) is not None
+        and not item.excerpt.strip()
+        and not item.detail.strip()
+        and item.answer_count == 0
+        and item.updated_time is None
+    )
+
+
+def _first_present(payload: dict[str, Any], *keys: str) -> Any:
+    """按多个候选 key 读取第一个非空字段；这样可兼容知乎 API 与前端状态里的不同命名。"""
+
+    for key in keys:
+        value = payload.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _parse_jsonish_text(value: str) -> Any:
+    """解析 HTML 中的 JSON 或 JS 字符串片段；这样初始状态和转义字段都能转成结构化对象。"""
+
+    text = unescape(str(value or "")).strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    try:
+        return json.loads(f'"{text}"')
+    except json.JSONDecodeError:
+        return None
+
+
+def _normalize_html_text(value: Any) -> str:
+    """把普通字符串、HTML 字符串或 JSON 转义字符串归一成纯文本。"""
+
+    if value in (None, ""):
+        return ""
+    parsed = _parse_jsonish_text(str(value))
+    if isinstance(parsed, str):
+        return clean_text(parsed)
+    return clean_text(value)
+
+
+def _normalize_topics(value: Any) -> list[str]:
+    """把知乎不同来源的话题字段归一成名称列表。"""
+
+    if not isinstance(value, list):
+        return []
+    topics: list[str] = []
+    for topic in value:
+        if isinstance(topic, dict):
+            name = clean_text(topic.get("name") or topic.get("Name") or topic.get("title"))
+        else:
+            name = clean_text(topic)
+        if name:
+            topics.append(name)
+    return unique_by(topics, lambda item: item)
+
+
+def _snapshot_from_question_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """从知乎问题结构里抽取内部快照；这样 API payload 和页面 initialState 可以共享映射。"""
+
+    topics = _normalize_topics(
+        _first_present(payload, "topics", "topicList", "TopicList", "boundTopicIds")
+    )
+    answer_count = _first_present(payload, "answer_count", "answerCount", "answer_num", "answerNum")
+    try:
+        normalized_answer_count = int(answer_count) if answer_count not in (None, "") else None
+    except (TypeError, ValueError):
+        normalized_answer_count = None
+    return {
+        "title": _normalize_html_text(_first_present(payload, "title", "name", "questionTitle", "Title")),
+        "excerpt": _normalize_html_text(
+            _first_present(payload, "excerpt", "questionExcerpt", "description", "summary")
+        ),
+        "detail": _normalize_html_text(
+            _first_present(payload, "detail", "questionDetail", "content", "description")
+        ),
+        "answer_count": normalized_answer_count,
+        "updated_time": to_iso_time(
+            _first_present(payload, "updated_time", "updatedTime", "updated", "created", "created_time", "createdTime")
+        ),
+        "topics": topics,
+    }
+
+
+def _merge_snapshot(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    """合并问题快照；只用非空新字段填补空字段，避免弱来源覆盖强来源。"""
+
+    merged = dict(base)
+    for key in ("title", "excerpt", "detail", "updated_time"):
+        if not merged.get(key) and incoming.get(key):
+            merged[key] = incoming[key]
+    if merged.get("answer_count") is None and incoming.get("answer_count") is not None:
+        merged["answer_count"] = incoming["answer_count"]
+    if not merged.get("topics") and incoming.get("topics"):
+        merged["topics"] = incoming["topics"]
+    return merged
+
+
+def _extract_balanced_object(text: str, start_index: int) -> str | None:
+    """从 JS 片段中截取一个平衡的大括号对象；用于解析 window.__INITIAL_STATE__。"""
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start_index, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start_index:index + 1]
+    return None
+
+
+def _extract_embedded_json_objects(html: str) -> list[dict[str, Any]]:
+    """提取知乎页面中常见的内嵌 JSON 对象；这样 URL 导入不只依赖 meta 标签。"""
+
+    objects: list[dict[str, Any]] = []
+    script_patterns = [
+        r'<script[^>]+id=["\']js-initialData["\'][^>]*>(.*?)</script>',
+        r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+    ]
+    for pattern in script_patterns:
+        for match in re.finditer(pattern, html, re.I | re.S):
+            parsed = _parse_jsonish_text(match.group(1))
+            if isinstance(parsed, dict):
+                objects.append(parsed)
+
+    state_match = re.search(r"window\.__INITIAL_STATE__\s*=", html)
+    if state_match:
+        start = html.find("{", state_match.end())
+        if start >= 0:
+            raw_object = _extract_balanced_object(html, start)
+            parsed = _parse_jsonish_text(raw_object or "")
+            if isinstance(parsed, dict):
+                objects.append(parsed)
+    return objects
+
+
+def _iter_dicts(value: Any):
+    """深度遍历嵌套 JSON 中的 dict；用于从知乎 initialState 中定位 question 实体。"""
+
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _iter_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _iter_dicts(child)
+
+
+def extract_zhihu_question_snapshot_from_state(state: dict[str, Any], question_id: str | None = None) -> dict[str, Any]:
+    """从知乎前端状态中提取问题快照；这样页面结构变化时仍可从 entities.questions 获取字段。"""
+
+    snapshots: list[dict[str, Any]] = []
+    for node in _iter_dicts(state):
+        questions = node.get("questions")
+        if isinstance(questions, dict):
+            if question_id and isinstance(questions.get(question_id), dict):
+                snapshots.append(_snapshot_from_question_payload(questions[question_id]))
+            else:
+                snapshots.extend(
+                    _snapshot_from_question_payload(question)
+                    for question in questions.values()
+                    if isinstance(question, dict)
+                )
+        node_id = str(_first_present(node, "id", "questionId", "qid") or "")
+        if (
+            (question_id and node_id == question_id)
+            or {"title", "answerCount"}.issubset(node.keys())
+            or {"title", "answer_count"}.issubset(node.keys())
+        ):
+            snapshots.append(_snapshot_from_question_payload(node))
+
+    merged = {
+        "title": None,
+        "excerpt": "",
+        "detail": "",
+        "answer_count": None,
+        "updated_time": None,
+        "topics": [],
+    }
+    for snapshot in snapshots:
+        merged = _merge_snapshot(merged, snapshot)
+        if merged.get("title") and (merged.get("excerpt") or merged.get("detail")):
+            break
+    return merged
+
+
 def extract_zhihu_title_from_html(html: str) -> str | None:
     """从知乎 HTML 中尽量稳健地提取问题标题；这样页面标签结构变化时导入单题也不容易误判失败。"""
 
@@ -61,7 +291,7 @@ def extract_zhihu_title_from_html(html: str) -> str | None:
         if not match:
             continue
         title = clean_text(match.group(1)).replace(" - 知乎", "").strip()
-        if title and not re.fullmatch(r"知乎问题\s*\d+", title):
+        if title and not re.fullmatch(r"知乎问题\s*\d+", title) and not is_zhihu_block_text(title):
             return title
     return None
 
@@ -76,7 +306,8 @@ def extract_zhihu_excerpt_from_html(html: str) -> str:
     for pattern in patterns:
         match = re.search(pattern, html, re.I | re.S)
         if match:
-            return clean_text(match.group(1))
+            excerpt = clean_text(match.group(1))
+            return "" if is_zhihu_block_text(excerpt) else excerpt
     return ""
 
 
@@ -92,7 +323,7 @@ def extract_zhihu_detail_from_html(html: str) -> str:
         match = re.search(pattern, html, re.I | re.S)
         if match:
             detail = clean_text(match.group(1))
-            if detail:
+            if detail and not is_zhihu_block_text(detail):
                 return detail
     return ""
 
@@ -109,8 +340,22 @@ def extract_zhihu_topics_from_html(html: str) -> list[str]:
     return []
 
 
-def extract_zhihu_question_snapshot_from_html(html: str) -> dict[str, Any]:
+def extract_zhihu_question_snapshot_from_html(html: str, question_id: str | None = None) -> dict[str, Any]:
     """从知乎 HTML 汇总问题快照字段；这样页面解析可以一次产出标题、摘要、描述、时间和标签的补充信息。"""
+
+    state_snapshot = {
+        "title": None,
+        "excerpt": "",
+        "detail": "",
+        "answer_count": None,
+        "updated_time": None,
+        "topics": [],
+    }
+    for state in _extract_embedded_json_objects(html):
+        state_snapshot = _merge_snapshot(
+            state_snapshot,
+            extract_zhihu_question_snapshot_from_state(state, question_id),
+        )
 
     date_match = re.search(r'"updated_time":\s*(\d{10})', html, re.I) or re.search(
         r'<meta\s+itemprop="dateModified"\s+content="([^"]+)"', html, re.I
@@ -118,7 +363,7 @@ def extract_zhihu_question_snapshot_from_html(html: str) -> dict[str, Any]:
     answer_match = re.search(r'"answer_count":\s*(\d+)', html, re.I) or re.search(
         r'"answerCount":\s*(\d+)', html, re.I
     )
-    return {
+    regex_snapshot = {
         "title": extract_zhihu_title_from_html(html),
         "excerpt": extract_zhihu_excerpt_from_html(html),
         "detail": extract_zhihu_detail_from_html(html),
@@ -126,6 +371,7 @@ def extract_zhihu_question_snapshot_from_html(html: str) -> dict[str, Any]:
         "updated_time": to_iso_time(date_match.group(1)) if date_match else None,
         "topics": extract_zhihu_topics_from_html(html),
     }
+    return _merge_snapshot(state_snapshot, regex_snapshot)
 
 
 def get_zhihu_question_web_url(question_id: str) -> str:
@@ -316,50 +562,51 @@ def build_zhihu_headers(
 def map_zhihu_question_detail_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """把知乎问题详情响应映射为内部字段；这样链接导入能优先使用结构化数据而不是依赖脆弱的页面标签。"""
 
-    topics = [
-        clean_text(topic.get("name"))
-        for topic in payload.get("topics", [])
-        if isinstance(topic, dict) and clean_text(topic.get("name"))
-    ]
-    return {
-        "title": clean_text(payload.get("title") or ""),
-        "excerpt": clean_text(payload.get("excerpt") or ""),
-        "detail": clean_text(payload.get("detail") or ""),
-        "answer_count": int(payload.get("answer_count") or 0),
-        "updated_time": to_iso_time(payload.get("updated_time") or payload.get("created")),
-        "topics": topics,
-    }
+    return _snapshot_from_question_payload(payload)
 
 
 async def fetch_question_detail_payload(question_id: str, user_agent: str) -> dict[str, Any] | None:
     """请求知乎结构化问题详情；这样导入问题时可以稳定拿到真实标题、摘要、描述和标签。"""
 
-    cookie = load_zhihu_cookie()
-    signature = get_zhihu_signature_header()
-    if not cookie or not signature:
-        return None
+    candidates = [
+        (
+            f"https://www.zhihu.com/api/v4/questions/{question_id}",
+            {},
+            False,
+        ),
+        (
+            f"https://api.zhihu.com/questions/{question_id}",
+            {},
+            False,
+        ),
+        (
+            f"https://api.zhihu.com/questions/{question_id}",
+            {"include": "answer_count,excerpt,detail,topics"},
+            True,
+        ),
+    ]
 
-    detail_url = f"https://api.zhihu.com/questions/{question_id}"
-    params = {"include": "answer_count,excerpt,detail,topics"}
-    headers = build_zhihu_headers(
-        user_agent,
-        accept="*/*",
-        referer=get_zhihu_question_web_url(question_id),
-        include_signature=True,
-        include_requested_with=True,
-    )
     async with httpx.AsyncClient(
         timeout=get_settings().http.client_timeout_seconds, follow_redirects=True
     ) as client:
-        response = await client.get(detail_url, params=params, headers=headers)
-    if response.status_code >= 400:
-        return None
-
-    try:
-        payload = parse_json_response(response, "Zhihu question detail API")
-    except ValueError:
-        return None
-    return payload if isinstance(payload, dict) else None
+        for detail_url, params, include_signature in candidates:
+            headers = build_zhihu_headers(
+                user_agent,
+                accept="*/*",
+                referer=get_zhihu_question_web_url(question_id),
+                include_signature=include_signature,
+                include_requested_with=True,
+            )
+            response = await client.get(detail_url, params=params, headers=headers)
+            if response.status_code >= 400:
+                continue
+            try:
+                payload = parse_json_response(response, "Zhihu question detail API")
+            except ValueError:
+                continue
+            if isinstance(payload, dict) and not payload.get("error"):
+                return payload
+    return None
 
 
 def map_search_item(raw: dict[str, Any], topic_name: str) -> QuestionItem | None:
@@ -400,7 +647,12 @@ def map_search_item(raw: dict[str, Any], topic_name: str) -> QuestionItem | None
     )
 
 
-async def fetch_question_details(item: QuestionItem, user_agent: str) -> QuestionItem:
+async def fetch_question_details(
+    item: QuestionItem,
+    user_agent: str,
+    *,
+    render_fallback: bool = False,
+) -> QuestionItem:
     """补抓知乎问题详情页信息；这样搜索结果缺失或不准的标题、时间和回答数可以被修正。"""
 
     updates: dict[str, Any] = {}
@@ -431,8 +683,9 @@ async def fetch_question_details(item: QuestionItem, user_agent: str) -> Questio
         timeout=get_settings().http.client_timeout_seconds, follow_redirects=True
     ) as client:
         response = await client.get(item.url, headers=headers)
+    html_text = response.text
     if response.status_code < 400:
-        html_snapshot = extract_zhihu_question_snapshot_from_html(response.text)
+        html_snapshot = extract_zhihu_question_snapshot_from_html(html_text, item.id)
         if html_snapshot.get("title") and not updates.get("title"):
             updates["title"] = html_snapshot["title"]
         if html_snapshot.get("excerpt") and not updates.get("excerpt"):
@@ -446,7 +699,35 @@ async def fetch_question_details(item: QuestionItem, user_agent: str) -> Questio
         if html_snapshot.get("topics") and not updates.get("topic"):
             updates["topic"] = " / ".join(html_snapshot["topics"])
 
-    return item.model_copy(update=updates) if updates else item
+    resolved = item.model_copy(update=updates) if updates else item
+    if not render_fallback or not is_placeholder_question(resolved):
+        return resolved
+
+    if response.status_code >= 400 or is_zhihu_challenge_html(html_text):
+        cookie = load_zhihu_cookie()
+        if cookie:
+            rendered_html = await PlaywrightFetcher(cookie_string=cookie, cookie_domain=".zhihu.com").fetch(
+                item.url,
+                headers,
+            )
+            rendered_snapshot = extract_zhihu_question_snapshot_from_html(rendered_html, item.id)
+            rendered_updates: dict[str, Any] = {}
+            if rendered_snapshot.get("title"):
+                rendered_updates["title"] = rendered_snapshot["title"]
+            if rendered_snapshot.get("excerpt"):
+                rendered_updates["excerpt"] = rendered_snapshot["excerpt"]
+            if rendered_snapshot.get("detail"):
+                rendered_updates["detail"] = rendered_snapshot["detail"]
+            if rendered_snapshot.get("updated_time"):
+                rendered_updates["updated_time"] = rendered_snapshot["updated_time"]
+            if rendered_snapshot.get("answer_count") is not None:
+                rendered_updates["answer_count"] = rendered_snapshot["answer_count"]
+            if rendered_snapshot.get("topics"):
+                rendered_updates["topic"] = " / ".join(rendered_snapshot["topics"])
+            if rendered_updates:
+                return item.model_copy(update=rendered_updates)
+
+    return resolved
 
 
 async def fetch_zhihu_question_by_url(url: str, user_agent: str, topic_name: str = "链接导入") -> QuestionItem:
@@ -466,7 +747,13 @@ async def fetch_zhihu_question_by_url(url: str, user_agent: str, topic_name: str
         excerpt="",
         detail="",
     )
-    return await fetch_question_details(item, user_agent)
+    resolved = await fetch_question_details(item, user_agent, render_fallback=True)
+    if is_placeholder_question(resolved):
+        raise ValueError(
+            "未能解析知乎问题内容：知乎返回了安全验证/异常访问页，或当前 Cookie 已失效。"
+            "请在浏览器确认该链接可打开，并更新 ZHIHU_COOKIE_FILE / ZHIHU_X_ZSE_96 后重试。"
+        )
+    return resolved
 
 
 def calculate_keyword_fetch_limit(total_limit: int, keyword_count: int) -> int:

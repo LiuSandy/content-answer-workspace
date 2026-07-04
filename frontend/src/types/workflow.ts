@@ -250,6 +250,8 @@ export type AgentTool = {
   description: string;
 };
 
+export type GenerationStatus = "idle" | "generating" | "done" | "error" | "interrupted";
+
 /** 工作台问题条目，在 QuestionItem 基础上附加来源元数据与提示词快照。 */
 export type WorkbenchItem = QuestionItem & {
   /** 加入工作台的时间，用于排序 */
@@ -264,4 +266,8 @@ export type WorkbenchItem = QuestionItem & {
     systemPrompt: string;
     generationPrompt: string;
   };
+  /** AI 回答生成状态；不能只用 answer 是否为空判断是否完整生成。 */
+  generationStatus?: GenerationStatus;
+  /** 生成失败或中断时的可展示错误。 */
+  generationError?: string;
 };
