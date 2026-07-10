@@ -209,14 +209,16 @@ export type SessionSummary = {
 /** Chat 采集结果卡片的单条内容项 */
 export type ChatCollectItem = {
   title: string;
-  url: string;
+  url?: string;
   excerpt?: string;
   /** 格式化后的核心指标，如 "1.2万 赞" 或 "312 个回答" */
   metric?: string;
   author?: string;
+  group?: string;
+  category?: string;
 };
 
-/** Chat 消息中嵌入的采集结果数据（role === "collect" 时存在） */
+/** Chat 消息中嵌入的采集结果数据 */
 export type ChatCollectResult = {
   platform: Platform | string;
   topic: string;
@@ -230,6 +232,8 @@ export type ChatMessage = {
   steps?: string[];
   /** collect 角色专用：结构化采集结果 */
   collectResult?: ChatCollectResult;
+  /** assistant 任务消息专用：同一轮 AI 回答内的结构化采集结果 */
+  collectResults?: ChatCollectResult[];
 };
 
 export type ConversationPayload = {
@@ -244,6 +248,45 @@ export type ConversationResponse = {
 export type ConversationHistoryResponse = {
   messages: ChatMessage[];
 };
+
+export type ChatConversationRunStatus = "pending" | "running" | "done" | "error" | "canceled";
+
+export type CreateChatConversationRunResponse = {
+  runId: string;
+  status: ChatConversationRunStatus;
+};
+
+export type ChatConversationRunSnapshot = {
+  runId: string;
+  sessionId: string;
+  status: ChatConversationRunStatus;
+  message: string;
+  reply: string | null;
+  collectResults: ChatCollectResult[];
+  error: string | null;
+  lastEventId: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string | null;
+};
+
+export type ChatConversationRunSseEvent =
+  | { id: number; event: "tool_start"; data: { text: string; name?: string } }
+  | { id: number; event: "tool_end"; data: { text: string; name?: string } }
+  | { id: number; event: "collect_result"; data: ChatCollectResult }
+  | { id: number; event: "chunk"; data: { text: string } }
+  | { id: number; event: "done"; data: { reply: string; collectResults: ChatCollectResult[] } }
+  | { id: number; event: "chat_error"; data: { message: string } }
+  | { id: number; event: "canceled"; data: { message: string } };
+
+export type ChatRunUiStatus =
+  | "creating"
+  | "streaming"
+  | "recovering"
+  | "done"
+  | "error"
+  | "interrupted"
+  | "canceled";
 
 export type AgentTool = {
   name: string;

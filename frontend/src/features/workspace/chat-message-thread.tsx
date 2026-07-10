@@ -1,10 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { cn } from "@/lib/utils";
 import type { ChatCollectResult, ChatMessage } from "@/types/workflow";
 
-import { ChatCollectResultCard } from "./chat-collect-result-card";
 import { ChatToolProcess } from "./chat-tool-process";
+import { ChatTaskResultMessage } from "./chat-task-result-message";
 import { MarkdownMessage } from "./markdown-message";
 
 type Props = {
@@ -15,6 +15,8 @@ type Props = {
   toolSteps?: string[];
   /** 实时采集结果：工具调用完成但 LLM 尚未输出最终回答时展示 */
   liveCollectResult?: ChatCollectResult | null;
+  liveCollectResults?: ChatCollectResult[];
+  liveStatusLabel?: string | null;
 };
 
 function ThinkingDots() {
@@ -41,12 +43,18 @@ export function ChatMessageThread({
   streamingContent,
   toolSteps = [],
   liveCollectResult,
+  liveCollectResults,
+  liveStatusLabel,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const activeCollectResults = useMemo(
+    () => liveCollectResults ?? (liveCollectResult ? [liveCollectResult] : []),
+    [liveCollectResult, liveCollectResults],
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending, streamingContent, toolSteps]);
+  }, [messages, isSending, streamingContent, toolSteps, activeCollectResults]);
 
   return (
     <div className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4">
@@ -65,7 +73,18 @@ export function ChatMessageThread({
         if (message.role === "collect" && message.collectResult) {
           return (
             <div key={index} className="flex justify-start">
-              <ChatCollectResultCard result={message.collectResult} />
+              <ChatTaskResultMessage content="" collectResults={[message.collectResult]} />
+            </div>
+          );
+        }
+        if (message.role === "assistant" && message.collectResults?.length) {
+          return (
+            <div key={index} className="flex justify-start">
+              <ChatTaskResultMessage
+                content={message.content}
+                steps={message.steps}
+                collectResults={message.collectResults}
+              />
             </div>
           );
         }
@@ -87,27 +106,21 @@ export function ChatMessageThread({
           </div>
         );
       })}
-      {isSending && toolSteps.length > 0 && (
+      {isSending && (toolSteps.length > 0 || activeCollectResults.length > 0 || streamingContent) && (
         <div className="flex justify-start">
-          <ChatToolProcess steps={toolSteps} live />
+          <ChatTaskResultMessage
+            content={streamingContent || ""}
+            steps={toolSteps}
+            collectResults={activeCollectResults}
+            live
+            statusLabel={liveStatusLabel ?? undefined}
+          />
         </div>
       )}
-      {isSending && liveCollectResult && (
-        <div className="flex justify-start">
-          <ChatCollectResultCard result={liveCollectResult} />
-        </div>
-      )}
-      {isSending && !streamingContent && toolSteps.length === 0 && !liveCollectResult && (
+      {isSending && !streamingContent && toolSteps.length === 0 && activeCollectResults.length === 0 && (
         <div className="flex justify-start">
           <div className="rounded-lg bg-muted">
             <ThinkingDots />
-          </div>
-        </div>
-      )}
-      {isSending && streamingContent && (
-        <div className="flex justify-start">
-          <div className="w-fit max-w-[75%] rounded-lg px-4 py-3 text-sm leading-relaxed bg-muted text-foreground">
-            <MarkdownMessage content={streamingContent} />
           </div>
         </div>
       )}

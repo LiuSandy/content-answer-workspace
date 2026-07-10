@@ -43,7 +43,7 @@ function toWorkbenchItems(result: ChatCollectResult, selectedItems: ChatCollectI
   return selectedItems.map((item) => ({
     id: item.url || `${result.platform}-${item.title}`,
     title: item.title,
-    url: item.url,
+    url: item.url || "",
     platform: result.platform as Platform,
     topic: result.topic,
     answerCount: 0,

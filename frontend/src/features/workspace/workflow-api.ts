@@ -4,12 +4,14 @@ import type {
   AgentChatPayload,
   AgentChatResponse,
   AgentTool,
+  ChatConversationRunSnapshot,
   CollectPayload,
   CollectResponse,
   ConfigResponse,
   ConversationHistoryResponse,
   ConversationPayload,
   ConversationResponse,
+  CreateChatConversationRunResponse,
   CreateGenerationJobResponse,
   GenerateAllPayload,
   GenerateAllResponse,
@@ -96,6 +98,18 @@ export function getSession(sessionId: string) {
 
 export function sendConversationMessage(payload: ConversationPayload) {
   return apiPost<ConversationResponse>("/api/agent/conversation", payload);
+}
+
+export function createChatConversationRun(payload: ConversationPayload) {
+  return apiPost<CreateChatConversationRunResponse>("/api/agent/conversation/runs", payload);
+}
+
+export function getChatConversationRun(runId: string) {
+  return apiGet<ChatConversationRunSnapshot>(`/api/agent/conversation/runs/${runId}`);
+}
+
+export function cancelChatConversationRun(runId: string) {
+  return apiDelete<{ runId: string; status: "canceled" }>(`/api/agent/conversation/runs/${runId}`);
 }
 
 export function getConversationHistory(sessionId: string) {

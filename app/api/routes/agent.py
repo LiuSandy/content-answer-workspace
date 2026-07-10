@@ -1,19 +1,25 @@
 from __future__ import annotations
 
-import json
+import asyncio
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from ...api.sse_utils import make_sse_response, sse_event
+from ...api.sse_utils import make_sse_response, sse_event, sse_named_event
 from ...application.agent.graphs.analysis import get_analysis_graph
 from ...application.agent.graphs.refinement import build_refinement_graph
+from ...application.agent.collect_results import extract_collect_result
 from ...application.agent.process_steps import tool_end_step, tool_start_step
 from ...application.agent.session_adapter import InMemorySessionAdapter
 from ...application.agent.state import AgentState
 from ...application.agent.tools import ALL_TOOLS
+from ...application.chat_conversation_run_service import (
+    TERMINAL_STATUSES as CHAT_RUN_TERMINAL_STATUSES,
+    ChatConversationRunService,
+    ChatSseEvent,
+)
 from ...infrastructure.llm.deepseek_client import DeepSeekAnswerGenerator
 from ...services.hotlist_service import fetch_hotlist
 from ...services.session_service import update_session_title
@@ -21,18 +27,8 @@ from ...services.session_service import update_session_title
 router = APIRouter()
 
 _answer_gen = DeepSeekAnswerGenerator()
-
-# 返回结构化 JSON 的采集工具集合；on_tool_end 时解析并发射 collect_result 事件
-_COLLECT_TOOLS = {
-    "zhihu_search",
-    "xiaohongshu_search", "xiaohongshu_feed",
-    "bilibili_search", "bilibili_hot",
-    "twitter_search", "twitter_feed", "twitter_user_posts",
-    "reddit_search", "reddit_hot", "reddit_subreddit",
-    "github_search_repos",
-    "rss_fetch",
-    "v2ex_hot", "v2ex_node",
-}
+_chat_run_service = ChatConversationRunService()
+_CHAT_RUN_NOT_FOUND_MESSAGE = "对话运行不存在或已过期，请重新发送"
 
 _ANALYSIS_SYSTEM_PROMPT = """
 你是内容策略分析师。分析知乎热榜数据，严格按以下 JSON 格式输出：
@@ -104,6 +100,13 @@ class ConversationRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+def set_chat_conversation_run_service(service: ChatConversationRunService) -> None:
+    """替换路由使用的 chat run service；测试可以注入无后台执行的内存实例。"""
+
+    global _chat_run_service
+    _chat_run_service = service
+
+
 @router.post("/api/agent/conversation")
 async def agent_conversation(request: ConversationRequest, http_request: Request) -> JSONResponse:
     """对话页面专用接口；调用独立的 ConversationGraph，不影响精修/分析两个现有 Graph。"""
@@ -125,6 +128,81 @@ async def agent_conversation(request: ConversationRequest, http_request: Request
     return JSONResponse({"ok": True, "data": {"reply": reply}})
 
 
+@router.post("/api/agent/conversation/runs")
+async def create_conversation_run(request: ConversationRequest, http_request: Request) -> JSONResponse:
+    try:
+        run = await _chat_run_service.create_run(request.sessionId, request.message)
+    except ValueError as error:
+        return JSONResponse(
+            {"ok": False, "error": {"message": str(error)}},
+            status_code=400,
+        )
+    _chat_run_service.start_conversation_run(
+        run.id,
+        http_request.app.state.conversation_graph,
+        update_session_title,
+    )
+    return JSONResponse({"ok": True, "data": {"runId": run.id, "status": run.status}})
+
+
+@router.get("/api/agent/conversation/runs/{run_id}")
+async def get_conversation_run(run_id: str) -> JSONResponse:
+    snapshot = _chat_run_service.get_run_snapshot(run_id)
+    if snapshot is None:
+        return _chat_run_not_found_response()
+    return JSONResponse({"ok": True, "data": snapshot})
+
+
+@router.get("/api/agent/conversation/runs/{run_id}/stream")
+async def stream_conversation_run(
+    run_id: str,
+    last_event_id_query: int | None = Query(default=None, alias="lastEventId"),
+    last_event_id_header: str | None = Header(default=None, alias="Last-Event-ID"),
+) -> StreamingResponse:
+    last_event_id = _parse_last_event_id(last_event_id_header, last_event_id_query)
+
+    async def _gen() -> AsyncIterator[str]:
+        if _chat_run_service.get_run(run_id) is None:
+            yield sse_named_event(
+                "chat_error",
+                {"message": _CHAT_RUN_NOT_FOUND_MESSAGE},
+            )
+            return
+
+        current_id = last_event_id
+        while True:
+            replayed = _chat_run_service.replay_events(run_id, current_id)
+            for event in replayed:
+                current_id = max(current_id, event.id)
+                yield _format_chat_run_event(event)
+                if event.event in {"done", "chat_error", "canceled"}:
+                    return
+
+            run = _chat_run_service.get_run(run_id)
+            if run is None or run.status in CHAT_RUN_TERMINAL_STATUSES:
+                return
+
+            try:
+                events = await _chat_run_service.wait_for_event(run_id, current_id, timeout=15.0)
+            except asyncio.TimeoutError:
+                yield sse_named_event("heartbeat", {})
+                continue
+
+            if not events:
+                yield sse_named_event("heartbeat", {})
+
+    return make_sse_response(_gen())
+
+
+@router.delete("/api/agent/conversation/runs/{run_id}")
+async def cancel_conversation_run(run_id: str) -> JSONResponse:
+    try:
+        run = await _chat_run_service.cancel_run(run_id)
+    except KeyError:
+        return _chat_run_not_found_response()
+    return JSONResponse({"ok": True, "data": {"runId": run.id, "status": run.status}})
+
+
 @router.get("/api/agent/conversation/{session_id}/history")
 async def agent_conversation_history(session_id: str, http_request: Request) -> JSONResponse:
     """读取指定会话的完整对话历史；供前端进入对话页面时首次渲染消息流。"""
@@ -139,46 +217,62 @@ async def agent_conversation_history(session_id: str, http_request: Request) -> 
 def _build_history_messages(raw_messages: list) -> list[dict]:
     """把 LangGraph 持久化的消息流重建成前端消息列表；
     单独定义是因为 ReAct 历史里混有工具调用与工具结果，需要把它们折叠成一条 tool 过程消息，
-    并从采集工具的 ToolMessage 中重建 collect 角色卡片，保证历史与实时渲染一致。"""
+    并把采集工具结果附着到最终 assistant 消息，保证历史与实时渲染一致。"""
 
     result: list[dict] = []
     pending_steps: list[str] = []
     pending_collect_results: list[dict] = []
 
-    def flush_tool_steps() -> None:
-        """把累积的工具步骤和采集卡片落入结果列表；在出现最终回答或新一轮用户消息前调用。"""
+    def flush_pending_without_reply() -> None:
+        """在没有最终回答时落入 pending 状态；采集结果优先成为 assistant 任务消息。"""
         nonlocal pending_steps, pending_collect_results
-        if pending_steps:
+        if pending_collect_results:
+            message: dict = {
+                "role": "assistant",
+                "content": "",
+                "collectResults": pending_collect_results,
+            }
+            if pending_steps:
+                message["steps"] = pending_steps
+            result.append(message)
+        elif pending_steps:
             result.append({"role": "tool", "content": "", "steps": pending_steps})
+        pending_steps = []
+        pending_collect_results = []
+
+    def append_assistant(content: str) -> None:
+        """追加 assistant 消息；如果有采集结果，把它们作为同一条任务消息的结构化数据。"""
+        nonlocal pending_steps, pending_collect_results
+        if pending_collect_results:
+            message: dict = {
+                "role": "assistant",
+                "content": content,
+                "collectResults": pending_collect_results,
+            }
+            if pending_steps:
+                message["steps"] = pending_steps
+            result.append(message)
+        else:
+            if pending_steps:
+                result.append({"role": "tool", "content": "", "steps": pending_steps})
             pending_steps = []
-        for card in pending_collect_results:
-            result.append(card)
+            result.append({"role": "assistant", "content": content})
+            return
+
+        pending_steps = []
         pending_collect_results = []
 
     for message in raw_messages:
         mtype = getattr(message, "type", "")
         if mtype == "human":
-            flush_tool_steps()
+            flush_pending_without_reply()
             result.append({"role": "user", "content": message.content})
         elif mtype == "tool":
             tool_name = getattr(message, "name", "")
             pending_steps.append(tool_end_step(tool_name))
-            if tool_name in _COLLECT_TOOLS:
-                try:
-                    parsed = json.loads(getattr(message, "content", "") or "")
-                    items = parsed.get("items") or []
-                    if items:
-                        pending_collect_results.append({
-                            "role": "collect",
-                            "content": "",
-                            "collectResult": {
-                                "platform": parsed.get("platform", "unknown"),
-                                "topic": parsed.get("topic", ""),
-                                "items": items,
-                            },
-                        })
-                except (json.JSONDecodeError, AttributeError, TypeError):
-                    pass
+            collect_result = extract_collect_result(tool_name, message)
+            if collect_result is not None:
+                pending_collect_results.append(collect_result)
         elif mtype == "ai":
             tool_calls = getattr(message, "tool_calls", None) or []
             if tool_calls:
@@ -186,12 +280,32 @@ def _build_history_messages(raw_messages: list) -> list[dict]:
                     name = call.get("name", "") if isinstance(call, dict) else getattr(call, "name", "")
                     pending_steps.append(tool_start_step(name))
             elif message.content:
-                flush_tool_steps()
-                result.append({"role": "assistant", "content": message.content})
+                append_assistant(message.content)
         # system 等其它类型不展示
 
-    flush_tool_steps()
+    flush_pending_without_reply()
     return result
+
+
+def _chat_run_not_found_response() -> JSONResponse:
+    return JSONResponse(
+        {"ok": False, "error": {"message": _CHAT_RUN_NOT_FOUND_MESSAGE}},
+        status_code=404,
+    )
+
+
+def _format_chat_run_event(event: ChatSseEvent) -> str:
+    return sse_named_event(event.event, event.data, event.id)
+
+
+def _parse_last_event_id(header_value: str | None, query_value: int | None) -> int:
+    raw = header_value if header_value not in (None, "") else query_value
+    if raw in (None, ""):
+        return 0
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
 
 
 @router.post("/api/agent/conversation/stream")
@@ -216,24 +330,12 @@ async def agent_conversation_stream(request: ConversationRequest, http_request: 
                 elif kind == "on_tool_end":
                     tool_name = event.get("name", "")
                     yield sse_event({"type": "tool_end", "text": tool_end_step(tool_name)})
-                    if tool_name in _COLLECT_TOOLS:
-                        raw_output = (event.get("data") or {}).get("output", "")
-                        # astream_events v2 wraps tool output in ToolMessage; extract .content if needed
-                        if not isinstance(raw_output, str):
-                            raw_output = getattr(raw_output, "content", "") or ""
-                        if isinstance(raw_output, str):
-                            try:
-                                parsed = json.loads(raw_output)
-                                items = parsed.get("items") or []
-                                if items:
-                                    yield sse_event({
-                                        "type": "collect_result",
-                                        "platform": parsed.get("platform", "unknown"),
-                                        "topic": parsed.get("topic", ""),
-                                        "items": items,
-                                    })
-                            except (json.JSONDecodeError, AttributeError):
-                                pass
+                    collect_result = extract_collect_result(
+                        tool_name,
+                        (event.get("data") or {}).get("output", ""),
+                    )
+                    if collect_result is not None:
+                        yield sse_event({"type": "collect_result", **collect_result})
                 elif kind == "on_chat_model_stream":
                     chunk = event["data"].get("chunk")
                     if chunk and hasattr(chunk, "content") and chunk.content:
