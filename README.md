@@ -1,199 +1,139 @@
-# 内容采集与回答工作台
+# 本地内容采集与回答工作台 (Chat-first Agent Architecture)
 
-这个项目现在采用前后端分离架构：
+本项目是一个本地内容采集与回答工作台。项目已全面重构为**基于 Clean Architecture/DDD 思想的 Chat-first Agent 架构**：
 
-- 后端：`Python + FastAPI + uv`
-- 前端：`bun + Vite + React + Tailwind CSS`
+- **后端**：Python 3.11+ / FastAPI / SQLAlchemy 2.0 / Alembic / PostgreSQL 16 / LangGraph / DeepSeek LLM
+- **前端**：React 19 / TypeScript / Zustand / TanStack Query / Tiptap 核心富文本编辑器 / Bun
 
-当前目标是提供一个本地可视化工作台，用来：
+---
 
-- 按主题采集站点问题或内容线索
-- 查看问题标题、链接、回答数、更新时间
-- 对单条或批量问题生成 AI 回答
-- 在线编辑回答并保存到本地
+## 📂 项目目录结构
 
-## 当前结构
+### 1. 后端结构 (`app/`)
+```text
+app/
+├── domain/                    # 领域层（纯 Protocols 接口与 Pydantic DTO，不依赖具体实现）
+│   ├── ports.py               # 核心协议定义 (ContentSource, LLMProvider, TaskDispatcher)
+│   └── dto.py                 # 数据传输契约 (SourceItemDTO, ChatResponsePayload, SelectionDTO 等)
+├── persistence/               # 基础设施：持久化存储层 (SQLAlchemy 2.0)
+│   ├── session.py             # 异步数据库 session 连接池
+│   └── models/                # 9 张业务主外键关联表 (chats, messages, source_items, documents 等)
+├── prompts/                   # 基础设施：提示词加载器
+│   ├── registry.py            # PromptRegistry 单例（Jinja2 变量渲染与 includes 共享片段组装）
+│   └── schemas.py             # Prompt YAML Schema 校验
+├── infrastructure/            # 基础设施：外部服务适配器实现
+│   ├── llm/                   # DeepSeek LLM Provider 实现与 Registry 动态路由
+│   ├── sources/               # 多平台内容源适配器与 Registry (zhihu, xiaohongshu, universal)
+│   └── zhihu/                 # 历史遗留知乎官方 API 客户端
+├── workflows/                 # 业务应用层：核心优化流
+│   ├── answer_generation.py   # AI 流式生成回答工作流
+│   ├── inline_refinement.py   # AI 选区局部流式润色工作流
+│   └── full_rewrite.py        # AI 全文流式重写工作流
+├── application/               # 业务应用层：核心服务与 Agent
+│   ├── chat_service.py        # 对话创建、消息持久化、去重内容关联服务
+│   ├── document_service.py    # 乐观并发锁 (Optimistic Lock) 文档编辑更新服务
+│   ├── version_service.py     # 历史版本手动打卡与恢复服务
+│   └── agent/                 # LangGraph 对话 Agent (preprocess, route_intent, chat, tool_nodes)
+├── api/                       # REST API 接口路由层
+│   └── routes/                # 挂载 /api/chats, /api/documents, /api/config, /api/settings 等端点
+├── errors.py                  # 业务系统统一异常层 (AppError, DocumentConflictError 等)
+└── server.py                  # FastAPI 主程序入口，挂载静态文件托管与全局 exception_handler
+```
 
-### 后端
+### 2. 外部模板结构 (`prompts/`)
+所有的 AI 提示词脱离 Python 硬编码，全部外置到根目录的 YAML 格式配置文件中：
+- `prompts/model_profiles.yml`：配置默认、创新、推理等不同规格的模型参数。
+- `prompts/shared/`：存放如 `style_rules.yml` 共享写作风格片段。
+- `prompts/chat/`：意图路由分类器与系统初始引导词。
+- `prompts/writing/` / `prompts/refinement/`：回答生成、润色和重写的模板。
 
-- [app/server.py](/Users/lius/Desktop/self/content-answer-workspace/app/server.py)：FastAPI 入口
-- [app/api/routes/config.py](/Users/lius/Desktop/self/content-answer-workspace/app/api/routes/config.py)：配置接口
-- [app/api/routes/workflow.py](/Users/lius/Desktop/self/content-answer-workspace/app/api/routes/workflow.py)：采集和生成接口
-- [app/api/routes/session.py](/Users/lius/Desktop/self/content-answer-workspace/app/api/routes/session.py)：会话保存与恢复接口
-- [app/services/zhihu_service.py](/Users/lius/Desktop/self/content-answer-workspace/app/services/zhihu_service.py)：站点采集逻辑（当前实现为知乎）
-- [app/services/answer_service.py](/Users/lius/Desktop/self/content-answer-workspace/app/services/answer_service.py)：模型回答生成逻辑
-- [app/services/session_service.py](/Users/lius/Desktop/self/content-answer-workspace/app/services/session_service.py)：本地会话保存逻辑
-- [app/core/config.py](/Users/lius/Desktop/self/content-answer-workspace/app/core/config.py)：环境变量与默认配置
-- [app/core/prompts.py](/Users/lius/Desktop/self/content-answer-workspace/app/core/prompts.py)：默认提示词
+### 3. 前端结构 (`frontend/`)
+```text
+frontend/src/
+├── app/                       # 核心入口与 React Router 路由规则
+├── features/
+│   ├── chat/                  # 对话工作区：三栏布局组件
+│   │   ├── chat-sidebar.tsx   # 左栏：会话管理（新增/删除/切换）
+│   │   ├── chat-panel.tsx     # 中栏：流式交互、状态提示与结构化采集卡片
+│   │   └── editor-panel.tsx   # 右栏：Tiptap 编辑器、选区优化指令、手动打卡与版本快照恢复
+│   ├── hotlist/               # 热点分析：知乎实时热点 dashboard，一键用热点创建对话
+│   └── settings/              # 配置设置：LLM 凭据、采集设置与主题管理
+├── store/
+│   └── chat-store.ts          # Zustand 轻量级当前会话状态仓
+├── lib/
+│   ├── api.ts                 # fetch API 包装器 (GET/POST/PUT/DELETE)
+│   └── sse.ts                 # 异步 POST 的通用 SSE 流式解析协议客户端
+└── components/ui/             # 规范化的 shadcn/ui 组件库
+```
 
-### 前端
+---
 
-- [frontend/package.json](/Users/lius/Desktop/self/content-answer-workspace/frontend/package.json)
-- [frontend/vite.config.ts](/Users/lius/Desktop/self/content-answer-workspace/frontend/vite.config.ts)
-- [frontend/src/app/App.tsx](/Users/lius/Desktop/self/content-answer-workspace/frontend/src/app/App.tsx)
-- [frontend/src/features/workspace/workspace-shell.tsx](/Users/lius/Desktop/self/content-answer-workspace/frontend/src/features/workspace/workspace-shell.tsx)
-- [frontend/src/features/workspace/use-workspace.ts](/Users/lius/Desktop/self/content-answer-workspace/frontend/src/features/workspace/use-workspace.ts)
-- [frontend/src/store/workspace-store.ts](/Users/lius/Desktop/self/content-answer-workspace/frontend/src/store/workspace-store.ts)
+## ⚙️ 环境变量配置
 
-## 环境变量
-
-先复制环境变量模板：
-
+请在项目根目录复制并填写 `.env` 环境变量：
 ```bash
 cp .env.example .env
 ```
+主要环境变量说明：
+```bash
+# 数据库连接
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/content_answer
 
-至少需要补齐：
+# DeepSeek LLM 配置
+DEEPSEEK_API_KEY=your-api-key
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
 
-- `OPENAI_API_KEY`
+# 爬虫凭证配置 (可选，使用小红书或知乎 Web 模式时提供)
+ZHIHU_COOKIE_FILE=.secrets/zhihu.cookie
+XIAOHONGSHU_COOKIE_FILE=.secrets/xiaohongshu.cookie
+```
 
-当前默认兼容智谱 AI：
+---
 
-- `OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4/`
-- `OPENAI_MODEL=GLM-4.7`
+## 🚀 快速启动说明
 
-当前站点采集相关：
+### 1. 数据库准备
+确保本地安装并运行 Docker，在根目录下启动 PostgreSQL 16 数据库容器：
+```bash
+docker-compose up -d
+```
+首次运行或数据库更新时，执行 Alembic 自动迁移数据库 Schema 到最新版：
+```bash
+uv run alembic upgrade head
+```
 
-- `ZHIHU_COOKIE_FILE`
-- `ZHIHU_API_URL`
-- `ZHIHU_REFERER`
-- `ZHIHU_X_REQUESTED_WITH`
-- `ZHIHU_X_ZSE_93`
-- `ZHIHU_X_ZSE_96`
-
-## 后端启动
-
-安装 Python 依赖：
-
+### 2. 后端服务启动
+在根目录下运行：
 ```bash
 uv sync
-```
-
-启动后端：
-
-```bash
 uv run python -m app.server
 ```
+后端服务默认监听：`http://127.0.0.1:3000`。
 
-默认后端地址：
-
-- `http://127.0.0.1:3000`
-
-## 前端启动
-
-前端命令请你本地执行。
-
-进入前端目录后，安装依赖：
-
+### 3. 前端服务启动
+在项目 `frontend/` 目录下运行：
 ```bash
-cd /Users/lius/Desktop/self/content-answer-workspace/frontend
 bun install
-```
-
-开发模式启动：
-
-```bash
 bun run dev
 ```
+前端开发服务默认监听：`http://127.0.0.1:5173`。
 
-默认前端地址：
+---
 
-- `http://127.0.0.1:5173`
-
-Vite 已经配置好代理：
-
-- `/api/*` -> `http://127.0.0.1:3000`
-
-## 构建前端
-
-如果你要让 FastAPI 直接托管前端打包产物，请在 `frontend/` 目录执行：
-
-```bash
-bun run build
-```
-
-构建后会生成：
-
-- `frontend/dist`
-
-此时后端访问 `/` 会直接返回打包后的前端页面。
-
-## 当前 API
-
-新接口：
-
-- `GET /api/health`
-- `GET /api/config`
-- `GET /api/session/latest`
-- `POST /api/session/save`
-- `GET /api/session/cookie-status`
-- `POST /api/workflow/collect`
-- `POST /api/workflow/generate`
-- `POST /api/workflow/generate-one`
-
-兼容旧接口：
-
-- `POST /api/run`
-- `POST /api/regenerate`
-- `POST /api/generate-all`
-- `POST /api/save`
-
-## 一次性完整流程架构图
+## 🔄 核心运行机制
 
 ```mermaid
-sequenceDiagram
-  participant U as 用户
-  participant F as 前端工作台
-  participant B as 后端 API
-  participant W as 工作流编排层
-  participant M as DeepSeek 模型
-  participant T as 平台采集工具
-  participant S as 本地保存
-
-  U->>F: 选择主题和采集参数
-  F->>B: 提交采集请求
-  B->>W: 创建采集任务
-  W->>M: 请求选择合适的采集函数
-  M->>W: function call: collect_zhihu_questions
-  W->>T: 执行知乎采集
-  T->>W: 返回问题列表
-  W->>F: 返回采集结果
-
-  U->>F: 选择某个问题生成回答
-  F->>B: 提交问题内容
-  B->>W: 创建回答生成任务
-  W->>M: 调用 DeepSeek 生成回答
-  M->>W: 返回回答正文
-  W->>F: 返回 AI 回答
-
-  U->>F: 编辑并保存
-  F->>B: 保存当前会话
-  B->>S: 写入本地结果
+graph TD
+    A[用户发送消息] --> B[preprocess 节点: 提取 URL]
+    B --> C[route_intent 节点: 提取意图]
+    C -->|chat| D[chat 节点: 普通 LLM 对话流]
+    C -->|parse_url| E[parse_url 节点: 通过 SourceRegistry 路由适配器解析内容]
+    C -->|collect| F[collect 节点: 通过 SourceRegistry 路由并开始多平台抓取]
+    E --> G[normalize_and_persist 节点: 采集帖去重写入 DB]
+    F --> G
+    G --> H[build_response 节点: 拼装结构化 DTO 并渲染 SSE 推送前端]
 ```
 
-## 当前状态
-
-已经完成：
-
-- Python 后端服务拆分
-- 新前端工程初始化
-- 三栏工作台基础结构
-- 主题配置、问题采集、批量生成、单条生成、保存会话的前端接线
-
-仍需你本地验证：
-
-- `bun install`
-- `bun run dev`
-- 页面联调与样式微调
-
-## 风险
-
-- 当前知乎搜索接口会混入非问题卡片，后端已做跳过处理，但仍需要持续维护
-- 当前知乎风控和 cookie 失效会直接影响采集结果
-- 模型返回风格仍建议人工复核后再发布
-
-
-## 其他项目
-
-- https://github.com/NanmiCoder/MediaCrawler
-- https://github.com/Thysrael/Horizon/blob/main/README_zh.md
+### 乐观并发锁机制
+前端编辑器修改数据时会自动执行 `PUT /api/documents/{id}` 保存内容，当多人同时编辑或后台 AI 异步更新内容时，会通过 `expectedLockVersion` 机制校验版本。若不一致将触发 `409 DocumentConflictError` 终止覆写，确保内容不会被相互覆盖。
