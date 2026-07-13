@@ -1,0 +1,7 @@
+id: shared.word_limit_footer
+version: "1.0.0"
+description: 字数限制要求尾部提示词
+
+content: |
+  回答字数要求：
+  - 总体篇幅请控制在 {{ word_count }} 字左右。
