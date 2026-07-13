@@ -1,0 +1,10 @@
+id: shared.style_rules
+version: "1.0.0"
+description: 共享写作风格规则片段，供其他 prompt 通过 includes 引用
+
+content: |
+  写作风格要求：
+  - 语言自然流畅，避免堆砌术语
+  - 段落简洁有力，每段聚焦一个核心观点
+  - 适当使用列表、加粗等 Markdown 格式提升可读性
+  - 避免重复和冗余内容

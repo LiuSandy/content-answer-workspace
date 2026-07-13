@@ -1,0 +1,43 @@
+id: writing.answer_rewrite
+version: "1.1.0"
+description: 对现有回答进行全文重写或润色改写
+
+model:
+  profile: creative
+  temperature: 0.8
+  max_tokens: 4096
+
+variables:
+  required:
+    - title
+    - current_answer
+    - instruction
+  optional:
+    - content_mode
+    - platform
+
+includes:
+  style_rules: shared.style_rules
+
+messages:
+  - role: system
+    content: |
+      你是个专业的内容编辑，负责根据指令重写回答。
+      {{ style_rules }}
+      
+  - role: user
+    content: |
+      {% if content_mode == 'imitate' %}
+      请对下面这篇{{ platform or '小红书' }}笔记进行润色改写。要求：保留原有核心创意和结构，不要引入新观点；改善语言表达，消除 AI 腔，让行文更自然简洁，保留原有观点。
+      {% else %}
+      请对下面这篇{{ platform or '知乎' }}回答进行润色改写。
+      {% endif %}
+      
+      帖子标题：{{ title }}
+      
+      当前内容/回答：
+      {{ current_answer }}
+      
+      重写指令：{{ instruction }}
+      
+      请根据指令重写或润色整篇回答，直接输出处理后的完整内容。

@@ -44,54 +44,31 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
     async def generate_answer(
         self,
         item: QuestionItem,
-        answer_style: str,
-        cta_text: str,
-        system_prompt: str,
-        generation_prompt: str,
+        answer_style: str = "",
+        cta_text: str = "",
+        system_prompt: str = "",
+        generation_prompt: str = "",
         content_constraint: str | None = None,
     ) -> str:
-        """调用 DeepSeek 为问题创作回答；这样回答提示词、平台语境和模型输出处理集中在适配器内。"""
-
+        """调用 DeepSeek 为问题创作回答；使用 Prompt Registry 模板。"""
+        from ...prompts.registry import prompt_registry
+        rendered = prompt_registry.render(
+            "writing.answer_generate",
+            title=item.title,
+            content=item.excerpt or item.detail or "",
+            platform=item.platform or "zhihu",
+            content_mode=item.content_mode,
+        )
         client = self.get_client()
-        model = get_required_env("DEEPSEEK_MODEL")
-        platform_label = item.platform or "zhihu"
-        if item.content_mode == "imitate":
-            intro_line = (
-                f"请参考下面这篇{platform_label}笔记的选题角度和写作风格，创作一篇全新的原创笔记，"
-                f"不要照抄原文内容，只学习其风格和结构。整体风格要求：{answer_style}"
-            )
-        else:
-            intro_line = f"请围绕下面这个{platform_label}问题写一篇适合发布到对应平台的原创回答，整体风格要求：{answer_style}"
-        prompt_parts = [
-            intro_line,
-            "",
-            "全局生成规则：",
-            generation_prompt,
-        ]
-        if content_constraint and content_constraint.strip():
-            prompt_parts += [
-                "",
-                f"内容约束（必须严格遵守）：回答只能围绕「{content_constraint.strip()}」展开，不要回答与此无关的内容。",
-            ]
-        prompt_parts += [
-            "",
-            f"平台：{platform_label}",
-            f"问题标题：{item.title}",
-            f"问题链接：{item.url}",
-            f"问题分类：{item.topic or '未分类'}",
-            f"问题摘要：{item.excerpt or '无'}",
-            f"结尾引流文案：{cta_text}",
-        ]
-        prompt = "\n".join(prompt_parts)
+        messages = [{"role": m.role, "content": m.content} for m in rendered.messages]
+        if cta_text and cta_text.strip():
+            messages.append({"role": "user", "content": f"\n\n结尾引流文案：{cta_text}"})
+
         completion = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                },
-                {"role": "user", "content": prompt},
-            ],
+            model=rendered.model or get_required_env("DEEPSEEK_MODEL"),
+            messages=messages,
+            temperature=rendered.temperature,
+            max_tokens=rendered.max_tokens,
         )
         content = completion.choices[0].message.content if completion.choices else None
         if isinstance(content, str):
@@ -104,51 +81,31 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
     async def generate_answer_stream(
         self,
         item: QuestionItem,
-        answer_style: str,
-        cta_text: str,
-        system_prompt: str,
-        generation_prompt: str,
+        answer_style: str = "",
+        cta_text: str = "",
+        system_prompt: str = "",
+        generation_prompt: str = "",
         content_constraint: str | None = None,
     ) -> AsyncIterator[str]:
-        """流式调用 DeepSeek 生成回答；逐 token yield 给调用方，供 SSE 端点推送。"""
-
+        """流式调用 DeepSeek 生成回答；使用 Prompt Registry 模板。"""
+        from ...prompts.registry import prompt_registry
+        rendered = prompt_registry.render(
+            "writing.answer_generate",
+            title=item.title,
+            content=item.excerpt or item.detail or "",
+            platform=item.platform or "zhihu",
+            content_mode=item.content_mode,
+        )
         client = self.get_async_client()
-        model = get_required_env("DEEPSEEK_MODEL")
-        platform_label = item.platform or "zhihu"
-        if item.content_mode == "imitate":
-            intro_line = (
-                f"请参考下面这篇{platform_label}笔记的选题角度和写作风格，创作一篇全新的原创笔记，"
-                f"不要照抄原文内容，只学习其风格和结构。整体风格要求：{answer_style}"
-            )
-        else:
-            intro_line = f"请围绕下面这个{platform_label}问题写一篇适合发布到对应平台的原创回答，整体风格要求：{answer_style}"
-        prompt_parts = [
-            intro_line,
-            "",
-            "全局生成规则：",
-            generation_prompt,
-        ]
-        if content_constraint and content_constraint.strip():
-            prompt_parts += [
-                "",
-                f"内容约束（必须严格遵守）：回答只能围绕「{content_constraint.strip()}」展开，不要回答与此无关的内容。",
-            ]
-        prompt_parts += [
-            "",
-            f"平台：{platform_label}",
-            f"问题标题：{item.title}",
-            f"问题链接：{item.url}",
-            f"问题分类：{item.topic or '未分类'}",
-            f"问题摘要：{item.excerpt or '无'}",
-            f"结尾引流文案：{cta_text}",
-        ]
-        prompt = "\n".join(prompt_parts)
+        messages = [{"role": m.role, "content": m.content} for m in rendered.messages]
+        if cta_text and cta_text.strip():
+            messages.append({"role": "user", "content": f"\n\n结尾引流文案：{cta_text}"})
+
         stream = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
+            model=rendered.model or get_required_env("DEEPSEEK_MODEL"),
+            messages=messages,
+            temperature=rendered.temperature,
+            max_tokens=rendered.max_tokens,
             stream=True,
         )
         async for chunk in stream:
@@ -160,56 +117,31 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         self,
         item: QuestionItem,
         current_answer: str,
-        answer_style: str,
-        cta_text: str,
-        system_prompt: str,
-        generation_prompt: str,
+        answer_style: str = "",
+        cta_text: str = "",
+        system_prompt: str = "",
+        generation_prompt: str = "",
         content_constraint: str | None = None,
     ) -> str:
-        """对已有回答进行润色改写；这样用户修改的草稿可以通过 AI 改善表达而不丢失原有观点。"""
-
+        """对已有回答进行润色改写；使用 Prompt Registry 模板。"""
+        from ...prompts.registry import prompt_registry
+        rendered = prompt_registry.render(
+            "writing.answer_rewrite",
+            title=item.title,
+            content=item.excerpt or item.detail or "",
+            platform=item.platform or "zhihu",
+            current_answer=current_answer,
+            instruction="润色改写语言表达，消除 AI 腔，让行文更自然简洁，保留原有观点。",
+            content_mode=item.content_mode,
+        )
         client = self.get_client()
-        model = get_required_env("DEEPSEEK_MODEL")
-        platform_label = item.platform or "zhihu"
-        if item.content_mode == "imitate":
-            intro_line = (
-                f"请对下面这篇{platform_label}笔记进行润色改写。要求：保留原有核心创意和结构，不要引入新观点；"
-                f"改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}"
-            )
-        else:
-            intro_line = (
-                f"请对下面这篇{platform_label}回答进行润色改写。要求：保留原有核心观点和论证思路，不要引入新观点；"
-                f"改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}"
-            )
-        prompt_parts = [
-            intro_line,
-            "",
-            "全局生成规则：",
-            generation_prompt,
-        ]
-        if content_constraint and content_constraint.strip():
-            prompt_parts += [
-                "",
-                f"内容约束（必须严格遵守）：回答只能围绕「{content_constraint.strip()}」展开，不要回答与此无关的内容。",
-            ]
-        prompt_parts += [
-            "",
-            f"平台：{platform_label}",
-            f"问题标题：{item.title}",
-            f"问题链接：{item.url}",
-            f"问题分类：{item.topic or '未分类'}",
-            f"结尾引流文案：{cta_text}",
-            "",
-            "当前回答草稿（请以此为基础润色，不要大幅偏离原有内容）：",
-            current_answer,
-        ]
-        prompt = "\n".join(prompt_parts)
+        messages = [{"role": m.role, "content": m.content} for m in rendered.messages]
+
         completion = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
+            model=rendered.model or get_required_env("DEEPSEEK_MODEL"),
+            messages=messages,
+            temperature=rendered.temperature,
+            max_tokens=rendered.max_tokens,
         )
         content = completion.choices[0].message.content if completion.choices else None
         if isinstance(content, str):
@@ -223,56 +155,31 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         self,
         item: QuestionItem,
         current_answer: str,
-        answer_style: str,
-        cta_text: str,
-        system_prompt: str,
-        generation_prompt: str,
+        answer_style: str = "",
+        cta_text: str = "",
+        system_prompt: str = "",
+        generation_prompt: str = "",
         content_constraint: str | None = None,
     ) -> AsyncIterator[str]:
-        """流式润色回答；逐 token yield，供 SSE 端点推送。"""
-
+        """流式润色回答；使用 Prompt Registry 模板。"""
+        from ...prompts.registry import prompt_registry
+        rendered = prompt_registry.render(
+            "writing.answer_rewrite",
+            title=item.title,
+            content=item.excerpt or item.detail or "",
+            platform=item.platform or "zhihu",
+            current_answer=current_answer,
+            instruction="润色改写语言表达，消除 AI 腔，让行文更自然简洁，保留原有观点。",
+            content_mode=item.content_mode,
+        )
         client = self.get_async_client()
-        model = get_required_env("DEEPSEEK_MODEL")
-        platform_label = item.platform or "zhihu"
-        if item.content_mode == "imitate":
-            intro_line = (
-                f"请对下面这篇{platform_label}笔记进行润色改写。要求：保留原有核心创意和结构，不要引入新观点；"
-                f"改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}"
-            )
-        else:
-            intro_line = (
-                f"请对下面这篇{platform_label}回答进行润色改写。要求：保留原有核心观点和论证思路，不要引入新观点；"
-                f"改善语言表达，消除 AI 腔、模板痕迹和空泛表述；让行文更自然、简洁、像真人写的。整体风格要求：{answer_style}"
-            )
-        prompt_parts = [
-            intro_line,
-            "",
-            "全局生成规则：",
-            generation_prompt,
-        ]
-        if content_constraint and content_constraint.strip():
-            prompt_parts += [
-                "",
-                f"内容约束（必须严格遵守）：回答只能围绕「{content_constraint.strip()}」展开，不要回答与此无关的内容。",
-            ]
-        prompt_parts += [
-            "",
-            f"平台：{platform_label}",
-            f"问题标题：{item.title}",
-            f"问题链接：{item.url}",
-            f"问题分类：{item.topic or '未分类'}",
-            f"结尾引流文案：{cta_text}",
-            "",
-            "当前回答草稿（请以此为基础润色，不要大幅偏离原有内容）：",
-            current_answer,
-        ]
-        prompt = "\n".join(prompt_parts)
+        messages = [{"role": m.role, "content": m.content} for m in rendered.messages]
+
         stream = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
+            model=rendered.model or get_required_env("DEEPSEEK_MODEL"),
+            messages=messages,
+            temperature=rendered.temperature,
+            max_tokens=rendered.max_tokens,
             stream=True,
         )
         async for chunk in stream:

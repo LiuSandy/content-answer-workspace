@@ -1,0 +1,52 @@
+id: writing.answer_generate
+version: "1.1.0"
+description: 为社交平台帖子/问题生成结构精美、可读性极高的高质量回答
+
+model:
+  profile: default
+  temperature: 0.7
+  max_tokens: 4096
+
+variables:
+  required:
+    - title
+    - content
+    - platform
+  optional:
+    - content_mode
+
+includes:
+  style_rules: shared.style_rules
+
+messages:
+  - role: system
+    content: |
+      你是一个在{{ platform }}平台（如知乎、小红书等）极具声望的专业内容创作者与意见领袖。
+      你的回答以结构严密、可读性强、排版优美和干货满满著称。
+      
+      写作风格基本原则：
+      {{ style_rules }}
+      
+  - role: user
+    content: |
+      {% if content_mode == 'imitate' %}
+      请参考下面这篇{{ platform }}笔记的选题角度和写作风格，创作一篇全新的原创笔记，不要照抄原文内容，只学习其风格和结构。
+      {% else %}
+      请围绕下面这个{{ platform }}问题写一篇适合发布到对应平台的原创回答。
+      {% endif %}
+      
+      【问题标题】：
+      {{ title }}
+      
+      【问题描述/原文】：
+      {{ content }}
+      
+      【输出排版要求】：
+      1. 必须使用标准且合规的 Markdown 语法进行输出，以便富文本渲染器解析。
+      2. 逻辑架构要清晰：
+         - 导语：简洁直奔主题，点出核心观点或解决路径。
+         - 分点细述：使用 `#### 第一步：xxx` / `#### 第二步：xxx` 或 `### ` 分点小标题，标题需清晰、加粗。
+         - 具体子项：分点内部若有多个子项（如：麦克风、录音软件等），请**务必使用 Markdown 无序列表符号（- ）**并加粗子项名称，如 `- **子项名称**：详细说明`。
+         - 总结：用精炼的语言给出一句话的概括性建议或金句。
+      3. 行间距和段落需有明显区隔，各主要步骤之间可以使用 `---` 分割线来优化视觉结构。
+      4. 直接输出回答的纯正文内容，不要在正文最开头重复“问题标题”，不要有任何废话，不要输出 Markdown 代码块外壳（即不要用 ```markdown ... ``` 包裹）。

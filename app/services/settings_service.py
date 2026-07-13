@@ -122,11 +122,6 @@ class SettingsService:
                     "OFFICIAL_ACCOUNT_CTA", "更多专题内容，欢迎关注公众号：{{OFFICIAL_ACCOUNT_NAME}}"
                 ),
             },
-            "prompts": {
-                "systemPrompt": prompts.get("systemPrompt") or os.getenv("SYSTEM_PROMPT", ""),
-                "answerStyle": prompts.get("answerStyle") or os.getenv("ANSWER_STYLE", ""),
-                "generationPrompt": prompts.get("generationPrompt") or os.getenv("GENERATION_PROMPT", ""),
-            },
             "agentReach": self.get_agent_reach_config(),
         }
 
@@ -152,11 +147,6 @@ class SettingsService:
         data["publish"] = {**data.get("publish", {}), **payload}
         _write_json(SETTINGS_FILE, data)
 
-    def update_prompts(self, payload: dict[str, Any]) -> None:
-        """更新默认提示词到 settings.json。"""
-        data = _read_json(SETTINGS_FILE)
-        data["prompts"] = {**data.get("prompts", {}), **payload}
-        _write_json(SETTINGS_FILE, data)
 
     def get_agent_reach_config(self) -> dict[str, Any]:
         """读取 agent_reach_config.json；文件不存在时返回空平台列表。"""

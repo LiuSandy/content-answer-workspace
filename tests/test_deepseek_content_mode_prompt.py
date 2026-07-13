@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
 from unittest.mock import MagicMock, patch
 
 from app.infrastructure.llm.deepseek_client import DeepSeekAnswerGenerator
 from app.models import QuestionItem
+from app.prompts import warmup
 
 
 def _fake_completion(content: str) -> MagicMock:
@@ -15,6 +17,10 @@ def _fake_completion(content: str) -> MagicMock:
 
 class DeepSeekContentModePromptTests(unittest.IsolatedAsyncioTestCase):
     """覆盖生成层按 content_mode 选择 prompt 模板；这样小红书仿写不会被误用"回答问题"的话术。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        warmup(Path(__file__).resolve().parent.parent / "prompts")
 
     async def test_generate_answer_uses_imitation_prompt_for_imitate_mode(self) -> None:
         item = QuestionItem(

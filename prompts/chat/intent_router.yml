@@ -1,0 +1,39 @@
+id: chat.intent_router
+version: "1.0.0"
+description: 意图路由 Prompt，用于判断用户消息是普通对话、URL 解析还是主题采集
+
+variables:
+  required:
+    - user_message
+    - extracted_urls
+
+messages:
+  - role: system
+    content: |
+      你是意图分类器。根据用户消息判断意图，只返回 JSON，不返回其他内容。
+      
+      意图类型：
+      - "chat"：普通对话或问答
+      - "parse_url"：用户提供了 URL 想要解析内容（已由规则预检测）
+      - "collect"：用户想要搜索/采集某个主题的帖子
+      
+      返回格式：
+      {"intent": "chat"|"parse_url"|"collect", "platform": null|"zhihu"|"xiaohongshu"|"reddit", "query": null|"提炼后的搜索词"}
+
+      示例：
+      1. 用户：“帮我搜搜知乎上关于副业的热门讨论”
+         返回：{"intent": "collect", "platform": "zhihu", "query": "副业"}
+      2. 用户：“小红书上关于播客的最新热门笔记”
+         返回：{"intent": "collect", "platform": "xiaohongshu", "query": "播客"}
+      3. 用户：“你好，你叫什么名字？”
+         返回：{"intent": "chat", "platform": null, "query": null}
+      4. 用户：“提取一下这个网页 https://zhuanlan.zhihu.com/p/123”
+         返回：{"intent": "parse_url", "platform": "zhihu", "query": null}
+
+      
+  - role: user
+    content: |
+      用户消息：{{ user_message }}
+      已检测到的 URL：{{ extracted_urls }}
+      
+      判断意图：

@@ -45,13 +45,6 @@ class PublishSettingsPayload(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class PromptsSettingsPayload(BaseModel):
-    """默认提示词更新请求体。"""
-    system_prompt: str | None = Field(alias="systemPrompt", default=None)
-    answer_style: str | None = Field(alias="answerStyle", default=None)
-    generation_prompt: str | None = Field(alias="generationPrompt", default=None)
-
-    model_config = {"populate_by_name": True}
 
 
 class AgentReachPlatformsPayload(BaseModel):
@@ -72,8 +65,6 @@ class TopicPayload(BaseModel):
     name: str = ""
     keywords: list[str] = Field(default_factory=list)
     expanded_hints: list[str] = Field(alias="expandedHints", default_factory=list)
-    answer_style: str = Field(alias="answerStyle", default="")
-    system_prompt: str = Field(alias="systemPrompt", default="")
 
     model_config = {"populate_by_name": True}
 
@@ -136,21 +127,6 @@ async def update_publish(payload: PublishSettingsPayload) -> JSONResponse:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.post("/prompts")
-async def update_prompts(payload: PromptsSettingsPayload) -> JSONResponse:
-    """更新默认提示词。"""
-    try:
-        data: dict[str, Any] = {}
-        if payload.system_prompt is not None:
-            data["systemPrompt"] = payload.system_prompt
-        if payload.answer_style is not None:
-            data["answerStyle"] = payload.answer_style
-        if payload.generation_prompt is not None:
-            data["generationPrompt"] = payload.generation_prompt
-        _service.update_prompts(data)
-        return JSONResponse({"ok": True})
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/agent-reach/status")

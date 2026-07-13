@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 
 from ..config.loader import get_settings, load_default_topics
 from ..models import Topic, WorkflowConfig
-from .prompts import DEFAULT_ANSWER_STYLE, DEFAULT_SYSTEM_PROMPT, GLOBAL_GENERATION_PROMPT, TOPIC_PROMPT_PRESETS
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 ENV_PATH = ROOT_DIR / ".env"
@@ -56,14 +55,11 @@ def get_default_topics() -> list[Topic]:
 
     topics: list[Topic] = []
     for entry in load_default_topics():
-        preset = TOPIC_PROMPT_PRESETS.get(entry.get("preset", ""), {})
         topics.append(
             Topic(
                 id=entry["id"],
                 name=entry["name"],
                 keywords=entry.get("keywords", []),
-                answerStyle=preset.get("answer_style", ""),
-                systemPrompt=preset.get("system_prompt", ""),
             )
         )
     return topics
@@ -85,9 +81,6 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
         for part in str(overrides.get("sortModes", os.getenv("SORT_MODES", "latest,answer_count"))).split(",")
         if part.strip()
     ]
-    answer_style = overrides.get("answerStyle") or os.getenv("ANSWER_STYLE", DEFAULT_ANSWER_STYLE)
-    system_prompt = overrides.get("systemPrompt") or os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
-    generation_prompt = overrides.get("generationPrompt") or os.getenv("GENERATION_PROMPT", GLOBAL_GENERATION_PROMPT)
     test_mode = is_truthy(overrides.get("testMode", os.getenv("TEST_MODE", "true")))
     skip_answer_generation = is_truthy(
         overrides.get("skipAnswerGeneration", os.getenv("SKIP_ANSWER_GENERATION", "false"))
@@ -109,10 +102,7 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
         contentMode=content_mode,
         maxPushCount=max_push_count,
         sortModes=sort_modes,
-        answerStyle=answer_style,
-        systemPrompt=system_prompt,
-        generationPrompt=generation_prompt,
-        testMode=test_mode,
+        test_mode=test_mode,
         skipAnswerGeneration=skip_answer_generation,
         userAgent=user_agent,
         ctaText=cta_text,
