@@ -1,0 +1,7 @@
+id: shared.style_rules_footer
+version: "1.0.0"
+description: 写作风格原则尾部提示词
+
+content: |
+  写作风格基本原则：
+  {{ rules }}
