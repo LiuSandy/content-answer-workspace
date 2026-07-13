@@ -76,6 +76,24 @@ export function EditorPanel() {
   }, [isGenerating]);
   const [activeTab, setActiveTab] = useState<string>("editor");
   const [copied, setCopied] = useState(false);
+  const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
+  const [wordCount, setWordCount] = useState<number>(1000);
+
+  const STYLE_DESCRIPTIONS: Record<string, string> = {
+    professional: "- 专业严谨：语言条理清晰，论证逻辑严密，多用客观事实与专业数据支撑观点。",
+    humorous: "- 幽默风趣：语言轻松幽默，多采用比喻和口语化的表达方式，生动有趣且接地气。",
+    detailed: "- 干货满满：内容充实深刻，包含大量实操性强的要点、步骤与具体方法，无多余废话。",
+    emotional: "- 感性生动：注重与读者的情感共鸣，描写生动具体，带有较强的心理感染力与情境代入感。",
+    concise: "- 简明扼要：言简意赅，直奔主题，只保留最核心的观点，精简文字篇幅与不必要的铺垫。",
+  };
+
+  const getStyleRulesPayload = () => {
+    if (selectedStyles.length === 0) {
+      return "";
+    }
+    const lines = selectedStyles.map((id) => STYLE_DESCRIPTIONS[id]).filter(Boolean);
+    return lines.join("\n");
+  };
 
   const handleCopy = async () => {
     if (!editor) return;
@@ -258,7 +276,13 @@ export function EditorPanel() {
     try {
       await streamPost(
         `/api/source-items/${selectedSourceItemId}/document/generate`,
-        { expectedLockVersion: currentDocState.lockVersion },
+        {
+          expectedLockVersion: currentDocState.lockVersion,
+          platform: currentDocState.sourceItem?.platform || "zhihu",
+          styleRules: getStyleRulesPayload(),
+          wordCount: wordCount,
+          instruction: rewriteInstruction.trim() || undefined,
+        },
         {
           onEvent: (event, data) => {
             if (event === "document.delta") {
@@ -341,7 +365,8 @@ export function EditorPanel() {
     const currentDocState = docStateRef.current;
     if (!currentDocState || isGenerating || !editor) return;
 
-    if (!rewriteInstruction.trim()) {
+    const hasContent = !!editor.getText()?.trim();
+    if (!hasContent || !rewriteInstruction.trim()) {
       await handleGenerateAnswer();
       return;
     }
@@ -359,6 +384,9 @@ export function EditorPanel() {
         {
           expectedLockVersion: activeLockVersion,
           instruction: rewriteInstruction,
+          platform: currentDocState.sourceItem?.platform || "zhihu",
+          styleRules: getStyleRulesPayload(),
+          wordCount: wordCount,
         },
         {
           onEvent: (event, data) => {
@@ -535,6 +563,10 @@ export function EditorPanel() {
           rewriteInstruction={rewriteInstruction}
           setRewriteInstruction={setRewriteInstruction}
           onRewrite={handleFullRewrite}
+          selectedStyles={selectedStyles}
+          setSelectedStyles={setSelectedStyles}
+          wordCount={wordCount}
+          onWordCountChange={setWordCount}
         />
       ) : (
         <HistoryTabContent
@@ -556,12 +588,20 @@ function EditorTabContent({
   rewriteInstruction,
   setRewriteInstruction,
   onRewrite,
+  selectedStyles,
+  setSelectedStyles,
+  wordCount,
+  onWordCountChange,
 }: {
   editor: ReturnType<typeof useEditor>;
   isGenerating: boolean;
   rewriteInstruction: string;
   setRewriteInstruction: (v: string) => void;
   onRewrite: () => void;
+  selectedStyles: string[];
+  setSelectedStyles: (styles: string[]) => void;
+  wordCount: number;
+  onWordCountChange: (v: number) => void;
 }) {
   const hasContent = !!editor?.getText()?.trim();
 
@@ -597,6 +637,10 @@ function EditorTabContent({
           allowEmpty={true}
           submitLabel={hasContent ? "重新生成" : "一键生成"}
           submitIcon={hasContent ? <RefreshCw className="h-3.5 w-3.5" /> : <Wand2 className="h-3.5 w-3.5" />}
+          selectedStyles={selectedStyles}
+          onSelectedStylesChange={setSelectedStyles}
+          wordCount={wordCount}
+          onWordCountChange={onWordCountChange}
         />
       </div>
     </div>

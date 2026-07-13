@@ -54,11 +54,15 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         from ...prompts.registry import prompt_registry
         rendered = prompt_registry.render(
             "writing.answer_generate",
+        )
+        user_rendered = prompt_registry.render(
+            "writing.user_generate",
             title=item.title,
             content=item.excerpt or item.detail or "",
-            platform=item.platform or "zhihu",
             content_mode=item.content_mode,
         )
+        rendered.messages.extend(user_rendered.messages)
+            
         client = self.get_client()
         messages = [{"role": m.role, "content": m.content} for m in rendered.messages]
         if cta_text and cta_text.strip():
@@ -91,11 +95,15 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         from ...prompts.registry import prompt_registry
         rendered = prompt_registry.render(
             "writing.answer_generate",
+        )
+        user_rendered = prompt_registry.render(
+            "writing.user_generate",
             title=item.title,
             content=item.excerpt or item.detail or "",
-            platform=item.platform or "zhihu",
             content_mode=item.content_mode,
         )
+        rendered.messages.extend(user_rendered.messages)
+
         client = self.get_async_client()
         messages = [{"role": m.role, "content": m.content} for m in rendered.messages]
         if cta_text and cta_text.strip():
@@ -127,13 +135,16 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         from ...prompts.registry import prompt_registry
         rendered = prompt_registry.render(
             "writing.answer_rewrite",
+        )
+        user_rendered = prompt_registry.render(
+            "writing.user_rewrite",
             title=item.title,
-            content=item.excerpt or item.detail or "",
-            platform=item.platform or "zhihu",
             current_answer=current_answer,
             instruction="润色改写语言表达，消除 AI 腔，让行文更自然简洁，保留原有观点。",
             content_mode=item.content_mode,
         )
+        rendered.messages.extend(user_rendered.messages)
+
         client = self.get_client()
         messages = [{"role": m.role, "content": m.content} for m in rendered.messages]
 
@@ -165,13 +176,16 @@ class DeepSeekAnswerGenerator(AnswerGeneratorPort):
         from ...prompts.registry import prompt_registry
         rendered = prompt_registry.render(
             "writing.answer_rewrite",
+        )
+        user_rendered = prompt_registry.render(
+            "writing.user_rewrite",
             title=item.title,
-            content=item.excerpt or item.detail or "",
-            platform=item.platform or "zhihu",
             current_answer=current_answer,
             instruction="润色改写语言表达，消除 AI 腔，让行文更自然简洁，保留原有观点。",
             content_mode=item.content_mode,
         )
+        rendered.messages.extend(user_rendered.messages)
+
         client = self.get_async_client()
         messages = [{"role": m.role, "content": m.content} for m in rendered.messages]
 

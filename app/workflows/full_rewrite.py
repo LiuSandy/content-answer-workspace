@@ -24,6 +24,9 @@ async def full_rewrite_workflow(
     document_id: uuid.UUID,
     instruction: str,
     expected_lock_version: int,
+    platform: str | None = None,
+    style_rules: str | None = None,
+    word_count: int = 1000,
 ) -> AsyncIterator[str]:
     """全文重写工作流；流式返回重写的增量文本，在流结束时写入数据库新版本。"""
     # 1. 查询 Document 和 SourceItem
@@ -41,15 +44,62 @@ async def full_rewrite_workflow(
 
     title = doc.source_item.title if doc.source_item else "无标题"
     current_answer = doc.current_content or ""
+    content_mode = "answer"
+    if doc and doc.source_item and doc.source_item.raw_metadata:
+        content_mode = doc.source_item.raw_metadata.get("content_mode") or "answer"
 
     # 2. 渲染 Prompt
     try:
         rendered = prompt_registry.render(
             "writing.answer_rewrite",
+        )
+        
+        # 动态拼接 platform 与 style_rules 到 system 提示词中
+        from jinja2 import Template
+        for msg in rendered.messages:
+            if msg.role == "system":
+                # 从 prompts/shared/platform_header.yml 读取人设提示词
+                header = ""
+                header_tpl = prompt_registry._prompts.get("shared.platform_header")
+                if header_tpl and platform:
+                    header = Template(header_tpl.content).render(platform=platform) + "\n\n"
+                    
+                original = msg.content
+                
+                # 获取默认的风格规范
+                shared_prompt = prompt_registry._prompts.get("shared.style_rules")
+                base_rules = shared_prompt.content.strip() if shared_prompt else ""
+                
+                # 如果前端传入了特定的风格，则在默认规范后追加
+                if style_rules and style_rules.strip():
+                    rules = f"{base_rules}\n{style_rules.strip()}"
+                else:
+                    rules = base_rules
+                
+                # 从 prompts/shared/style_rules_footer.yml 读取风格尾部提示词
+                footer = ""
+                footer_tpl = prompt_registry._prompts.get("shared.style_rules_footer")
+                if footer_tpl and rules:
+                    footer = "\n\n" + Template(footer_tpl.content).render(rules=rules)
+                
+                # 从 prompts/shared/word_limit_footer.yml 读取字数限制尾部提示词
+                word_limit = ""
+                word_limit_tpl = prompt_registry._prompts.get("shared.word_limit_footer")
+                if word_limit_tpl:
+                    word_limit = "\n\n" + Template(word_limit_tpl.content).render(word_count=word_count)
+                
+                msg.content = f"{header}{original}{footer}{word_limit}"
+                break
+
+        # 动态组装并渲染 user 提示词
+        user_rendered = prompt_registry.render(
+            "writing.user_rewrite",
             title=title,
             current_answer=current_answer,
             instruction=instruction,
+            content_mode=content_mode,
         )
+        rendered.messages.extend(user_rendered.messages)
     except Exception as e:
         logger.error("Failed to render prompt for full rewrite: %s", e)
         raise

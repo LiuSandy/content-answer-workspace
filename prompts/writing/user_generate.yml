@@ -1,0 +1,31 @@
+id: writing.user_generate
+version: "1.0.0"
+description: 用户动态提示词模版 (首次生成)
+
+variables:
+  required:
+    - title
+    - content
+  optional:
+    - content_mode
+    - instruction
+
+messages:
+  - role: user
+    content: |
+      {% if content_mode == 'imitate' %}
+      请参考下面这篇社交平台笔记的选题角度和写作风格，创作一篇全新的原创笔记，不要照抄原文内容，只学习其风格和结构。
+      {% else %}
+      请围绕下面这个社交平台问题写一篇适合发布到对应平台的原创回答。
+      {% endif %}
+      
+      【问题标题】：
+      {{ title }}
+      
+      【问题描述/原文】：
+      {{ content }}
+      
+      {% if instruction is defined and instruction %}
+      【额外创作要求】：
+      {{ instruction }}
+      {% endif %}
