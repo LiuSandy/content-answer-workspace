@@ -29,8 +29,6 @@ const EMPTY_TOPIC: TopicItem = {
   name: "",
   keywords: [],
   expandedHints: [],
-  answerStyle: "",
-  systemPrompt: "",
 };
 
 function TopicDialog({
@@ -89,25 +87,7 @@ function TopicDialog({
               placeholder="关键词1, 关键词2"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label>回答风格</Label>
-            <Textarea
-              value={form.answerStyle}
-              onChange={(e) => set("answerStyle", e.target.value)}
-              rows={2}
-              placeholder="简短、结构清晰…"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>System Prompt</Label>
-            <Textarea
-              value={form.systemPrompt}
-              onChange={(e) => set("systemPrompt", e.target.value)}
-              rows={4}
-              placeholder="你是一个…"
-              className="font-mono text-xs"
-            />
-          </div>
+
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>

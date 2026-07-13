@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CollectConfig,
   LlmConfig,
-  PromptsConfig,
   PublishConfig,
   TopicItem,
   configureGroqKey,
@@ -20,7 +19,6 @@ import {
   updateAgentReachPlatforms,
   updateCollectSettings,
   updateLlmSettings,
-  updatePromptsSettings,
   updatePublishSettings,
   updateTopic,
 } from "./settings-api";
@@ -80,13 +78,6 @@ export function useUpdatePublish() {
   });
 }
 
-export function useUpdatePrompts() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: Partial<PromptsConfig>) => updatePromptsSettings(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
-  });
-}
 
 export function useUpdateAgentReachPlatforms() {
   const qc = useQueryClient();
