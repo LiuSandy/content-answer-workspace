@@ -35,12 +35,19 @@ class UpdateDocumentRequest(BaseModel):
 class FullRewriteRequest(BaseModel):
     instruction: str
     expected_lock_version: int = Field(alias="expectedLockVersion")
+    platform: str | None = Field(None, alias="platform")
+    style_rules: str | None = Field(None, alias="styleRules")
+    word_count: int = Field(1000, alias="wordCount")
     
     model_config = {"populate_by_name": True}
 
 
 class CreateCheckpointRequest(BaseModel):
     expected_lock_version: int = Field(alias="expectedLockVersion")
+    platform: str | None = Field(None, alias="platform")
+    style_rules: str | None = Field(None, alias="styleRules")
+    word_count: int = Field(1000, alias="wordCount")
+    instruction: str | None = Field(None, alias="instruction")
     
     model_config = {"populate_by_name": True}
 
@@ -200,10 +207,13 @@ async def generate_answer_stream(
                     session=session,
                     source_item_id=source_item_id,
                     document_id=doc_id,
-                    platform=platform,
+                    platform=req.platform or platform,
                     title=title,
                     content=content,
                     expected_lock_version=req.expected_lock_version,
+                    style_rules=req.style_rules,
+                    word_count=req.word_count,
+                    instruction=req.instruction,
                 ):
                     yield sse_named_event("document.delta", {"delta": chunk})
 
@@ -274,6 +284,9 @@ async def rewrite_document_stream(
                     document_id=document_id,
                     instruction=req.instruction,
                     expected_lock_version=req.expected_lock_version,
+                    platform=req.platform,
+                    style_rules=req.style_rules,
+                    word_count=req.word_count,
                 ):
                     yield sse_named_event("document.delta", {"delta": chunk})
 
