@@ -29,7 +29,10 @@ def _question_item_to_dto(item: QuestionItem) -> SourceItemDTO:
         summary=item.excerpt or None,
         metrics={"answer_count": item.answer_count},
         published_at=None,
-        raw_metadata={"updated_time": item.updated_time} if item.updated_time else {},
+        raw_metadata={
+            "updated_time": item.updated_time,
+            "content_mode": item.content_mode,
+        } if item.updated_time else {"content_mode": item.content_mode},
     )
 
 
