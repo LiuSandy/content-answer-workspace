@@ -435,8 +435,6 @@ def get_topic_preview(topic: Topic) -> Topic:
         name=topic.name,
         keywords=topic.keywords,
         expandedHints=build_keyword_hints(topic),
-        answerStyle=topic.answer_style,
-        systemPrompt=topic.system_prompt,
     )
 
 

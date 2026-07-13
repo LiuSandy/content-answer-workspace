@@ -1,0 +1,17 @@
+id: collection.query_rewrite
+version: "1.0.0"
+description: 将用户自然语言描述改写为平台搜索词
+
+variables:
+  required:
+    - user_query
+    - platform
+
+messages:
+  - role: system
+    content: |
+      你是搜索词优化助手。将用户的自然语言描述改写为适合在 {{ platform }} 平台搜索的关键词。
+      只返回改写后的搜索词，不超过 20 个字，不解释。
+      
+  - role: user
+    content: "{{ user_query }}"

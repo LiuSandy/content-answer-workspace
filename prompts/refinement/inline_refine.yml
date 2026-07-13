@@ -1,0 +1,33 @@
+id: refinement.inline_refine
+version: "1.0.0"
+description: 根据指令局部润色选中文字，只返回替换文本
+
+model:
+  profile: creative
+  temperature: 0.6
+  max_tokens: 2000
+
+variables:
+  required:
+    - selected_text
+    - context_before
+    - context_after
+    - instruction
+
+messages:
+  - role: system
+    content: |
+      你负责局部文字润色。根据前后文和修改指令，只返回用于替换选区的新文字。
+      不要包含前文或后文，不要解释，直接输出替换内容。
+      
+  - role: user
+    content: |
+      前文：{{ context_before }}
+      
+      【选中文字】：{{ selected_text }}
+      
+      后文：{{ context_after }}
+      
+      修改要求：{{ instruction }}
+      
+      直接输出替换后的文字：
