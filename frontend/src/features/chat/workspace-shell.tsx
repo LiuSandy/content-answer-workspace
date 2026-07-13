@@ -4,6 +4,7 @@ import { BrainCircuit, Settings, Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PromptTemplatesDialog } from "./prompt-templates-dialog";
 
 /**
  * 应用外壳：顶部 Header + 主体 Outlet。
@@ -13,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
  */
 export function WorkspaceLayout() {
   const [darkMode, setDarkMode] = useState(false);
+  const [isPromptDialogOpen, setIsPromptDialogOpen] = useState(false);
 
   // 初始化深色模式状态：读取 <html> 上已有的 class，保持刷新后一致
   useEffect(() => {
@@ -39,11 +41,9 @@ export function WorkspaceLayout() {
 
         {/* 右侧操作区 */}
         <div className="flex items-center gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link to="/settings">
-              <Settings className="h-4 w-4" />
-              提示词配置
-            </Link>
+          <Button variant="outline" size="sm" onClick={() => setIsPromptDialogOpen(true)}>
+            <Settings className="h-4 w-4" />
+            提示词
           </Button>
 
           <Tooltip>
@@ -65,6 +65,12 @@ export function WorkspaceLayout() {
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
+
+      {/* ── 提示词模板管理弹窗 ── */}
+      <PromptTemplatesDialog
+        open={isPromptDialogOpen}
+        onOpenChange={setIsPromptDialogOpen}
+      />
     </div>
   );
 }
