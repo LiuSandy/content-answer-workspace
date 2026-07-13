@@ -1,0 +1,289 @@
+"""Document API 路由；处理回答编辑器更新、AI 生成与精修（流式 SSE）和历史版本管理。"""
+from __future__ import annotations
+
+import logging
+import uuid
+from typing import Any, AsyncIterator
+
+from fastapi import APIRouter, Request, Query, Header, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from ...application.document_service import DocumentService
+from ...application.version_service import VersionService
+from ...domain.dto import InlineRefineRequest, SelectionDTO
+from ...persistence.session import get_db_session, get_session_factory
+from ...persistence.models.content import SourceItem
+from ...workflows.answer_generation import generate_answer_workflow
+from ...workflows.inline_refinement import inline_refinement_workflow
+from ...workflows.full_rewrite import full_rewrite_workflow
+from ..sse_utils import sse_named_event, make_sse_response
+from ...errors import DocumentConflictError
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="", tags=["documents"])
+
+
+class UpdateDocumentRequest(BaseModel):
+    content: str
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    
+    model_config = {"populate_by_name": True}
+
+
+class FullRewriteRequest(BaseModel):
+    instruction: str
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    
+    model_config = {"populate_by_name": True}
+
+
+class CreateCheckpointRequest(BaseModel):
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    
+    model_config = {"populate_by_name": True}
+
+
+class RestoreVersionRequest(BaseModel):
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    
+    model_config = {"populate_by_name": True}
+
+
+# ── REST API 端点 ────────────────────────────────────────────────────────────
+
+@router.get("/api/source-items/{source_item_id}/document")
+async def get_or_create_document(source_item_id: uuid.UUID) -> JSONResponse:
+    """获取或初始化帖子的编辑器 Document。"""
+    async for session in get_db_session():
+        doc_service = DocumentService(session)
+        doc = await doc_service.get_or_create_document(source_item_id)
+        state = await doc_service.get_document_state(doc.id)
+        return JSONResponse({"ok": True, "data": state.model_dump(mode="json", by_alias=True)})
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+@router.put("/api/documents/{document_id}")
+async def update_document(
+    document_id: uuid.UUID,
+    req: UpdateDocumentRequest,
+) -> JSONResponse:
+    """自动保存：直接更新 current_content，携带 expectedLockVersion，防冲突。"""
+    async for session in get_db_session():
+        doc_service = DocumentService(session)
+        try:
+            doc = await doc_service.update_content(
+                document_id=document_id,
+                content=req.content,
+                expected_lock_version=req.expected_lock_version,
+            )
+            state = await doc_service.get_document_state(doc.id)
+            return JSONResponse({"ok": True, "data": state.model_dump(mode="json", by_alias=True)})
+        except DocumentConflictError as e:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "document_conflict",
+                        "message": str(e),
+                        "expected": e.expected,
+                        "actual": e.actual,
+                    },
+                },
+                status_code=409,
+            )
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+@router.get("/api/documents/{document_id}/versions")
+async def list_versions(document_id: uuid.UUID) -> JSONResponse:
+    """获取文档历史版本快照摘要列表。"""
+    async for session in get_db_session():
+        version_service = VersionService(session)
+        versions = await version_service.list_versions(document_id)
+        return JSONResponse(
+            {
+                "ok": True,
+                "data": [v.model_dump(mode="json", by_alias=True) for v in versions],
+            }
+        )
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+@router.post("/api/documents/{document_id}/versions")
+async def create_checkpoint(
+    document_id: uuid.UUID,
+    req: CreateCheckpointRequest,
+) -> JSONResponse:
+    """手动保存当前内容为一个历史版本快照。"""
+    async for session in get_db_session():
+        version_service = VersionService(session)
+        try:
+            version = await version_service.create_manual_checkpoint(
+                document_id=document_id,
+                expected_lock_version=req.expected_lock_version,
+            )
+            doc_service = DocumentService(session)
+            state = await doc_service.get_document_state(document_id)
+            return JSONResponse({"ok": True, "data": state.model_dump(mode="json", by_alias=True)})
+        except DocumentConflictError as e:
+            return JSONResponse(
+                {"ok": False, "error": {"code": "document_conflict", "message": str(e)}},
+                status_code=409,
+            )
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+@router.post("/api/documents/{document_id}/versions/{version_id}/restore")
+async def restore_version(
+    document_id: uuid.UUID,
+    version_id: uuid.UUID,
+    req: RestoreVersionRequest,
+) -> JSONResponse:
+    """恢复某一历史版本为当前最新内容。"""
+    async for session in get_db_session():
+        version_service = VersionService(session)
+        try:
+            await version_service.restore_version(
+                document_id=document_id,
+                version_id=version_id,
+                expected_lock_version=req.expected_lock_version,
+            )
+            doc_service = DocumentService(session)
+            state = await doc_service.get_document_state(document_id)
+            return JSONResponse({"ok": True, "data": state.model_dump(mode="json", by_alias=True)})
+        except DocumentConflictError as e:
+            return JSONResponse(
+                {"ok": False, "error": {"code": "document_conflict", "message": str(e)}},
+                status_code=409,
+            )
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+# ── AI 流式创作与精修端点 (SSE) ──────────────────────────────────────────────────
+
+@router.post("/api/source-items/{source_item_id}/document/generate")
+async def generate_answer_stream(
+    source_item_id: uuid.UUID,
+    req: CreateCheckpointRequest,  # 复用以获取 expected_lock_version
+) -> Any:
+    """首次 AI 生成回答；通过 SSE 协议推送字符流，结束后写入历史。"""
+    session_factory = get_session_factory()
+
+    async def _event_generator() -> AsyncIterator[str]:
+        # 1. 查找 source_item 详情
+        async with session_factory() as session:
+            source_item = await session.get(SourceItem, source_item_id)
+            if not source_item:
+                yield sse_named_event("run.failed", {"error_code": "not_found", "message": "Source item not found"})
+                return
+            
+            doc_service = DocumentService(session)
+            doc = await doc_service.get_or_create_document(source_item_id)
+            doc_id = doc.id
+            platform = source_item.platform
+            title = source_item.title
+            content = source_item.content
+
+        run_id = str(uuid.uuid4())
+        yield sse_named_event("run.started", {"runId": run_id, "documentId": str(doc_id)})
+
+        try:
+            # 2. 调用 workflow
+            async with session_factory() as session:
+                async for chunk in generate_answer_workflow(
+                    session=session,
+                    source_item_id=source_item_id,
+                    document_id=doc_id,
+                    platform=platform,
+                    title=title,
+                    content=content,
+                    expected_lock_version=req.expected_lock_version,
+                ):
+                    yield sse_named_event("document.delta", {"delta": chunk})
+
+                # 3. 结束后拉取最新状态并发送 completed 事件
+                doc_service = DocumentService(session)
+                state = await doc_service.get_document_state(doc_id)
+                yield sse_named_event("document.completed", state.model_dump(mode="json", by_alias=True))
+                yield sse_named_event("run.completed", {"runId": run_id})
+
+        except Exception as e:
+            logger.error("Answer generation stream failed: %s", e)
+            yield sse_named_event("run.failed", {"error_code": "generation_failed", "message": str(e)})
+
+    return make_sse_response(_event_generator())
+
+
+@router.post("/api/documents/{document_id}/refine")
+async def refine_document_stream(
+    document_id: uuid.UUID,
+    req: InlineRefineRequest,
+) -> Any:
+    """局部精修（选区优化）；通过 SSE 协议推送替换文本，结束后合并写入历史。"""
+    session_factory = get_session_factory()
+
+    async def _event_generator() -> AsyncIterator[str]:
+        run_id = str(uuid.uuid4())
+        yield sse_named_event("run.started", {"runId": run_id, "documentId": str(document_id)})
+
+        try:
+            async with session_factory() as session:
+                async for chunk in inline_refinement_workflow(
+                    session=session,
+                    document_id=document_id,
+                    selection=req.selection,
+                    instruction=req.instruction,
+                    expected_lock_version=req.expected_lock_version,
+                ):
+                    yield sse_named_event("document.delta", {"delta": chunk})
+
+                doc_service = DocumentService(session)
+                state = await doc_service.get_document_state(document_id)
+                yield sse_named_event("document.completed", state.model_dump(mode="json", by_alias=True))
+                yield sse_named_event("run.completed", {"runId": run_id})
+
+        except Exception as e:
+            logger.error("Inline refinement stream failed: %s", e)
+            yield sse_named_event("run.failed", {"error_code": "refine_failed", "message": str(e)})
+
+    return make_sse_response(_event_generator())
+
+
+@router.post("/api/documents/{document_id}/rewrite")
+async def rewrite_document_stream(
+    document_id: uuid.UUID,
+    req: FullRewriteRequest,
+) -> Any:
+    """全文重写；根据新指令重新生成整个回答，通过 SSE 协议流式返回，结束后写入历史。"""
+    session_factory = get_session_factory()
+
+    async def _event_generator() -> AsyncIterator[str]:
+        run_id = str(uuid.uuid4())
+        yield sse_named_event("run.started", {"runId": run_id, "documentId": str(document_id)})
+
+        try:
+            async with session_factory() as session:
+                async for chunk in full_rewrite_workflow(
+                    session=session,
+                    document_id=document_id,
+                    instruction=req.instruction,
+                    expected_lock_version=req.expected_lock_version,
+                ):
+                    yield sse_named_event("document.delta", {"delta": chunk})
+
+                doc_service = DocumentService(session)
+                state = await doc_service.get_document_state(document_id)
+                yield sse_named_event("document.completed", state.model_dump(mode="json", by_alias=True))
+                yield sse_named_event("run.completed", {"runId": run_id})
+
+        except Exception as e:
+            logger.error("Full rewrite stream failed: %s", e)
+            yield sse_named_event("run.failed", {"error_code": "rewrite_failed", "message": str(e)})
+
+    return make_sse_response(_event_generator())

@@ -12,8 +12,6 @@ class Topic(BaseModel):
     name: str
     keywords: list[str] = Field(default_factory=list)
     expanded_hints: list[str] = Field(default_factory=list, alias="expandedHints")
-    answer_style: str = Field(default="", alias="answerStyle")
-    system_prompt: str = Field(default="", alias="systemPrompt")
 
     model_config = {
         "populate_by_name": True,
@@ -28,9 +26,6 @@ class WorkflowConfig(BaseModel):
     content_mode: str = Field(default="answer", alias="contentMode")
     max_push_count: int = Field(alias="maxPushCount")
     sort_modes: list[str] = Field(alias="sortModes")
-    answer_style: str = Field(alias="answerStyle")
-    system_prompt: str = Field(alias="systemPrompt")
-    generation_prompt: str = Field(alias="generationPrompt")
     test_mode: bool = Field(alias="testMode")
     skip_answer_generation: bool = Field(alias="skipAnswerGeneration")
     user_agent: str = Field(alias="userAgent")
@@ -82,9 +77,6 @@ class SessionPayload(BaseModel):
     platform: str = "zhihu"
     saved_at: str | None = Field(default=None, alias="savedAt")
     topics: list[Topic] = Field(default_factory=list)
-    answer_style: str = Field(default="", alias="answerStyle")
-    system_prompt: str = Field(default="", alias="systemPrompt")
-    generation_prompt: str = Field(default="", alias="generationPrompt")
     content_constraint: str = Field(default="", alias="contentConstraint")
     max_push_count: int | None = Field(default=None, alias="maxPushCount")
     items: list[QuestionItem] = Field(default_factory=list)
@@ -102,9 +94,6 @@ class RunPayload(BaseModel):
     topics: list[Topic] = Field(default_factory=list)
     max_push_count: int | None = Field(default=None, alias="maxPushCount")
     skip_answer_generation: bool | None = Field(default=None, alias="skipAnswerGeneration")
-    answer_style: str | None = Field(default=None, alias="answerStyle")
-    system_prompt: str | None = Field(default=None, alias="systemPrompt")
-    generation_prompt: str | None = Field(default=None, alias="generationPrompt")
     content_mode: str | None = Field(default=None, alias="contentMode")
 
     model_config = {
@@ -117,9 +106,6 @@ class RegeneratePayload(BaseModel):
 
     platform: str = "zhihu"
     item: QuestionItem
-    answer_style: str | None = Field(default=None, alias="answerStyle")
-    system_prompt: str | None = Field(default=None, alias="systemPrompt")
-    generation_prompt: str | None = Field(default=None, alias="generationPrompt")
     content_constraint: str | None = Field(default=None, alias="contentConstraint")
 
     model_config = {
@@ -133,9 +119,6 @@ class PolishPayload(BaseModel):
     platform: str = "zhihu"
     item: QuestionItem
     current_answer: str = Field(alias="currentAnswer")
-    answer_style: str | None = Field(default=None, alias="answerStyle")
-    system_prompt: str | None = Field(default=None, alias="systemPrompt")
-    generation_prompt: str | None = Field(default=None, alias="generationPrompt")
     content_constraint: str | None = Field(default=None, alias="contentConstraint")
 
     model_config = {

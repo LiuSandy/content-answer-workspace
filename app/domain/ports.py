@@ -1,34 +1,121 @@
+"""领域层接口定义（Ports）；所有接口仅用 Protocol 定义，不引入任何框架或平台具体实现。
+
+依赖方向：Domain 层不依赖 FastAPI、LangGraph、SQLAlchemy 或具体模型供应商。
+"""
 from __future__ import annotations
 
-from typing import Protocol, Sequence
+from collections.abc import AsyncIterator
+from typing import Any, Protocol
 
-from ..models import QuestionItem, Topic, WorkflowConfig
+from .dto import (
+    CollectionRequest,
+    LLMRequest,
+    LLMResponse,
+    LLMStreamEvent,
+    ParseUrlRequest,
+    SourceItemDTO,
+    ToolContext,
+)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Content Source 接口
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ContentSource(Protocol):
+    """多平台内容采集器统一接口；实现类放入 infrastructure/sources/adapters/。
+
+    如果某平台只支持解析或只支持采集，应在 capabilities 中显式声明，
+    而不是提供一个运行后才报错的空实现。
+    """
+
+    key: str  # 平台唯一标识，如 "zhihu" / "xiaohongshu" / "universal"
+
+    @property
+    def capabilities(self) -> set[str]:
+        """声明该适配器支持的能力，如 {"parse_url", "collect"}。"""
+        ...
+
+    def can_handle_url(self, url: str) -> bool:
+        """判断此适配器是否可处理给定 URL；用于 Source Registry 路由。"""
+        ...
+
+    async def parse_url(
+        self, request: ParseUrlRequest, context: ToolContext
+    ) -> SourceItemDTO:
+        """解析单个 URL 并返回标准化帖子；仅当 capabilities 包含 "parse_url" 时调用。"""
+        ...
+
+    async def collect(
+        self, request: CollectionRequest, context: ToolContext
+    ) -> list[SourceItemDTO]:
+        """按主题/关键词采集帖子列表；仅当 capabilities 包含 "collect" 时调用。"""
+        ...
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM Provider 接口
+# ─────────────────────────────────────────────────────────────────────────────
+
+class LLMProvider(Protocol):
+    """语言模型供应商统一接口；实现类放入 infrastructure/llm/providers/。
+
+    Agent 和 Workflow 只依赖此接口，不引用 DeepSeek SDK 或任何专有响应类型。
+    """
+
+    key: str  # 供应商唯一标识，如 "deepseek" / "openai"
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        """同步生成完整回复；适用于结构化输出和意图路由等场景。"""
+        ...
+
+    async def stream(self, request: LLMRequest) -> AsyncIterator[LLMStreamEvent]:
+        """流式生成回复；适用于聊天和长文本生成场景。"""
+        ...
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task Dispatcher 接口（异步任务抽象）
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TaskHandle(Protocol):
+    """任务句柄；用于查询任务状态或取消任务。"""
+
+    task_id: str
+    status: str  # pending / running / completed / failed / cancelled
+
+
+class ApplicationTask(Protocol):
+    """可提交给 TaskDispatcher 的任务定义。"""
+
+    task_id: str
+    idempotency_key: str | None
+
+    async def execute(self) -> Any: ...
+
+
+class TaskDispatcher(Protocol):
+    """任务分发器；第一版用 InProcessTaskDispatcher，未来可替换为 Dramatiq/Celery。"""
+
+    async def submit(self, task: ApplicationTask) -> TaskHandle: ...
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 历史遗留兼容接口 (Legacy Compatibility Ports)
+# ─────────────────────────────────────────────────────────────────────────────
 
 class CollectorPort(Protocol):
-    """定义平台采集器接口；这样工作流只依赖抽象能力而不依赖知乎等具体平台实现。"""
-
+    """历史遗留的采集器接口。"""
     platform: str
-
-    async def collect(self, topics: Sequence[Topic], config: WorkflowConfig) -> list[QuestionItem]:
-        """按主题采集平台内容；这样不同平台策略都能以相同方法接入工作流。"""
+    async def collect(self, topics: Any, config: Any) -> Any: ...
 
 
 class AnswerGeneratorPort(Protocol):
-    """定义回答生成器接口；这样 DeepSeek 等模型适配器可以被替换而不影响应用层。"""
-
-    async def generate_answer(
-        self,
-        item: QuestionItem,
-        answer_style: str,
-        cta_text: str,
-        system_prompt: str,
-    ) -> str:
-        """为单个问题生成回答；这样应用层只关心创作结果而不关心模型 API 细节。"""
+    """历史遗留的回答生成器接口。"""
+    async def generate_answer(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
 class TopicExpanderPort(Protocol):
-    """定义主题扩展器接口；这样工作流可以先做 AI 扩词，再把检索实现留给不同模型适配器。"""
+    """历史遗留的主题扩展接口。"""
+    async def expand_topic(self, *args: Any, **kwargs: Any) -> Any: ...
 
-    async def expand_topic(self, topic: Topic, limit: int = 6) -> list[str]:
-        """为单个主题生成一组检索关键词；这样采集流程能把主题选择和检索词生成解耦。"""
