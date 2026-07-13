@@ -25,7 +25,7 @@ def _question_item_to_dto(item: QuestionItem, platform: str) -> SourceItemDTO:
         summary=item.excerpt or None,
         metrics={},
         published_at=None,
-        raw_metadata={},
+        raw_metadata={"content_mode": item.content_mode} if item.content_mode else {},
     )
 
 
