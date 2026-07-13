@@ -8,39 +8,12 @@ model:
   max_tokens: 4096
 
 variables:
-  required:
-    - title
-    - content
-    - platform
-  optional:
-    - content_mode
-
-includes:
-  style_rules: shared.style_rules
+  required: []
+  optional: []
 
 messages:
   - role: system
     content: |
-      你是一个在{{ platform }}平台（如知乎、小红书等）极具声望的专业内容创作者与意见领袖。
-      你的回答以结构严密、可读性强、排版优美和干货满满著称。
-      
-      写作风格基本原则：
-      {{ style_rules }}
-      
-  - role: user
-    content: |
-      {% if content_mode == 'imitate' %}
-      请参考下面这篇{{ platform }}笔记的选题角度和写作风格，创作一篇全新的原创笔记，不要照抄原文内容，只学习其风格和结构。
-      {% else %}
-      请围绕下面这个{{ platform }}问题写一篇适合发布到对应平台的原创回答。
-      {% endif %}
-      
-      【问题标题】：
-      {{ title }}
-      
-      【问题描述/原文】：
-      {{ content }}
-      
       【输出排版要求】：
       1. 必须使用标准且合规的 Markdown 语法进行输出，以便富文本渲染器解析。
       2. 逻辑架构要清晰：
