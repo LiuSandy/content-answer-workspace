@@ -1,28 +1,15 @@
-export type SseEvent<T> =
-  | { type: "chunk"; text: string; itemId?: string }
-  | { type: "item_start"; itemId: string }
-  | { type: "item_done"; itemId: string; item: unknown }
-  | { type: "tool_start"; text: string }
-  | { type: "tool_end"; text: string }
-  | { type: "collect_result"; platform: string; topic: string; items: unknown[] }
-  | { type: "done"; data: T }
-  | { type: "error"; message: string };
-
-export type SseCallbacks<T> = {
-  onChunk?: (text: string, itemId?: string) => void;
-  onItemStart?: (itemId: string) => void;
-  onItemDone?: (itemId: string, item: unknown) => void;
-  onToolStart?: (text: string) => void;
-  onToolEnd?: (text: string) => void;
-  onCollectResult?: (platform: string, topic: string, items: unknown[]) => void;
-  onDone?: (data: T) => void;
-  onError?: (message: string) => void;
+export type SSECallbacks = {
+  onEvent?: (event: string, data: any) => void;
+  onError?: (error: Error) => void;
 };
 
-export async function streamPost<T>(
+/**
+ * 通过 POST 请求流式读取 SSE 数据。
+ */
+export async function streamPost(
   url: string,
   body: unknown,
-  callbacks: SseCallbacks<T>,
+  callbacks: SSECallbacks,
 ): Promise<void> {
   const response = await fetch(url, {
     method: "POST",
@@ -31,75 +18,74 @@ export async function streamPost<T>(
   });
 
   if (!response.ok || !response.body) {
-    const message = `HTTP ${response.status}`;
-    callbacks.onError?.(message);
-    throw new Error(message);
+    let errMsg = `HTTP ${response.status}`;
+    try {
+      const errPayload = await response.json();
+      if (errPayload?.error?.message) {
+        errMsg = errPayload.error.message;
+      }
+    } catch {
+      // 忽略 JSON 解析失败
+    }
+    const error = new Error(errMsg);
+    callbacks.onError?.(error);
+    throw error;
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let receivedDone = false;
-  let doneData: T | null = null;
-  let streamError: string | null = null;
 
   function handleEventBlock(eventBlock: string) {
-    if (!eventBlock.trim()) return;
-    // 提取所有 data: 行并拼接
-    const dataLines = eventBlock
-      .split("\n")
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trim());
-    if (dataLines.length === 0) return;
-    const raw = dataLines.join("");
-    if (!raw) return;
-    try {
-      const event = JSON.parse(raw) as SseEvent<T>;
-      if (event.type === "chunk") callbacks.onChunk?.(event.text, event.itemId);
-      else if (event.type === "item_start") callbacks.onItemStart?.(event.itemId);
-      else if (event.type === "item_done") callbacks.onItemDone?.(event.itemId, event.item);
-      else if (event.type === "tool_start") callbacks.onToolStart?.(event.text);
-      else if (event.type === "tool_end") callbacks.onToolEnd?.(event.text);
-      else if (event.type === "collect_result") callbacks.onCollectResult?.(event.platform, event.topic, event.items);
-      else if (event.type === "done") {
-        receivedDone = true;
-        doneData = event.data;
-      } else if (event.type === "error") {
-        streamError = event.message || "流式请求失败";
-        callbacks.onError?.(streamError);
+    const lines = eventBlock.split("\n");
+    let eventName = "";
+    const dataLines: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("event:")) {
+        eventName = trimmed.slice(6).trim();
+      } else if (trimmed.startsWith("data:")) {
+        dataLines.push(trimmed.slice(5).trim());
       }
+    }
+
+    if (!eventName && dataLines.length === 0) return;
+
+    const rawData = dataLines.join("");
+    let parsedData = rawData;
+    try {
+      parsedData = JSON.parse(rawData);
     } catch {
-      // 忽略非 JSON 行
+      // 保持原始字符串
     }
+
+    callbacks.onEvent?.(eventName || "message", parsedData);
   }
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-    // SSE 规范：以 \n\n 分隔事件
-    const events = buffer.split("\n\n");
-    buffer = events.pop() ?? "";
+      // SSE 事件以双换行符 \n\n 分隔
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
 
-    for (const eventBlock of events) {
-      handleEventBlock(eventBlock);
+      for (const eventBlock of events) {
+        if (eventBlock.trim()) {
+          handleEventBlock(eventBlock);
+        }
+      }
     }
-  }
 
-  if (buffer.trim()) {
-    handleEventBlock(buffer);
-  }
-
-  if (streamError) {
-    throw new Error(streamError);
-  }
-  if (!receivedDone) {
-    const message = "生成流中断，未收到完成事件";
-    callbacks.onError?.(message);
-    throw new Error(message);
-  }
-  if (doneData) {
-    callbacks.onDone?.(doneData);
+    if (buffer.trim()) {
+      handleEventBlock(buffer);
+    }
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    callbacks.onError?.(error);
+    throw error;
   }
 }

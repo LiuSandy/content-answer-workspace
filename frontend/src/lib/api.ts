@@ -44,3 +44,15 @@ export async function apiDelete<T>(url: string): Promise<T> {
   const response = await fetch(url, { method: "DELETE" });
   return unwrap<T>(response);
 }
+
+export async function apiPut<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  return unwrap<T>(response);
+}
+

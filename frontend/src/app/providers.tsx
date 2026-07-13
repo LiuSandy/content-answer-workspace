@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type PropsWithChildren } from "react";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
+
 export function AppProviders({ children }: PropsWithChildren) {
   const [queryClient] = useState(
     () =>
@@ -14,5 +16,10 @@ export function AppProviders({ children }: PropsWithChildren) {
       }),
   );
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      {/* 全局挂载 TooltipProvider：各处 Tooltip 依赖单一 Provider 上下文，避免每个组件重复包裹 */}
+      <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+    </QueryClientProvider>
+  );
 }
