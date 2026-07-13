@@ -28,3 +28,7 @@ frontend/dist/
 frontend/*.d.ts
 frontend/*.d.ts.map
 frontend/*.tsbuildinfo
+
+# AI assistant directories
+.claude/
+.gemini/
