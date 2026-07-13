@@ -11,11 +11,10 @@ import { checkHealth, restartServer } from "./settings-api";
 import { AgentReachSettings } from "./agent-reach-settings";
 import { CollectSettings } from "./collect-settings";
 import { LlmSettings } from "./llm-settings";
-import { PromptsSettings } from "./prompts-settings";
 import { PublishSettings } from "./publish-settings";
 import { TopicsSettings } from "./topics-settings";
 
-type Section = "llm" | "agent-reach" | "topics" | "publish" | "collect" | "prompts";
+type Section = "llm" | "agent-reach" | "topics" | "publish" | "collect";
 
 interface NavItem {
   id: Section;
@@ -29,7 +28,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "topics", label: "主题管理", description: "采集主题的增删改" },
   { id: "publish", label: "发布配置", description: "测试模式与 CTA 文本" },
   { id: "collect", label: "采集默认值", description: "平台、上限、排序模式" },
-  { id: "prompts", label: "默认提示词", description: "全局 System Prompt" },
 ];
 
 const SECTION_COMPONENTS: Record<Section, React.FC> = {
@@ -38,7 +36,6 @@ const SECTION_COMPONENTS: Record<Section, React.FC> = {
   topics: TopicsSettings,
   publish: PublishSettings,
   collect: CollectSettings,
-  prompts: PromptsSettings,
 };
 
 type RestartState = "idle" | "pending" | "polling" | "success" | "error";

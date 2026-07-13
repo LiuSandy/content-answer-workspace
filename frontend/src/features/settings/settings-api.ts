@@ -22,11 +22,6 @@ export interface PublishConfig {
   ctaText: string;
 }
 
-export interface PromptsConfig {
-  systemPrompt: string;
-  answerStyle: string;
-  generationPrompt: string;
-}
 
 export interface AgentReachConfig {
   enabledPlatforms: string[];
@@ -37,7 +32,6 @@ export interface AllSettings {
   llm: LlmConfig;
   collect: CollectConfig;
   publish: PublishConfig;
-  prompts: PromptsConfig;
   agentReach: AgentReachConfig;
 }
 
@@ -46,8 +40,6 @@ export interface TopicItem {
   name: string;
   keywords: string[];
   expandedHints: string[];
-  answerStyle: string;
-  systemPrompt: string;
 }
 
 export interface AgentReachStatus {
@@ -99,13 +91,6 @@ export async function updatePublishSettings(payload: Partial<PublishConfig>): Pr
   });
 }
 
-export async function updatePromptsSettings(payload: Partial<PromptsConfig>): Promise<void> {
-  await fetchJson("/api/settings/prompts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
 
 export async function getAgentReachStatus(): Promise<AgentReachStatus> {
   return fetchJson<AgentReachStatus>("/api/settings/agent-reach/status");
