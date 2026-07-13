@@ -38,8 +38,14 @@ async def lifespan(app: FastAPI):
     prompts_dir = ROOT_DIR / "prompts"
     warmup_prompts(prompts_dir, freeze=True)
 
+    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+    serde = JsonPlusSerializer(allowed_msgpack_modules=[
+        "app.domain.dto",
+        "asyncpg.pgproto.pgproto",
+    ])
     CONVERSATION_CHECKPOINT_DB.parent.mkdir(parents=True, exist_ok=True)
     async with AsyncSqliteSaver.from_conn_string(str(CONVERSATION_CHECKPOINT_DB)) as checkpointer:
+        checkpointer.serde = serde
         app.state.conversation_graph = build_conversation_graph(checkpointer)
         yield
 
