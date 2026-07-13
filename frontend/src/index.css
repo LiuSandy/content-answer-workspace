@@ -232,3 +232,96 @@
   --sidebar-border: hsl(240 3.7% 15.9%);
   --sidebar-ring: hsl(217.2 91.2% 59.8%);
 }
+
+/* ── Tiptap 编辑器排版样式 (手工定义 .prose，替代缺失的 @tailwindcss/typography) ── */
+.prose {
+  font-size: 14px;
+  line-height: 1.8;
+  color: oklch(0.23 0.038 248);
+}
+
+.prose h1, 
+.prose h2, 
+.prose h3, 
+.prose h4, 
+.prose h5, 
+.prose h6 {
+  color: oklch(0.13 0.022 248);
+  font-weight: 700;
+  line-height: 1.4;
+  margin-top: 1.6em;
+  margin-bottom: 0.6em;
+}
+
+.prose h1 { font-size: 1.8em; }
+.prose h2 { font-size: 1.5em; }
+.prose h3 { font-size: 1.3em; }
+.prose h4 { font-size: 1.15em; }
+
+.prose p {
+  margin-top: 0;
+  margin-bottom: 1em;
+}
+
+.prose ul {
+  list-style-type: disc !important;
+  padding-left: 1.5em !important;
+  margin-top: 0.5em;
+  margin-bottom: 1em;
+}
+
+.prose ol {
+  list-style-type: decimal !important;
+  padding-left: 1.5em !important;
+  margin-top: 0.5em;
+  margin-bottom: 1em;
+}
+
+.prose li {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+  padding-left: 0.1em;
+}
+
+.prose li > p {
+  margin: 0;
+}
+
+.prose strong {
+  font-weight: 700;
+  color: oklch(0.13 0.022 248);
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.8em 0;
+}
+
+.prose blockquote {
+  border-left: 4px solid var(--primary);
+  padding-left: 1.2em;
+  color: var(--muted-foreground);
+  font-style: italic;
+  margin: 1.5em 0;
+}
+
+/* 深色模式下的编辑排版覆盖样式 */
+.dark .prose {
+  color: oklch(0.85 0.01 240);
+}
+
+.dark .prose h1,
+.dark .prose h2,
+.dark .prose h3,
+.dark .prose h4,
+.dark .prose h5,
+.dark .prose h6,
+.dark .prose strong {
+  color: oklch(0.95 0.005 240);
+}
+
+.dark .prose hr {
+  border-top-color: oklch(0.25 0.01 240);
+}
+
