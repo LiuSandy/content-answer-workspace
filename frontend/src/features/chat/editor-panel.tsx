@@ -17,6 +17,7 @@ import {
   Globe,
   Copy,
   Check,
+  X,
 } from "lucide-react";
 
 import { apiGet, apiPut, apiPost } from "@/lib/api";
@@ -29,6 +30,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PromptInput } from "@/components/ui/prompt-input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type DocumentState = {
   documentId: string;
@@ -65,7 +67,7 @@ type VersionSummary = {
  */
 export function EditorPanel() {
   const queryClient = useQueryClient();
-  const { selectedSourceItemId } = useChatStore();
+  const { selectedSourceItemId, setSelectedSourceItemId } = useChatStore();
 
   const [refineInstruction, setRefineInstruction] = useState("");
   const [rewriteInstruction, setRewriteInstruction] = useState("");
@@ -553,6 +555,23 @@ export function EditorPanel() {
               </>
             )}
           </span>
+
+          <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-800" />
+
+          {/* 关闭/收起编辑器面板 */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"
+                onClick={() => setSelectedSourceItemId(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>关闭编辑面板</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

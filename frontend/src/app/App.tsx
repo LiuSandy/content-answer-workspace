@@ -17,6 +17,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<WorkspaceLayout />}>
           <Route index element={<ChatWorkspace />} />
+          <Route path="chat/:chatId" element={<ChatWorkspace />} />
           <Route path="hotlist" element={<HotlistPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

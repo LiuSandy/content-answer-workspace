@@ -18,6 +18,8 @@ interface PromptInputProps {
   onSelectedStylesChange?: (styles: string[]) => void;
   wordCount?: number;
   onWordCountChange?: (v: number) => void;
+  leftActions?: React.ReactNode;
+  rightActions?: React.ReactNode;
 }
 
 const WRITING_STYLES = [
@@ -42,6 +44,8 @@ export function PromptInput({
   onSelectedStylesChange,
   wordCount,
   onWordCountChange,
+  leftActions,
+  rightActions,
 }: PromptInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -102,66 +106,69 @@ export function PromptInput({
         rows={3}
         className={cn(
           "w-full bg-transparent resize-none border-0 pl-3 py-2 text-sm placeholder:text-zinc-400 dark:placeholder:text-zinc-500 outline-none focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-[84px] min-h-[84px] max-h-[84px] overflow-y-auto leading-relaxed text-zinc-800 dark:text-zinc-200 shadow-none focus-visible:ring-offset-0",
-          submitLabel ? "pr-28" : "pr-12",
-          showStyles ? "pb-10" : ""
+          (submitLabel || rightActions) ? "pr-28" : "pr-12",
+          (showStyles || leftActions) ? "pb-10" : ""
         )}
       />
 
-      {/* ── 底部左侧：写作风格选择器与字数要求 ── */}
-      {showStyles && selectedStyles && onSelectedStylesChange && (
+      {/* ── 底部左侧：写作风格选择器与字数要求 / leftActions ── */}
+      {(leftActions || (showStyles && selectedStyles)) && (
         <div className="absolute left-2.5 bottom-2 flex items-center gap-2">
-          <div ref={dropdownRef} className="relative">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              disabled={disabled}
-              className={cn(
-                "h-8 px-2.5 rounded-lg text-xs gap-1.5 font-medium transition-colors shrink-0",
-                selectedStyles.length > 0
-                  ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-950/60"
-                  : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              )}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>{getStyleButtonLabel()}</span>
-              <ChevronDown className={cn("h-3 w-3 opacity-60 transition-transform", dropdownOpen && "rotate-180")} />
-            </Button>
+          {leftActions}
+          {showStyles && selectedStyles && (
+            <div ref={dropdownRef} className="relative">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                disabled={disabled}
+                className={cn(
+                  "h-8 px-2.5 rounded-lg text-xs gap-1.5 font-medium transition-colors shrink-0",
+                  selectedStyles.length > 0
+                    ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-950/60"
+                    : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                )}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>{getStyleButtonLabel()}</span>
+                <ChevronDown className={cn("h-3 w-3 opacity-60 transition-transform", dropdownOpen && "rotate-180")} />
+              </Button>
 
-            {/* 浮动下拉面板 (向上弹出) */}
-            {dropdownOpen && (
-              <div className="absolute bottom-[38px] left-0 z-50 w-44 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-2 shadow-lg flex flex-col gap-0.5">
-                <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 px-2 py-1 uppercase tracking-wider select-none">
-                  选择写作风格
-                </span>
-                {WRITING_STYLES.map((style) => {
-                  const checked = selectedStyles.includes(style.id);
-                  return (
-                    <label
-                      key={style.id}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 font-medium cursor-pointer select-none"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          const next = checked
-                            ? selectedStyles.filter((id) => id !== style.id)
-                            : [...selectedStyles, style.id];
-                          onSelectedStylesChange(next);
-                        }}
-                        className="rounded border-zinc-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
-                      />
-                      <span>{style.label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+              {/* 浮动下拉面板 (向上弹出) */}
+              {dropdownOpen && (
+                <div className="absolute bottom-[38px] left-0 z-50 w-44 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-2 shadow-lg flex flex-col gap-0.5">
+                  <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 px-2 py-1 uppercase tracking-wider select-none">
+                    选择写作风格
+                  </span>
+                  {WRITING_STYLES.map((style) => {
+                    const checked = selectedStyles.includes(style.id);
+                    return (
+                      <label
+                        key={style.id}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 font-medium cursor-pointer select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const next = checked
+                              ? selectedStyles.filter((id) => id !== style.id)
+                              : [...selectedStyles, style.id];
+                            onSelectedStylesChange(next);
+                          }}
+                          className="rounded border-zinc-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                        />
+                        <span>{style.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 字数限制（默认 1000，最多 5000） */}
-          {wordCount !== undefined && onWordCountChange && (
+          {showStyles && wordCount !== undefined && onWordCountChange && (
             <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 select-none">
               <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5" />
               <label htmlFor="word-count-input" className="font-medium shrink-0">字数:</label>
@@ -191,30 +198,33 @@ export function PromptInput({
         </div>
       )}
 
-      {/* ── 底部右侧：发送按钮 ── */}
-      {submitLabel ? (
-        <Button
-          size="sm"
-          disabled={disabled || (!allowEmpty && !value.trim())}
-          onClick={onSubmit}
-          className={cn(
-            "absolute right-2 bottom-2 h-8 px-3 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white transition-colors shrink-0 gap-1.5 text-xs font-medium",
-            (disabled || (!allowEmpty && !value.trim())) && "bg-indigo-100 text-zinc-400 dark:bg-indigo-950/40 dark:disabled:text-zinc-700"
-          )}
-        >
-          {submitIcon}
-          <span>{submitLabel}</span>
-        </Button>
-      ) : (
-        <Button
-          size="icon"
-          disabled={disabled || (!allowEmpty && !value.trim())}
-          onClick={onSubmit}
-          className="absolute right-2 bottom-2 h-8 w-8 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white disabled:bg-indigo-100 disabled:text-zinc-400 dark:bg-indigo-600 dark:hover:bg-indigo-700 dark:disabled:bg-indigo-950/40 dark:disabled:text-zinc-700 transition-colors shrink-0"
-        >
-          <ArrowUp className="h-4 w-4" />
-        </Button>
-      )}
+      {/* ── 底部右侧：发送按钮与 rightActions ── */}
+      <div className="absolute right-2.5 bottom-2 flex items-center gap-2">
+        {rightActions}
+        {submitLabel ? (
+          <Button
+            size="sm"
+            disabled={disabled || (!allowEmpty && !value.trim())}
+            onClick={onSubmit}
+            className={cn(
+              "h-8 px-3 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white transition-colors shrink-0 gap-1.5 text-xs font-medium",
+              (disabled || (!allowEmpty && !value.trim())) && "bg-indigo-100 text-zinc-400 dark:bg-indigo-950/40 dark:disabled:text-zinc-700"
+            )}
+          >
+            {submitIcon}
+            <span>{submitLabel}</span>
+          </Button>
+        ) : (
+          <Button
+            size="icon"
+            disabled={disabled || (!allowEmpty && !value.trim())}
+            onClick={onSubmit}
+            className="h-8 w-8 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white disabled:bg-indigo-100 disabled:text-zinc-400 dark:bg-indigo-600 dark:hover:bg-indigo-700 dark:disabled:bg-indigo-950/40 dark:disabled:text-zinc-700 transition-colors shrink-0"
+          >
+            <ArrowUp className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
