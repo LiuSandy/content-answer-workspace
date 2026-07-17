@@ -24,6 +24,15 @@ class CreateChatRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str
+    parent_message_id: str | None = Field(default=None, alias="parentMessageId")
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
+class RenameChatRequest(BaseModel):
+    title: str
 
 
 # ── REST API 端点 ────────────────────────────────────────────────────────────
@@ -100,6 +109,34 @@ async def delete_chat(chat_id: uuid.UUID) -> JSONResponse:
     return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
 
 
+@router.put("/{chat_id}")
+async def rename_chat(chat_id: uuid.UUID, req: RenameChatRequest) -> JSONResponse:
+    """重命名对话标题。"""
+    async for session in get_db_session():
+        chat_service = ChatService(session)
+        chat = await chat_service.get_chat(chat_id)
+        if not chat:
+            return JSONResponse({"ok": False, "error": "Chat not found"}, status_code=404)
+        chat.title = req.title
+        chat_id_str = str(chat.id)
+        title = chat.title
+        updated_at_str = chat.updated_at.isoformat() if chat.updated_at else ""
+        created_at_str = chat.created_at.isoformat() if chat.created_at else ""
+        await session.commit()
+        return JSONResponse(
+            {
+                "ok": True,
+                "data": {
+                    "chatId": chat_id_str,
+                    "title": title,
+                    "updatedAt": updated_at_str,
+                    "createdAt": created_at_str,
+                },
+            }
+        )
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
 @router.get("/{chat_id}/messages")
 async def get_messages(chat_id: uuid.UUID) -> JSONResponse:
     async for session in get_db_session():
@@ -116,6 +153,7 @@ async def get_messages(chat_id: uuid.UUID) -> JSONResponse:
                         "content": m.content,
                         "payload": m.payload,
                         "runId": m.run_id,
+                        "parentMessageId": str(m.parent_message_id) if m.parent_message_id else None,
                         "createdAt": m.created_at.isoformat(),
                     }
                     for m in messages
@@ -144,18 +182,43 @@ async def send_message_stream(
         # 1. 产生 run.started 事件
         yield sse_named_event("run.started", {"runId": run_id, "chatId": chat_id_str})
 
-        # 保存用户消息
+        # 解析 parent_message_id
+        parent_id = None
+        if req.parent_message_id:
+            try:
+                parent_id = uuid.UUID(req.parent_message_id)
+            except ValueError:
+                pass
+
+        # 保存用户消息并获取历史路径
         async with session_factory() as session:
             chat_service = ChatService(session)
-            user_msg = await chat_service.save_user_message(chat_id, req.content, run_id=run_id)
+            
+            # 若当前对话标题为默认的"新对话"，则自动以用户第一条提问的前20字作为标题
+            chat = await chat_service.get_chat(chat_id)
+            if chat and chat.title == "新对话":
+                chat.title = req.content[:20]
+                session.add(chat)
+                
+            user_msg = await chat_service.save_user_message(
+                chat_id, req.content, parent_message_id=parent_id, run_id=run_id
+            )
+            history_path = await chat_service.get_message_path(chat_id, parent_id)
+
+        # 格式化历史消息提供给 LangGraph
+        langgraph_history = []
+        for m in history_path:
+            # 仅传递有文本内容的 user/assistant 消息以保持上下文紧凑
+            langgraph_history.append({"role": m.role, "content": m.content or ""})
 
         # 2. 准备 LangGraph 运行配置
-        config = {"configurable": {"thread_id": chat_id_str}}
+        # 使用当前用户消息 ID 作为 thread_id 隔离分支
+        config = {"configurable": {"thread_id": f"{chat_id_str}_{user_msg.id}"}}
         inputs = {
             "chat_id": chat_id_str,
             "user_message_id": str(user_msg.id),
             "user_message": req.content,
-            "messages": [{"role": "user", "content": req.content}],
+            "messages": langgraph_history + [{"role": "user", "content": req.content}],
         }
 
         assistant_content_parts = []
@@ -202,23 +265,105 @@ async def send_message_stream(
                         chat_id=chat_id,
                         message_type="text",
                         content=full_text,
+                        parent_message_id=user_msg.id,
                         run_id=run_id,
                     )
+
+                    # 检查大模型在此轮对话中是否运行了 zhihu_search 或 xiaohongshu_search 工具
+                    # 若运行了，解析并将其持久化为 source_list 消息，从而支持前端结构化卡片与左键选中写作
+                    messages_list = values.get("messages", [])
+                    tool_items = []
+                    tool_platform = None
+                    tool_name = None
+
+                    for m in reversed(messages_list):
+                        if hasattr(m, "type") and m.type == "tool" and m.name in ("xiaohongshu_search", "zhihu_search"):
+                            try:
+                                import json
+                                tool_data = json.loads(m.content)
+                                if isinstance(tool_data, dict) and "items" in tool_data:
+                                    tool_items = tool_data["items"]
+                                    tool_platform = tool_data.get("platform", "xiaohongshu")
+                                    tool_name = m.name
+                                    break
+                            except Exception as e:
+                                logger.warning("Failed to parse tool content: %s", e)
+
+                    if tool_items:
+                        try:
+                            from ...domain.dto import SourceItemDTO
+                            dto_items = []
+                            for i in tool_items:
+                                ext_id = i.get("url") or i.get("link") or ""
+                                dto_items.append(
+                                    SourceItemDTO(
+                                        platform=tool_platform,
+                                        external_id=ext_id,
+                                        url=i.get("url") or i.get("link") or "",
+                                        title=i.get("title") or "",
+                                        content=i.get("excerpt") or i.get("summary") or "",
+                                        author=i.get("author") or "",
+                                        summary=i.get("excerpt") or i.get("summary") or "",
+                                        metrics={"likes": i.get("metric") or i.get("answer_count") or 0}
+                                    )
+                                )
+
+                            saved_items = await chat_service.save_source_items(chat_id, dto_items)
+
+                            # 回填 ID
+                            for dto, db_item in zip(dto_items, saved_items):
+                                dto.id = db_item.id
+
+                            serialized_items = []
+                            for item in dto_items:
+                                item_dict = item.model_dump(by_alias=True)
+                                if item_dict.get("id"):
+                                    item_dict["id"] = str(item_dict["id"])
+                                serialized_items.append(item_dict)
+
+                            payload_data = {
+                                "tool_type": tool_name,
+                                "total_found": len(serialized_items),
+                                "items": serialized_items
+                            }
+
+                            await chat_service.save_assistant_message(
+                                chat_id=chat_id,
+                                message_type="source_list",
+                                content="为您搜索采集到以下主题帖子：",
+                                payload=payload_data,
+                                parent_message_id=user_msg.id,
+                                run_id=run_id,
+                            )
+                            # 在 SSE 流结束前，向前端追加产生一条 source_list 消息完成事件
+                            yield sse_named_event("source.list.completed", payload_data)
+                        except Exception as e:
+                            logger.error("Failed to persist and yield source items from tool call: %s", e)
                 elif response_payload:
-                    # 结构化卡片或错误
+                    # 字典安全兼容处理：适配反序列化降级为 dict 的情况
+                    if isinstance(response_payload, dict):
+                        p_msg_type = response_payload.get("message_type", "text")
+                        p_content = response_payload.get("text_content")
+                        p_structured = response_payload.get("structured")
+                    else:
+                        p_msg_type = getattr(response_payload, "message_type", "text")
+                        p_content = getattr(response_payload, "text_content", None)
+                        p_structured = getattr(response_payload, "structured", None)
+
                     await chat_service.save_assistant_message(
                         chat_id=chat_id,
-                        message_type=response_payload.message_type,
-                        content=response_payload.text_content,
-                        payload=response_payload.structured,
+                        message_type=p_msg_type,
+                        content=p_content,
+                        payload=p_structured,
+                        parent_message_id=user_msg.id,
                         run_id=run_id,
                     )
 
                     # 发送 source_list 状态事件给前端
-                    if response_payload.message_type == "source_list":
-                        yield sse_named_event("source.list.completed", response_payload.structured)
-                    elif response_payload.message_type == "error":
-                        yield sse_named_event("run.failed", response_payload.structured)
+                    if p_msg_type == "source_list":
+                        yield sse_named_event("source.list.completed", p_structured)
+                    elif p_msg_type == "error":
+                        yield sse_named_event("run.failed", p_structured)
 
             yield sse_named_event("run.completed", {"runId": run_id})
 
@@ -235,6 +380,7 @@ async def send_message_stream(
                         message_type="error",
                         content=None,
                         payload=err_data,
+                        parent_message_id=user_msg.id,
                         run_id=run_id,
                     )
             except Exception as db_err:
