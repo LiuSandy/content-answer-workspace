@@ -62,6 +62,9 @@ class Message(Base):
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Agent 执行 run_id，用于 SSE 关联和前端去重
     run_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    parent_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -35,7 +35,28 @@ class ChatService:
         result = await self._session.execute(
             select(Chat).order_by(desc(Chat.updated_at)).limit(limit)
         )
-        return list(result.scalars().all())
+        chats = list(result.scalars().all())
+        
+        updated = False
+        for chat in chats:
+            if chat.title == "新对话":
+                # 查找当前对话的第一条用户提问
+                first_msg_res = await self._session.execute(
+                    select(Message)
+                    .where(Message.chat_id == chat.id, Message.role == "user")
+                    .order_by(Message.created_at)
+                    .limit(1)
+                )
+                first_msg = first_msg_res.scalar_one_or_none()
+                if first_msg and first_msg.content:
+                    chat.title = first_msg.content[:20]
+                    self._session.add(chat)
+                    updated = True
+        
+        if updated:
+            await self._session.commit()
+            
+        return chats
 
     async def delete_chat(self, chat_id: uuid.UUID) -> bool:
         chat = await self.get_chat(chat_id)
@@ -45,13 +66,20 @@ class ChatService:
         await self._session.commit()
         return True
 
-    async def save_user_message(self, chat_id: uuid.UUID, content: str, run_id: str | None = None) -> Message:
+    async def save_user_message(
+        self,
+        chat_id: uuid.UUID,
+        content: str,
+        parent_message_id: uuid.UUID | None = None,
+        run_id: str | None = None,
+    ) -> Message:
         msg = Message(
             id=uuid.uuid4(),
             chat_id=chat_id,
             role="user",
             message_type="text",
             content=content,
+            parent_message_id=parent_message_id,
             run_id=run_id,
         )
         self._session.add(msg)
@@ -65,6 +93,7 @@ class ChatService:
         message_type: str,
         content: str | None,
         payload: dict | None = None,
+        parent_message_id: uuid.UUID | None = None,
         run_id: str | None = None,
     ) -> Message:
         msg = Message(
@@ -74,12 +103,62 @@ class ChatService:
             message_type=message_type,
             content=content,
             payload=payload,
+            parent_message_id=parent_message_id,
             run_id=run_id,
         )
         self._session.add(msg)
         await self._session.commit()
         await self._session.refresh(msg)
         return msg
+
+    async def get_message_path(
+        self,
+        chat_id: uuid.UUID,
+        leaf_message_id: uuid.UUID | None,
+    ) -> list[Message]:
+        """根据 leaf_message_id 溯源出当前分支完整的历史消息路径列表。
+        如果 leaf_message_id 为 None，或在溯源链中遇到 parent_message_id 为 None 且有历史数据，
+        我们会采用 created_at 排序作为虚拟父子关系，以确保向后兼容旧的线性消息。
+        """
+        # 获取该 chat 下所有的消息并按时间排序
+        result = await self._session.execute(
+            select(Message).where(Message.chat_id == chat_id).order_by(Message.created_at)
+        )
+        all_messages = list(result.scalars().all())
+        if not all_messages:
+            return []
+
+        # 建立 ID 到 Message 的映射
+        msg_map = {m.id: m for m in all_messages}
+
+        # 如果未指定 leaf_message_id，则默认选择最后一个消息（线性历史下的最新节点）
+        if leaf_message_id is None:
+            leaf_message_id = all_messages[-1].id
+
+        path = []
+        curr_id = leaf_message_id
+        visited = set()
+
+        while curr_id in msg_map and curr_id not in visited:
+            visited.add(curr_id)
+            msg = msg_map[curr_id]
+            path.append(msg)
+            if msg.parent_message_id is not None:
+                curr_id = msg.parent_message_id
+            else:
+                # 虚拟时间序列关联兜底：
+                # 如果 parent_message_id 为 None，且在该消息前还有更早的消息，则关联到前一个消息
+                try:
+                    idx = all_messages.index(msg)
+                    if idx > 0:
+                        curr_id = all_messages[idx - 1].id
+                    else:
+                        break
+                except ValueError:
+                    break
+
+        path.reverse()
+        return path
 
     async def get_messages(self, chat_id: uuid.UUID, limit: int = 100) -> list[Message]:
         result = await self._session.execute(
