@@ -43,32 +43,7 @@ async def parse_url_node(state: ChatAgentState) -> dict:
     }
 
 
-async def collect_node(state: ChatAgentState) -> dict:
-    """主题采集节点；通过 Source Registry 选择适配器并返回帖子列表。"""
-    from ....infrastructure.sources.registry import source_registry
 
-    collection_request = state.get("collection_request")
-    if not collection_request:
-        return {"tool_result": ToolResult(tool_type="collect", items=[], total_found=0)}
-
-    run_id = str(uuid.uuid4())
-    context = ToolContext(chat_id=state.get("chat_id"), run_id=run_id)
-
-    try:
-        source = source_registry.get_for_collect(collection_request.platform)
-        # Type ignore since it's a protocol
-        items = await source.collect(collection_request, context)  # type: ignore
-        return {
-            "tool_result": ToolResult(
-                tool_type="collect",
-                platform=collection_request.platform,
-                items=items,
-                total_found=len(items),
-            )
-        }
-    except Exception as e:
-        logger.error("Collection failed: %s", e)
-        return {"error": AgentError(error_code="collection_failed", message=str(e))}
 
 
 async def normalize_and_persist_node(state: ChatAgentState) -> dict:
