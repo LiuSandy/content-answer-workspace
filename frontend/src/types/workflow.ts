@@ -228,6 +228,7 @@ export type ChatCollectResult = {
 export type ChatMessage = {
   role: "user" | "assistant" | "tool" | "collect";
   content: string;
+  parentMessageId?: string | null;
   /** tool 角色专用：工具调用过程的逐步文案 */
   steps?: string[];
   /** collect 角色专用：结构化采集结果 */
