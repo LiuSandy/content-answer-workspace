@@ -40,6 +40,11 @@ async def lifespan(app: FastAPI):
 
     from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
     serde = JsonPlusSerializer(allowed_msgpack_modules=[
+        ("app.domain.dto", "CollectionRequest"),
+        ("app.domain.dto", "ChatResponsePayload"),
+        ("app.domain.dto", "AgentError"),
+        ("app.domain.dto", "ToolResult"),
+        ("app.domain.dto", "SourceItemDTO"),
         "app.domain.dto",
         "asyncpg.pgproto.pgproto",
     ])
