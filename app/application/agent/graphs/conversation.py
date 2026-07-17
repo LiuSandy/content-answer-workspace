@@ -9,7 +9,6 @@ from ..nodes.preprocess import preprocess_node
 from ..nodes.route_intent import route_intent_node
 from ..nodes.tool_nodes import (
     build_response_node,
-    collect_node,
     normalize_and_persist_node,
     parse_url_node,
 )
@@ -24,8 +23,6 @@ def _route_after_intent(state: ChatAgentState) -> str:
     intent = state.get("intent", "chat")
     if intent == "parse_url":
         return "parse_url"
-    if intent == "collect":
-        return "collect"
     return "chat"
 
 
@@ -38,7 +35,6 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     graph.add_node("chat", chat_node)
     graph.add_node("chat_tools", ToolNode(ALL_TOOLS))
     graph.add_node("parse_url", parse_url_node)
-    graph.add_node("collect", collect_node)
     graph.add_node("normalize_and_persist", normalize_and_persist_node)
     graph.add_node("build_response", build_response_node)
 
@@ -47,7 +43,7 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     graph.add_conditional_edges(
         "route_intent",
         _route_after_intent,
-        {"chat": "chat", "parse_url": "parse_url", "collect": "collect"},
+        {"chat": "chat", "parse_url": "parse_url"},
     )
     
     # 将 chat 节点扩展为支持工具的 ReAct 环路
@@ -59,7 +55,6 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     graph.add_edge("chat_tools", "chat")
     
     graph.add_edge("parse_url", "normalize_and_persist")
-    graph.add_edge("collect", "normalize_and_persist")
     graph.add_edge("normalize_and_persist", "build_response")
     graph.add_edge("build_response", END)
 
