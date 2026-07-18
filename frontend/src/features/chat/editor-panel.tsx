@@ -5,32 +5,37 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import {
-  FileText,
   Loader2,
   Sparkles,
-  Save,
   Wand2,
   Undo2,
   RefreshCw,
-  History,
   AlertCircle,
-  Globe,
   Copy,
   Check,
   X,
+  Save,
+  History,
+  ExternalLink,
 } from "lucide-react";
 
 import { apiGet, apiPut, apiPost } from "@/lib/api";
 import { streamPost } from "@/lib/sse";
 import { useChatStore } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PromptInput } from "@/components/ui/prompt-input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Drawer,
+  DrawerTrigger,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from "@/components/ui/drawer";
 
 type DocumentState = {
   documentId: string;
@@ -76,10 +81,10 @@ export function EditorPanel() {
   useEffect(() => {
     isGeneratingRef.current = isGenerating;
   }, [isGenerating]);
-  const [activeTab, setActiveTab] = useState<string>("editor");
   const [copied, setCopied] = useState(false);
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [wordCount, setWordCount] = useState<number>(1000);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
 
   const STYLE_DESCRIPTIONS: Record<string, string> = {
     professional: "- 专业严谨：语言条理清晰，论证逻辑严密，多用客观事实与专业数据支撑观点。",
@@ -263,7 +268,7 @@ export function EditorPanel() {
           emitUpdate: false,
         });
       }
-      setActiveTab("editor");
+      setHistoryDrawerOpen(false);
     },
   });
 
@@ -415,8 +420,6 @@ export function EditorPanel() {
     }
   };
 
-  const hasSelection = editor ? editor.state.selection.from !== editor.state.selection.to : false;
-
   // ── 空状态：未选帖子 ──
   if (!selectedSourceItemId) {
     return (
@@ -455,148 +458,172 @@ export function EditorPanel() {
   // ── 正常编辑态 ──
   return (
     <aside className="flex h-full w-full flex-col min-h-0 overflow-hidden border-l bg-card">
-      {/* ── 1. 帖子原文元数据信息栏 (置于最顶端，在 Tab 选项卡上面) ── */}
-      {docState?.sourceItem && (
-        <div className="border-b bg-zinc-50/50 dark:bg-zinc-950/20 p-4 shrink-0">
-          <div className="space-y-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/40 p-3.5 shadow-sm">
-            {/* 标题行：Tag + 标题 (单行截断) + 查看原文按钮 */}
-            <div className="flex items-center justify-between gap-4 min-w-0">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                {docState.sourceItem.platform && (
-                  <Badge variant="outline" className="text-[10px] uppercase font-bold text-indigo-600 border-indigo-600/30 dark:text-indigo-400 dark:border-indigo-400/30 shrink-0">
-                    {docState.sourceItem.platform}
-                  </Badge>
-                )}
-                <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                  {docState.sourceItem.title}
-                </h3>
-              </div>
-              
-              {docState.sourceItem.url && (
-                <Button asChild variant="outline" size="sm" className="h-7 text-xs gap-1.5 shrink-0 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900">
-                  <a href={docState.sourceItem.url} target="_blank" rel="noopener noreferrer">
-                    <Globe className="h-3.5 w-3.5 text-zinc-500" />
-                    查看原文
-                  </a>
-                </Button>
+
+      {/* ── 头部：原文信息 + 操作按钮 ── */}
+      <div className="border-b bg-zinc-50/50 dark:bg-zinc-950/20 px-4 py-3 shrink-0">
+        <div className="flex items-start justify-between gap-3 min-w-0">
+
+          {/* 左侧：平台标签 + 标题 + 作者 + 摘要 */}
+          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+            {/* 平台 badge + 可点击标题 */}
+            <div className="flex items-center gap-2 min-w-0">
+              {docState?.sourceItem?.platform && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] uppercase font-bold text-indigo-600 border-indigo-600/30 dark:text-indigo-400 dark:border-indigo-400/30 shrink-0"
+                >
+                  {docState.sourceItem.platform}
+                </Badge>
               )}
+              {docState?.sourceItem ? (
+                docState.sourceItem.url ? (
+                  <a
+                    href={docState.sourceItem.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-center gap-1 min-w-0"
+                    title="点击查看原文"
+                  >
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                      {docState.sourceItem.title}
+                    </h3>
+                    <ExternalLink className="h-3 w-3 shrink-0 text-zinc-400 group-hover:text-indigo-500 transition-colors" />
+                  </a>
+                ) : (
+                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                    {docState.sourceItem.title}
+                  </h3>
+                )
+              ) : null}
             </div>
 
-            {/* 作者信息 */}
-            {docState.sourceItem.author && (
-              <div className="text-[11px] text-muted-foreground">
-                作者: {docState.sourceItem.author}
-              </div>
+            {/* 作者 */}
+            {docState?.sourceItem?.author && (
+              <p className="text-[11px] text-muted-foreground">
+                作者：{docState.sourceItem.author}
+              </p>
             )}
 
-            {/* 原文内容 (直铺，最大 3 行，无滚动条) */}
-            {docState.sourceItem.content && (
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed line-clamp-3 whitespace-pre-wrap">
+            {/* 原文摘要（最多 3 行） */}
+            {docState?.sourceItem?.content && (
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed line-clamp-3 whitespace-pre-wrap">
                 {docState.sourceItem.content}
               </p>
             )}
           </div>
-        </div>
-      )}
 
-      {/* ── 2. 顶部 Tab 切换 ── */}
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="editor" className="gap-1.5">
-              <FileText className="h-3.5 w-3.5" />
-              编辑器
-            </TabsTrigger>
-            <TabsTrigger value="history" className="gap-1.5">
-              <History className="h-3.5 w-3.5" />
-              版本 ({versions.length})
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+          {/* 右侧：操作按钮组 */}
+          <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+            {/* 复制按钮 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCopy}
+                  disabled={!hasContent}
+                  className="h-7 px-2 text-xs gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                >
+                  {copied ? (
+                    <Check className="h-3.5 w-3.5 text-green-500" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{copied ? "已复制" : "复制内容"}</TooltipContent>
+            </Tooltip>
 
-        {/* 操作区与状态指示 */}
-        <div className="flex items-center gap-2.5">
+            <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
 
-
-          {/* 复制按钮 */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCopy}
-            disabled={!hasContent}
-            className="h-7 px-2 text-xs gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
-          >
-            {copied ? (
-              <>
-                <Check className="h-3.5 w-3.5 text-green-500" />
-                <span>已复制</span>
-              </>
-            ) : (
-              <>
-                <Copy className="h-3.5 w-3.5" />
-                <span>复制</span>
-              </>
-            )}
-          </Button>
-
-          <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-800" />
-
-          {/* 保存状态指示 */}
-          <span className="flex items-center gap-1 text-[10px] text-muted-foreground select-none shrink-0">
-            {autoSaveMutation.isPending ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin" />
-                保存中...
-              </>
-            ) : (
-              <>
-                <Save className="h-3 w-3" />
-                已保存
-              </>
-            )}
-          </span>
-
-          <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-800" />
-
-          {/* 关闭/收起编辑器面板 */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"
-                onClick={() => setSelectedSourceItemId(null)}
+            {/* 已保存 / 保存中 → 点击打开历史版本 Drawer */}
+            <Drawer
+              open={historyDrawerOpen}
+              onOpenChange={setHistoryDrawerOpen}
+              swipeDirection="left"
+            >
+              <DrawerTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={autoSaveMutation.isPending}
+                    className="h-7 px-2 text-xs gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  />
+                }
               >
-                <X className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>关闭编辑面板</TooltipContent>
-          </Tooltip>
+                {autoSaveMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span>保存中</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-3 w-3" />
+                    <span>已保存</span>
+                    {versions.length > 0 && (
+                      <Badge variant="secondary" className="h-4 px-1 text-[10px] rounded-full">
+                        {versions.length}
+                      </Badge>
+                    )}
+                  </>
+                )}
+              </DrawerTrigger>
+
+              <DrawerContent className="w-[30rem]">
+                <DrawerHeader className="border-b pb-3">
+                  <DrawerTitle className="flex items-center gap-2 text-base">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                    历史版本
+                  </DrawerTitle>
+                  <DrawerDescription>
+                    点击「恢复此版本」可覆盖当前内容
+                  </DrawerDescription>
+                </DrawerHeader>
+
+                <HistoryDrawerContent
+                  versions={versions}
+                  onRestore={(versionId) => {
+                    if (confirm("确认恢复此版本？当前编辑中的内容将被覆盖。")) {
+                      restoreVersionMutation.mutate(versionId);
+                    }
+                  }}
+                />
+              </DrawerContent>
+            </Drawer>
+
+            <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
+
+            {/* 关闭面板 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg"
+                  onClick={() => setSelectedSourceItemId(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>关闭编辑面板</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       </div>
 
-      {activeTab === "editor" ? (
-        <EditorTabContent
-          editor={editor}
-          isGenerating={isGenerating}
-          rewriteInstruction={rewriteInstruction}
-          setRewriteInstruction={setRewriteInstruction}
-          onRewrite={handleFullRewrite}
-          selectedStyles={selectedStyles}
-          setSelectedStyles={setSelectedStyles}
-          wordCount={wordCount}
-          onWordCountChange={setWordCount}
-        />
-      ) : (
-        <HistoryTabContent
-          versions={versions}
-          onRestore={(versionId) => {
-            if (confirm("确认恢复此版本？当前编辑中的内容将被覆盖。")) {
-              restoreVersionMutation.mutate(versionId);
-            }
-          }}
-        />
-      )}
+      {/* ── 编辑器主体（始终显示） ── */}
+      <EditorTabContent
+        editor={editor}
+        isGenerating={isGenerating}
+        rewriteInstruction={rewriteInstruction}
+        setRewriteInstruction={setRewriteInstruction}
+        onRewrite={handleFullRewrite}
+        selectedStyles={selectedStyles}
+        setSelectedStyles={setSelectedStyles}
+        wordCount={wordCount}
+        onWordCountChange={setWordCount}
+      />
     </aside>
   );
 }
@@ -628,8 +655,6 @@ function EditorTabContent({
     <div className="relative flex flex-1 flex-col min-h-0 overflow-hidden">
       {/* Tiptap 编辑区 */}
       <ScrollArea className="flex-1 min-h-0 p-4">
-
-
         <EditorContent editor={editor} className="prose dark:prose-invert max-w-none outline-none min-h-[300px]" />
       </ScrollArea>
 
@@ -666,9 +691,9 @@ function EditorTabContent({
   );
 }
 
-// ── 版本历史 Tab 内容 ─────────────────────────────────────────────
+// ── 历史版本 Drawer 内容 ─────────────────────────────────────────────
 
-function HistoryTabContent({
+function HistoryDrawerContent({
   versions,
   onRestore,
 }: {
@@ -678,13 +703,13 @@ function HistoryTabContent({
   if (versions.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-xs text-muted-foreground">
-        无任何历史版本快照
+        暂无历史版本快照
       </div>
     );
   }
 
   return (
-    <ScrollArea className="flex-1 min-h-0 p-4">
+    <div className="flex-1 overflow-y-auto p-4">
       <div className="space-y-3">
         {versions.map((ver) => (
           <Card key={ver.id}>
@@ -723,6 +748,6 @@ function HistoryTabContent({
           </Card>
         ))}
       </div>
-    </ScrollArea>
+    </div>
   );
 }

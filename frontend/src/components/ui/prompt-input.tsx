@@ -182,8 +182,8 @@ export function PromptInput({
                 }}
                 onBlur={(e) => {
                   let val = parseInt(e.target.value, 10);
-                  if (isNaN(val) || val < 100) {
-                    val = 100;
+                  if (isNaN(val) || val < 50) {
+                    val = 50;
                   } else if (val > 5000) {
                     val = 5000;
                   }

@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
+
+logger = logging.getLogger("uvicorn")
 
 import yaml
 from langchain_core.tools import tool
 
 _PLATFORM = "xiaohongshu"
-_MAX_CHARS = 6000
+_MAX_CHARS = 100000
 _MAX_ITEMS = 20
 
 
@@ -32,7 +35,15 @@ def _run(args: list[str]) -> str:
 def _parse_yaml_list(raw: str) -> list[dict]:
     """将 opencli YAML 输出解析为 dict 列表；解析失败返回空列表。"""
     try:
-        data = yaml.safe_load(raw)
+        # 剔除常见的 npm/cli 调试和更新提示等非 YAML 行
+        clean_lines = []
+        for line in raw.splitlines():
+            if "Update available" in line or "npm install" in line or "Run:" in line:
+                break
+            clean_lines.append(line)
+        cleaned_raw = "\n".join(clean_lines).strip()
+
+        data = yaml.safe_load(cleaned_raw)
         return data if isinstance(data, list) else []
     except Exception:
         return []
@@ -55,9 +66,11 @@ def xiaohongshu_search(query: str) -> str:
     """在小红书搜索笔记，返回结构化 JSON，每条包含标题、链接、摘要、点赞数和作者。
     需要 Chrome 已打开并登录小红书，且安装了 OpenCLI 扩展。"""
     raw = _run(["opencli", "xiaohongshu", "search", query, "-f", "yaml"])
+    logger.info("[xiaohongshu_search] query: %s, raw output:\n%s", query, raw)
     raw_items = _parse_yaml_list(raw)
     if not raw_items:
-        return raw  # 解析失败时回退到原始文本，LLM 仍可读取
+        logger.warning("[xiaohongshu_search] parse failed, raw_items is empty.")
+        return json.dumps({"platform": _PLATFORM, "topic": query, "error": raw, "items": []}, ensure_ascii=False)
     items = [_normalize_item(i) for i in raw_items[:_MAX_ITEMS] if i.get("title") or i.get("name")]
     return json.dumps({"platform": _PLATFORM, "topic": query, "items": items}, ensure_ascii=False)
 

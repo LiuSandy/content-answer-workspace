@@ -16,7 +16,7 @@ from ..infrastructure.llm.registry import llm_provider_registry
 from ..persistence.models.documents import AIOperation, VERSION_TYPE_INLINE_REFINEMENT
 from ..prompts.registry import prompt_registry
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn")
 
 
 async def inline_refinement_workflow(
@@ -86,6 +86,17 @@ async def inline_refinement_workflow(
 
     try:
         llm_req = rendered.to_llm_request()
+
+        # ── 打印核心提示词 ────────────────────────────────────────────────
+        system_prompt = next((m.content for m in llm_req.messages if m.role == "system"), "")
+        user_prompt = next((m.content for m in llm_req.messages if m.role == "user"), "")
+        logger.info(
+            "\n[System Prompt]:\n%s\n\n[User Prompt]:\n%s\n",
+            system_prompt,
+            user_prompt
+        )
+        # ─────────────────────────────────────────────────────────────────
+
         async for event in provider.stream(llm_req):
             if event.delta:
                 replacement_parts.append(event.delta)
