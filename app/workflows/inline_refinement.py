@@ -131,7 +131,7 @@ async def inline_refinement_workflow(
         await session.commit()
 
     except Exception as e:
-        logger.error("Inline refinement workflow failed: %s", e)
+        logger.exception("Inline refinement workflow failed")
         try:
             ai_op.status = "failed"
             ai_op.error_code = getattr(e, "error_code", "refinement_failed")
