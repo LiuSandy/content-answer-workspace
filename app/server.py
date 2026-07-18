@@ -1,9 +1,11 @@
 """FastAPI 入口、路由挂载、静态文件托管和全局生命周期管理。"""
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request

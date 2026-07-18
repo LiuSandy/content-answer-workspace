@@ -87,6 +87,7 @@
   }
 
   body {
+    position: relative; /* required by Base UI Drawer overlay on iOS Safari */
     margin: 0;
     color: var(--foreground);
     background: transparent;
