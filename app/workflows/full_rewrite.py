@@ -93,9 +93,9 @@ async def full_rewrite_workflow(
 
         # 动态组装并渲染 user 提示词
         user_rendered = prompt_registry.render(
-            "writing.user_rewrite",
+            "writing.user_generate",
             title=title,
-            current_answer=current_answer,
+            content=doc.source_item.content if doc.source_item else "",
             instruction=instruction,
             content_mode=content_mode,
         )
