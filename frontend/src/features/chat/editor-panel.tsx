@@ -274,7 +274,8 @@ export function EditorPanel() {
 
   // 4. AI 生成回答 (Stream)
   const handleGenerateAnswer = async () => {
-    const currentDocState = docStateRef.current;
+    const cachedDocState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
+    const currentDocState = cachedDocState || docStateRef.current;
     if (!currentDocState || isGenerating || !editor) return;
     cancelDebouncedSave();
     setIsGenerating(true);
@@ -316,7 +317,8 @@ export function EditorPanel() {
 
   // 5. 局部精修 (Stream)
   const handleInlineRefinement = async () => {
-    const currentDocState = docStateRef.current;
+    const cachedDocState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
+    const currentDocState = cachedDocState || docStateRef.current;
     if (!currentDocState || isGenerating || !editor || !refineInstruction.trim()) return;
 
     const { from, to } = editor.state.selection;
@@ -328,7 +330,10 @@ export function EditorPanel() {
     
     // 立即保存挂起的修改，确保后端内容最新，并获取最新 lockVersion
     const updatedState = await flushPendingSave();
-    const activeLockVersion = updatedState ? updatedState.lockVersion : currentDocState.lockVersion;
+    const activeCachedState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
+    const activeLockVersion = updatedState 
+      ? updatedState.lockVersion 
+      : (activeCachedState ? activeCachedState.lockVersion : currentDocState.lockVersion);
     
     setIsGenerating(true);
     editor.commands.deleteSelection();
@@ -369,7 +374,8 @@ export function EditorPanel() {
 
   // 6. 全文重写 (Stream)
   const handleFullRewrite = async () => {
-    const currentDocState = docStateRef.current;
+    const cachedDocState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
+    const currentDocState = cachedDocState || docStateRef.current;
     if (!currentDocState || isGenerating || !editor) return;
 
     const hasContent = !!editor.getText()?.trim();
@@ -380,7 +386,10 @@ export function EditorPanel() {
     
     // 立即保存挂起的修改，确保获取最新 lockVersion
     const updatedState = await flushPendingSave();
-    const activeLockVersion = updatedState ? updatedState.lockVersion : currentDocState.lockVersion;
+    const activeCachedState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
+    const activeLockVersion = updatedState 
+      ? updatedState.lockVersion 
+      : (activeCachedState ? activeCachedState.lockVersion : currentDocState.lockVersion);
     
     setIsGenerating(true);
     editor.commands.setContent("");

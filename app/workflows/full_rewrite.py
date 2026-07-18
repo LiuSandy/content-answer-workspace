@@ -170,9 +170,8 @@ async def full_rewrite_workflow(
         ai_op.output_tokens = output_tokens or len(full_content) // 2
         ai_op.latency_ms = int((time.time() - start_time) * 1000)
         await session.commit()
-
     except Exception as e:
-        logger.error("Full rewrite workflow failed: %s", e)
+        logger.exception("Full rewrite workflow failed")
         try:
             ai_op.status = "failed"
             ai_op.error_code = getattr(e, "error_code", "rewrite_failed")

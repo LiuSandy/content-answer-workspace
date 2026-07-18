@@ -164,7 +164,7 @@ async def generate_answer_workflow(
         await session.commit()
 
     except Exception as e:
-        logger.error("Answer generation workflow failed: %s", e)
+        logger.exception("Answer generation workflow failed")
         # 失败时更新 AIOperation
         try:
             ai_op.status = "failed"
