@@ -80,15 +80,19 @@ async def upload_document(
     if ext == "pdf":
         try:
             import fitz
+            import pymupdf4llm
             doc = fitz.open(stream=file_bytes, filetype="pdf")
-            page_texts = []
-            for i, page in enumerate(doc):
-                txt = page.get_text()
-                if txt.strip():
-                    page_texts.append(f"## Page {i + 1}\n\n{txt.strip()}")
-            parsed_markdown = f"# {filename}\n\n" + "\n\n---\n\n".join(page_texts) if page_texts else f"# {filename}\n\n(PDF 中未提取到文本正文)"
+            # 优先使用专门针对 LLM 优化的大模型 Markdown 转换器
+            md_text = pymupdf4llm.to_markdown(doc)
+            parsed_markdown = f"# {filename}\n\n{md_text}" if md_text.strip() else f"# {filename}\n\n(PDF 中未提取到文本正文)"
         except Exception as e:
-            parsed_markdown = f"# {filename}\n\n(PDF 解析错误: {e})"
+            try:
+                import fitz
+                doc = fitz.open(stream=file_bytes, filetype="pdf")
+                page_texts = [f"## Page {i + 1}\n\n{page.get_text().strip()}" for i, page in enumerate(doc) if page.get_text().strip()]
+                parsed_markdown = f"# {filename}\n\n" + "\n\n---\n\n".join(page_texts)
+            except Exception as ex:
+                parsed_markdown = f"# {filename}\n\n(PDF 解析错误: {e} / {ex})"
     elif ext in ("md", "markdown", "txt"):
         try:
             parsed_markdown = file_bytes.decode("utf-8")
