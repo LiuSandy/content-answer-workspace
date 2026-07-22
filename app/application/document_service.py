@@ -28,6 +28,9 @@ class DocumentService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def get_document(self, document_id: uuid.UUID) -> AnswerDocument | None:
+        return await self._session.get(AnswerDocument, document_id)
+
     async def get_or_create_document(self, source_item_id: uuid.UUID) -> AnswerDocument:
         result = await self._session.execute(
             select(AnswerDocument).where(AnswerDocument.source_item_id == source_item_id)
