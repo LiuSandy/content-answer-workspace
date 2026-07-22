@@ -19,6 +19,7 @@ from .api.routes.config import router as config_router
 from .api.routes.hotlist import router as hotlist_router
 from .api.routes.settings import router as settings_router
 from .api.routes.prompts import router as prompts_router
+from .api.routes.knowledge import router as knowledge_router
 from .application.agent.graphs.conversation import build_conversation_graph
 from .config.loader import warmup as warmup_config
 from .core.config import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
@@ -122,6 +123,7 @@ app.include_router(config_router)
 app.include_router(hotlist_router)
 app.include_router(settings_router)
 app.include_router(prompts_router)
+app.include_router(knowledge_router)
 
 
 # ── 静态文件托管 ──────────────────────────────────────────────────────────────
