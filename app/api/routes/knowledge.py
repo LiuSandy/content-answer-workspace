@@ -74,6 +74,29 @@ async def upload_document(
     doc_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
 
+    file_bytes = await file.read()
+    parsed_markdown = ""
+
+    if ext == "pdf":
+        try:
+            import fitz
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            page_texts = []
+            for i, page in enumerate(doc):
+                txt = page.get_text()
+                if txt.strip():
+                    page_texts.append(f"## Page {i + 1}\n\n{txt.strip()}")
+            parsed_markdown = f"# {filename}\n\n" + "\n\n---\n\n".join(page_texts) if page_texts else f"# {filename}\n\n(PDF 中未提取到文本正文)"
+        except Exception as e:
+            parsed_markdown = f"# {filename}\n\n(PDF 解析错误: {e})"
+    elif ext in ("md", "markdown", "txt"):
+        try:
+            parsed_markdown = file_bytes.decode("utf-8")
+        except Exception:
+            parsed_markdown = file_bytes.decode("gbk", errors="ignore")
+    else:
+        parsed_markdown = f"# {filename}\n\n文件上传成功。"
+
     doc_obj = {
         "id": doc_id,
         "workspaceId": workspace_id,
@@ -88,7 +111,7 @@ async def upload_document(
     }
 
     _DOCUMENTS_STORE[doc_id] = doc_obj
-    _MARKDOWN_STORE[doc_id] = f"# {filename}\n\n已成功解析文件内容。"
+    _MARKDOWN_STORE[doc_id] = parsed_markdown
 
     return {
         "ok": True,
