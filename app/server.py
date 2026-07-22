@@ -38,6 +38,15 @@ async def lifespan(app: FastAPI):
     load_env_file()
     warmup_config()
     
+    # 自动无感平滑迁移检测与自愈快照护航
+    try:
+        from scripts.auto_migrate_db import auto_migrate_if_needed
+        from app.core.db_guard import create_db_snapshot
+        auto_migrate_if_needed()
+        create_db_snapshot()
+    except Exception as e:
+        logging.warning(f"Auto-migration or snapshot guard warning: {e}")
+
     # 尝试连通性测试
     try:
         from .persistence.session import get_engine

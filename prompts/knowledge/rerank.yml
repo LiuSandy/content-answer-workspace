@@ -1,7 +1,8 @@
+id: knowledge.rerank
 name: rerank
-version: "1.0"
+version: "1.0.0"
 description: "RAG 相关性打分与重排 prompt"
-template: |
+content: |
   请评估文档片段与查询问题的相关程度，打出 0.0 到 1.0 之间的分数。
   问题：{{ query }}
   文档片段：{{ document }}
