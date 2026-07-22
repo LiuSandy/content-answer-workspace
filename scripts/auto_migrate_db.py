@@ -32,6 +32,18 @@ async def _run_async_migration() -> Dict[str, int]:
                     backup_file = p
                     break
 
+            # 若未找到单文件 SQL 备份，尝试从 Docker 容器内挂载的 v16_backup 目录提取数据
+            if not backup_file:
+                try:
+                    import subprocess
+                    extract_cmd = "docker exec content_workspace_db pg_dump -U dev -d content_workspace --data-only -f /tmp/auto_extracted_legacy.sql 2>/dev/null || true"
+                    subprocess.run(extract_cmd, shell=True, timeout=5)
+                    tmp_extracted = Path("/tmp/auto_extracted_legacy.sql")
+                    if tmp_extracted.exists() and tmp_extracted.stat().st_size > 0:
+                        backup_file = tmp_extracted
+                except Exception as e:
+                    logger.debug(f"Container pg_dump check notice: {e}")
+
             if backup_file and backup_file.exists():
                 logger.info(f"Auto-migration engine detected legacy backup file at: {backup_file}")
                 sql_content = backup_file.read_text(encoding="utf-8")

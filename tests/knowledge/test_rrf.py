@@ -1,13 +1,17 @@
 import pytest
-from app.application.knowledge.retrieval_service import compute_rrf_scores
+from app.application.knowledge.retrieval_service import SearchHit, compute_rrf
 
+def test_compute_rrf():
+    bm25_hits = [
+        SearchHit(chunk_id="chunk_1", doc_id="doc_a", content="content 1", score=10.0, source="bm25"),
+        SearchHit(chunk_id="chunk_2", doc_id="doc_a", content="content 2", score=5.0, source="bm25"),
+    ]
+    vector_hits = [
+        SearchHit(chunk_id="chunk_2", doc_id="doc_a", content="content 2", score=0.9, source="vector"),
+        SearchHit(chunk_id="chunk_3", doc_id="doc_b", content="content 3", score=0.8, source="vector"),
+    ]
 
-def test_compute_rrf_scores():
-    bm25_ranks = {"chunk_1": 1, "chunk_2": 2}
-    vector_ranks = {"chunk_2": 1, "chunk_3": 2}
-
-    fused = compute_rrf_scores(bm25_ranks, vector_ranks, k=60)
+    fused = compute_rrf(bm25_hits, vector_hits, k=60)
     assert len(fused) == 3
-    # chunk_2 同时在两路中出现，得分最高
-    assert fused[0][0] == "chunk_2"
-    assert fused[0][1] > fused[1][1]
+    # chunk_2 同时在 bm25 和 vector 中出现，它的 RRF 分数应该最高
+    assert fused[0]["chunk_id"] == "chunk_2"
