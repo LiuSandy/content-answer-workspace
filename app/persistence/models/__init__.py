@@ -4,6 +4,12 @@ from __future__ import annotations
 from .chats import Chat, Message
 from .content import ChatSourceItem, CollectionRun, SourceItem
 from .documents import AIOperation, AnswerDocument, AnswerVersion
+from .knowledge import (
+    KnowledgeChunkModel,
+    KnowledgeDocumentModel,
+    RetrievalHitModel,
+    RetrievalTraceModel,
+)
 from .settings import AppSettings
 
 __all__ = [
@@ -16,4 +22,9 @@ __all__ = [
     "AnswerVersion",
     "AIOperation",
     "AppSettings",
+    "KnowledgeDocumentModel",
+    "KnowledgeChunkModel",
+    "RetrievalTraceModel",
+    "RetrievalHitModel",
 ]
+
