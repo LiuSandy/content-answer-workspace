@@ -7,17 +7,14 @@ import { KnowledgeList } from "./knowledge-list";
 import { KnowledgeDetail } from "./knowledge-detail";
 import { useKnowledgeDocuments, useKnowledgeMarkdown, useKnowledgeMutations } from "./use-knowledge";
 import type { KnowledgeDocument } from "./types";
-import { useNavigate } from "react-router-dom";
 
 export const KnowledgePage: React.FC = () => {
-  const navigate = useNavigate();
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeDocument | undefined>(undefined);
   const [urlModalOpen, setUrlModalOpen] = useState(false);
   const [inputUrl, setInputUrl] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [themeDark, setThemeDark] = useState(false);
 
   const { data, isLoading } = useKnowledgeDocuments();
   const allDocuments = data?.documents || [];
@@ -78,57 +75,12 @@ export const KnowledgePage: React.FC = () => {
     }
   };
 
-  const toggleTheme = () => {
-    setThemeDark(!themeDark);
-    document.documentElement.classList.toggle("dark");
-  };
-
   return (
-    <div className={`flex-1 flex flex-col min-h-0 h-full p-4 bg-[#eff2f7] dark:bg-background text-[#111827] dark:text-foreground font-sans ${themeDark ? "dark" : ""}`}>
-      <div className="flex-1 flex flex-col min-h-0 border border-[#dfe4eb] dark:border-border rounded-[10px] bg-white dark:bg-card shadow-lg overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 h-full w-full bg-[#eff2f7] dark:bg-background text-[#111827] dark:text-foreground font-sans p-3">
+      {/* 嵌入 WorkspaceLayout 的核心卡片容器 */}
+      <div className="flex-1 flex flex-col min-h-0 border border-[#dfe4eb] dark:border-border rounded-[10px] bg-white dark:bg-card shadow-sm overflow-hidden">
         
-        {/* 1. Header */}
-        <header className="h-[56px] bg-white dark:bg-card border-b border-[#e5e9ef] dark:border-border flex items-center px-4 gap-6 shrink-0">
-          <div className="flex items-center gap-2.5 text-[15px] font-bold whitespace-nowrap cursor-pointer" onClick={() => navigate("/")}>
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366f1] to-[#9333ea] text-white grid place-items-center text-[17px] shadow-md">
-              ⌁
-            </div>
-            <span>超级大脑</span>
-          </div>
-
-          <nav className="self-stretch flex items-center gap-1.5 ml-3.5">
-            <button
-              onClick={() => navigate("/")}
-              className="h-full flex items-center px-3.25 text-[#64748b] dark:text-muted-foreground text-xs font-semibold border-b-2 border-transparent hover:text-foreground transition-colors"
-            >
-              创作工作台
-            </button>
-            <button className="h-full flex items-center px-3.25 text-[#111827] dark:text-foreground text-xs font-semibold border-b-2 border-[#334155] dark:border-primary">
-              私有资料库
-            </button>
-          </nav>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate("/settings")}
-              className="h-8 border-[#e0e5ec] text-[#1f2937] dark:text-foreground text-xs font-semibold px-3 gap-1.5"
-            >
-              ⚙　提示词
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleTheme}
-              className="w-8.5 h-8 p-0 justify-center text-xs"
-            >
-              {themeDark ? "☼" : "☾"}
-            </Button>
-          </div>
-        </header>
-
-        {/* 2. Pagebar */}
+        {/* 1. 页面功能标题与搜索行 (.kb-pagebar) — 高度 58px */}
         <div className="h-[58px] bg-white dark:bg-card border-b border-[#e5e9ef] dark:border-border flex items-center px-5 gap-3.5 shrink-0">
           <div>
             <div className="text-sm font-bold">私有资料库</div>
@@ -137,7 +89,7 @@ export const KnowledgePage: React.FC = () => {
             </div>
           </div>
 
-          <div className="ml-auto relative w-[220px] flex items-center">
+          <div className="ml-auto relative w-[240px] flex items-center">
             <Input
               type="text"
               placeholder="⌕　搜索标题、来源或内容"
@@ -167,34 +119,36 @@ export const KnowledgePage: React.FC = () => {
             onClick={() => setUrlModalOpen(true)}
             className="h-8 text-xs px-2.5"
           >
-            🌐 URL
+            🌐 导入 URL
           </Button>
         </div>
 
-        {/* 3. Three Columns */}
+        {/* 2. 三栏主体工作区 (.kb-body) — Grid (190px / 350px / 1fr) 充满拉伸 */}
         <div className="flex-1 grid grid-cols-[190px_350px_minmax(430px,1fr)] bg-white dark:bg-card min-h-0 overflow-hidden">
-          <aside className="border-r border-[#e5e9ef] dark:border-border bg-[#fbfcfd] dark:bg-card/50 p-4 space-y-1 overflow-y-auto">
+          
+          {/* 【左栏：筛选侧边栏 (.kb-filter)】 */}
+          <aside className="border-r border-[#e5e9ef] dark:border-border bg-[#fbfcfd] dark:bg-card/50 p-3.5 space-y-1 overflow-y-auto min-h-0">
             <div className="text-[9px] tracking-wider uppercase text-[#94a3b8] font-bold px-2 mb-2">
               资料状态
             </div>
 
             <button
               onClick={() => setStatusFilter("all")}
-              className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
+              className={`w-full h-8.5 rounded-md flex items-center gap-2 px-2.5 text-[11px] mb-0.5 transition-colors ${
                 statusFilter === "all"
                   ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
                   : "text-[#526071] hover:bg-muted/50"
               }`}
             >
               <span>▦</span> 全部资料
-              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.25 py-0.25">
+              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.5 py-0.25">
                 {allDocuments.length}
               </span>
             </button>
 
             <button
               onClick={() => setStatusFilter("awaiting_confirmation")}
-              className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
+              className={`w-full h-8.5 rounded-md flex items-center gap-2 px-2.5 text-[11px] mb-0.5 transition-colors ${
                 statusFilter === "awaiting_confirmation"
                   ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
                   : "text-[#526071] hover:bg-muted/50"
@@ -202,14 +156,14 @@ export const KnowledgePage: React.FC = () => {
             >
               <span className="w-1.75 h-1.75 rounded-full bg-[#d97706]"></span>
               待确认
-              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.25 py-0.25">
+              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.5 py-0.25">
                 {awaitingCount}
               </span>
             </button>
 
             <button
               onClick={() => setStatusFilter("available")}
-              className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
+              className={`w-full h-8.5 rounded-md flex items-center gap-2 px-2.5 text-[11px] mb-0.5 transition-colors ${
                 statusFilter === "available"
                   ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
                   : "text-[#526071] hover:bg-muted/50"
@@ -217,14 +171,14 @@ export const KnowledgePage: React.FC = () => {
             >
               <span className="w-1.75 h-1.75 rounded-full bg-[#059669]"></span>
               已索引
-              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.25 py-0.25">
+              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.5 py-0.25">
                 {readyCount}
               </span>
             </button>
 
             <button
               onClick={() => setStatusFilter("failed")}
-              className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
+              className={`w-full h-8.5 rounded-md flex items-center gap-2 px-2.5 text-[11px] mb-0.5 transition-colors ${
                 statusFilter === "failed"
                   ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
                   : "text-[#526071] hover:bg-muted/50"
@@ -232,7 +186,7 @@ export const KnowledgePage: React.FC = () => {
             >
               <span className="w-1.75 h-1.75 rounded-full bg-[#dc2626]"></span>
               处理失败
-              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.25 py-0.25">
+              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.5 py-0.25">
                 {failCount}
               </span>
             </button>
@@ -243,25 +197,32 @@ export const KnowledgePage: React.FC = () => {
               来源类型
             </div>
 
-            {["all", "markdown", "pdf", "url", "image"].map((t) => (
+            {[
+              { id: "all", label: "全部类型", icon: "▦" },
+              { id: "markdown", label: "Markdown", icon: "📄" },
+              { id: "pdf", label: "PDF 文档", icon: "📕" },
+              { id: "url", label: "网页文章", icon: "🌐" },
+              { id: "image", label: "图片素材", icon: "🖼️" },
+            ].map((item) => (
               <button
-                key={t}
-                onClick={() => setTypeFilter(t)}
-                className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
-                  typeFilter === t
+                key={item.id}
+                onClick={() => setTypeFilter(item.id)}
+                className={`w-full h-8.5 rounded-md flex items-center gap-2 px-2.5 text-[11px] mb-0.5 transition-colors ${
+                  typeFilter === item.id
                     ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
                     : "text-[#526071] hover:bg-muted/50"
                 }`}
               >
-                <span>{t === "all" ? "▦" : t.toUpperCase()}</span>
-                {t === "all" ? "全部类型" : t.toUpperCase()}
+                <span className="text-xs">{item.icon}</span>
+                {item.label}
               </button>
             ))}
           </aside>
 
-          <section className="border-r border-[#e5e9ef] dark:border-border flex flex-col min-w-0 bg-white dark:bg-card">
+          {/* 【中栏：资料列表区 (.kb-list)】 */}
+          <section className="border-r border-[#e5e9ef] dark:border-border flex flex-col min-w-0 bg-white dark:bg-card min-h-0">
             {isLoading ? (
-              <div className="p-4 text-center text-xs text-muted-foreground">加载中...</div>
+              <div className="p-4 text-center text-xs text-muted-foreground">加载资料中...</div>
             ) : (
               <KnowledgeList
                 documents={filteredDocuments}
@@ -271,7 +232,8 @@ export const KnowledgePage: React.FC = () => {
             )}
           </section>
 
-          <section className="flex flex-col min-w-0 bg-white dark:bg-card overflow-hidden">
+          {/* 【右栏：资料详情与编辑器区 (.kb-detail)】 */}
+          <section className="flex flex-col min-w-0 bg-white dark:bg-card overflow-hidden min-h-0">
             {selectedDoc ? (
               <KnowledgeDetail
                 document={selectedDoc}
@@ -284,14 +246,15 @@ export const KnowledgePage: React.FC = () => {
               />
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-xs gap-2 p-4">
-                <span className="text-2xl">📄</span>
-                请在中间列表选择一份资料进行查看、编辑或确认
+                <span className="text-3xl opacity-60">📁</span>
+                请在中间列表中选择一份资料查看或编辑
               </div>
             )}
           </section>
         </div>
       </div>
 
+      {/* URL 导入 Dialog */}
       <Dialog open={urlModalOpen} onOpenChange={setUrlModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
