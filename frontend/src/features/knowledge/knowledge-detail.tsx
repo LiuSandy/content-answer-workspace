@@ -1,18 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { formatStatusBadge, isDocEditable } from "./types";
-import type { KnowledgeDocument } from "./types";
 import { ReconvertDiffDialog } from "./reconvert-diff-dialog";
+import type { KnowledgeDocument } from "./types";
 
 interface KnowledgeDetailProps {
   document: KnowledgeDocument;
   markdownContent?: string;
   isCandidate?: boolean;
-  onSaveMarkdown: (newMarkdown: string) => void;
+  onSaveMarkdown: (markdown: string) => void;
   onConfirm: () => void;
   onReconvert: () => void;
   onDelete: () => void;
@@ -27,107 +22,170 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   onReconvert,
   onDelete,
 }) => {
-  const [editedMd, setEditedMd] = useState(markdownContent);
-  const [diffDialogOpen, setDiffDialogOpen] = useState(false);
-  const badgeInfo = formatStatusBadge(document.status);
-  const canEdit = isDocEditable(document.status);
+  const [editorText, setEditorText] = useState(markdownContent);
+  const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
+  const [diffOpen, setDiffOpen] = useState(false);
 
   useEffect(() => {
-    setEditedMd(markdownContent);
+    setEditorText(markdownContent);
   }, [markdownContent]);
 
+  const handleSave = () => {
+    onSaveMarkdown(editorText);
+  };
+
+  const getIconText = () => {
+    if (document.sourceType === "pdf" || document.title.endsWith(".pdf")) return "PDF";
+    if (document.sourceType === "markdown" || document.title.endsWith(".md")) return "MD";
+    if (document.sourceType === "url" || document.sourceUrl) return "URL";
+    return "DOC";
+  };
+
   return (
-    <>
-      <Card className="h-full flex flex-col border-none shadow-none bg-transparent">
-        <CardHeader className="p-4 border-b flex flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle className="text-base font-semibold">{document.title}</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">ID: {document.id}</p>
+    <div className="flex-1 flex flex-col min-w-0 h-full bg-white dark:bg-card overflow-hidden">
+      {/* 1. 详情头部 */}
+      <div className="h-[58px] border-b border-[#e7ebf0] dark:border-border flex items-center px-[17px] gap-[11px] shrink-0">
+        <div className="w-8 h-9 border border-[#dfe5ec] dark:border-border rounded-md bg-white dark:bg-card grid place-items-center text-[10px] font-bold text-[#657286] flex-none">
+          {getIconText()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-bold text-[#111827] dark:text-foreground truncate">
+            {document.title}
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={badgeInfo.variant}>{badgeInfo.label}</Badge>
-            <Button variant="destructive" size="sm" onClick={onDelete}>
-              删除资料
+          <div className="text-[9px] text-[#8a96a5] dark:text-muted-foreground mt-0.75 truncate">
+            源文件：{document.sourceUrl || `sources/${document.id.slice(0, 4)}.../${document.title}`}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-1.75">
+          {document.sourceUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(document.sourceUrl, "_blank")}
+              className="h-7 text-[10px] px-2.5"
+            >
+              查看源文件
             </Button>
-          </div>
-        </CardHeader>
-
-        <CardContent className="p-4 flex-1 flex flex-col min-h-0 space-y-4 overflow-auto">
-          {document.status === "awaiting_confirmation" && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs flex justify-between items-center">
-              <span>该资料包含候选 Markdown，确认后才建立检索索引。</span>
-              <Button size="sm" onClick={onConfirm}>
-                确认并建立索引
-              </Button>
-            </div>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDiffOpen(true)}
+            className="h-7 text-[10px] px-2"
+          >
+            重新解析 Diff
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={onDelete}
+            className="h-7 text-[10px] px-2"
+          >
+            删除
+          </Button>
+        </div>
+      </div>
 
-          <Tabs defaultValue="editor" className="flex-1 flex flex-col min-h-0">
-            <div className="flex justify-between items-center mb-2">
-              <TabsList>
-                <TabsTrigger value="editor">编辑 Markdown</TabsTrigger>
-                <TabsTrigger value="info">元数据详情</TabsTrigger>
-              </TabsList>
+      {/* 2. 警告提示框 */}
+      {isCandidate && (
+        <div className="mx-4 mt-3 border border-[#f0d7a5] bg-[#fffbeb] dark:bg-amber-950/20 dark:border-amber-800/40 rounded-[7px] p-2.5 flex gap-2.25 text-[#765317] dark:text-amber-300 text-[10px] leading-relaxed shrink-0">
+          <span className="font-bold text-amber-600">!</span>
+          <div>
+            <strong className="block text-[#5f430d] dark:text-amber-200 mb-0.25">
+              转换结果等待确认
+            </strong>
+            系统已将文档转为 Markdown。请检查并编辑内容，确认后才会进行 Chunk 切分和建立索引。
+          </div>
+        </div>
+      )}
 
-              {canEdit && (
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (document.hasManualEdits) {
-                        setDiffDialogOpen(true);
-                      } else {
-                        onReconvert();
-                      }
-                    }}
-                  >
-                    重新转换
-                  </Button>
-                  <Button size="sm" onClick={() => onSaveMarkdown(editedMd)}>
-                    保存修改
-                  </Button>
-                </div>
-              )}
-            </div>
+      {/* 3. 编辑器 Tabs 导航 */}
+      <div className="h-[39px] mx-4 mt-2.75 border-b border-[#e5e9ef] dark:border-border flex items-end gap-4.25 shrink-0">
+        <button
+          onClick={() => setActiveTab("editor")}
+          className={`h-[39px] bg-transparent font-semibold text-[10px] border-b-2 transition-colors ${
+            activeTab === "editor"
+              ? "text-[#1f2937] dark:text-foreground border-[#334155] dark:border-primary"
+              : "text-[#8a96a5] border-transparent hover:text-foreground"
+          }`}
+        >
+          Markdown
+        </button>
+        <button
+          onClick={() => setActiveTab("preview")}
+          className={`h-[39px] bg-transparent font-semibold text-[10px] border-b-2 transition-colors ${
+            activeTab === "preview"
+              ? "text-[#1f2937] dark:text-foreground border-[#334155] dark:border-primary"
+              : "text-[#8a96a5] border-transparent hover:text-foreground"
+          }`}
+        >
+          预览
+        </button>
+        <span className="ml-auto pb-2.5 text-[9px] text-[#94a3b8]">
+          已自动保存
+        </span>
+      </div>
 
-            <TabsContent value="editor" className="flex-1 min-h-0">
-              <Textarea
-                className="w-full h-full min-h-[400px] font-mono text-sm resize-none"
-                value={editedMd}
-                onChange={(e) => setEditedMd(e.target.value)}
-                disabled={!canEdit}
-              />
-            </TabsContent>
+      {/* 4. 编辑器内容区域 */}
+      <div className="flex-1 mx-4 border border-[#e1e6ed] dark:border-border border-t-0 rounded-b-[7px] bg-[#fbfcfd] dark:bg-card/30 overflow-hidden min-h-0 flex flex-col">
+        {activeTab === "editor" ? (
+          <textarea
+            value={editorText}
+            onChange={(e) => setEditorText(e.target.value)}
+            className="flex-1 w-full p-3.5 font-mono text-[10px] leading-[1.72] text-[#334155] dark:text-foreground bg-transparent border-0 outline-none resize-none overflow-y-auto whitespace-pre-wrap"
+            placeholder="---
+document_id: ...
+source_type: ...
+---
+# 请在此编辑 Markdown 内容"
+          />
+        ) : (
+          <div className="flex-1 w-full p-4 overflow-y-auto prose dark:prose-invert max-w-none text-xs">
+            <pre className="whitespace-pre-wrap font-sans">{editorText}</pre>
+          </div>
+        )}
+      </div>
 
-            <TabsContent value="info" className="space-y-2 text-xs">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="p-2 border rounded">
-                  <span className="text-muted-foreground block">来源类型</span>
-                  <span className="font-semibold uppercase">{document.sourceType}</span>
-                </div>
-                <div className="p-2 border rounded">
-                  <span className="text-muted-foreground block">修改标记</span>
-                  <span>{document.hasManualEdits ? "存在人工修改" : "无人工修改"}</span>
-                </div>
-              </div>
-              {document.conversionError && (
-                <div className="p-3 bg-destructive/10 text-destructive rounded border border-destructive/20">
-                  <strong>解析错误：</strong> {document.conversionError}
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      {/* 5. 底部操作栏 */}
+      <div className="h-[58px] border-t border-[#e5e9ef] dark:border-border mt-3 px-4 flex items-center shrink-0">
+        <span className="text-[9px] text-[#8a96a5]">
+          {isCandidate
+            ? "仅保存为候选 Markdown，不会建立索引"
+            : "已成功建立向量与倒排索引"}
+        </span>
+
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSave}
+            className="h-[30px] text-[10px] px-3"
+          >
+            保存草稿
+          </Button>
+
+          {isCandidate && (
+            <Button
+              size="sm"
+              onClick={onConfirm}
+              className="h-[30px] bg-[#1e293b] hover:bg-[#0f172a] text-white text-[10px] px-3.5 font-semibold"
+            >
+              ✓　确认并建立索引
+            </Button>
+          )}
+        </div>
+      </div>
 
       <ReconvertDiffDialog
-        open={diffDialogOpen}
-        onOpenChange={setDiffDialogOpen}
-        diffContent="--- Current Version\n+++ Candidate Version\n- Old manually edited paragraph\n+ Newly converted paragraph from source"
-        onConfirmReplace={onReconvert}
+        open={diffOpen}
+        onOpenChange={setDiffOpen}
+        oldMarkdown={markdownContent}
+        newMarkdown={editorText}
+        onApplyNew={() => {
+          onReconvert();
+          setDiffOpen(false);
+        }}
       />
-    </>
+    </div>
   );
 };
-

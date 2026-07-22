@@ -5,69 +5,50 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-interface ReconvertDiffDialogProps {
+export interface ReconvertDiffDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  diffContent?: string;
-  onConfirmReplace: () => void;
+  oldMarkdown?: string;
+  newMarkdown?: string;
+  onApplyNew: () => void;
 }
 
 export const ReconvertDiffDialog: React.FC<ReconvertDiffDialogProps> = ({
   open,
   onOpenChange,
-  diffContent = "",
-  onConfirmReplace,
+  oldMarkdown = "",
+  newMarkdown = "",
+  onApplyNew,
 }) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>重新转换版本差异对比 (Diff)</DialogTitle>
-          <DialogDescription>
-            该资料曾存在人工修改。重新解析源文件产生了新的候选版本，请确认是否覆盖当前版本并重新索引。
-          </DialogDescription>
+          <DialogTitle>重新解析对比 (Diff Viewer)</DialogTitle>
         </DialogHeader>
-
-        <div className="my-2 p-3 bg-muted font-mono text-xs overflow-auto max-h-[300px] rounded border space-y-1">
-          {diffContent ? (
-            diffContent.split("\n").map((line, idx) => {
-              const isAdd = line.startsWith("+");
-              const isDel = line.startsWith("-");
-              return (
-                <div
-                  key={idx}
-                  className={
-                    isAdd
-                      ? "text-emerald-500 bg-emerald-500/10 px-1"
-                      : isDel
-                      ? "text-rose-500 bg-rose-500/10 px-1"
-                      : "text-muted-foreground"
-                  }
-                >
-                  {line}
-                </div>
-              );
-            })
-          ) : (
-            <p className="text-muted-foreground">未检测到明显差异。</p>
-          )}
+        <div className="flex-1 grid grid-cols-2 gap-4 min-h-0 py-2">
+          <div className="flex flex-col border rounded-md p-3 bg-muted/20 overflow-hidden">
+            <div className="text-xs font-semibold mb-2 text-muted-foreground">当前/旧解析版本</div>
+            <pre className="flex-1 overflow-auto font-mono text-xs whitespace-pre-wrap text-foreground">
+              {oldMarkdown}
+            </pre>
+          </div>
+          <div className="flex flex-col border rounded-md p-3 bg-accent/20 overflow-hidden">
+            <div className="text-xs font-semibold mb-2 text-primary">新重新解析候选版本</div>
+            <pre className="flex-1 overflow-auto font-mono text-xs whitespace-pre-wrap text-foreground">
+              {newMarkdown}
+            </pre>
+          </div>
         </div>
-
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
+            放弃
           </Button>
-          <Button
-            onClick={() => {
-              onConfirmReplace();
-              onOpenChange(false);
-            }}
-          >
-            确认使用候选版本并重新索引
+          <Button onClick={onApplyNew}>
+            应用新解析版本
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,21 +1,50 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { KnowledgeList } from "./knowledge-list";
 import { KnowledgeDetail } from "./knowledge-detail";
 import { useKnowledgeDocuments, useKnowledgeMarkdown, useKnowledgeMutations } from "./use-knowledge";
 import type { KnowledgeDocument } from "./types";
+import { useNavigate } from "react-router-dom";
 
 export const KnowledgePage: React.FC = () => {
+  const navigate = useNavigate();
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeDocument | undefined>(undefined);
   const [urlModalOpen, setUrlModalOpen] = useState(false);
   const [inputUrl, setInputUrl] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [themeDark, setThemeDark] = useState(false);
 
   const { data, isLoading } = useKnowledgeDocuments();
-  const documents = data?.documents || [];
+  const allDocuments = data?.documents || [];
+
+  // 前端过滤逻辑
+  const filteredDocuments = allDocuments.filter((doc) => {
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const nameMatch = doc.title?.toLowerCase().includes(q);
+      const urlMatch = doc.sourceUrl?.toLowerCase().includes(q);
+      if (!nameMatch && !urlMatch) return false;
+    }
+    if (statusFilter !== "all") {
+      if (doc.status !== statusFilter) return false;
+    }
+    if (typeFilter !== "all") {
+      if (typeFilter === "markdown" && doc.sourceType !== "markdown" && !doc.title.endsWith(".md")) return false;
+      if (typeFilter === "pdf" && doc.sourceType !== "pdf" && !doc.title.endsWith(".pdf")) return false;
+      if (typeFilter === "url" && doc.sourceType !== "url" && !doc.sourceUrl) return false;
+      if (typeFilter === "image" && doc.sourceType !== "image" && !doc.title.match(/\.(png|jpg|jpeg)$/i)) return false;
+    }
+    return true;
+  });
+
+  const awaitingCount = allDocuments.filter((d) => d.status === "awaiting_confirmation").length;
+  const readyCount = allDocuments.filter((d) => d.status === "available").length;
+  const failCount = allDocuments.filter((d) => d.status === "failed").length;
 
   const { data: markdownData } = useKnowledgeMarkdown(
     selectedDoc?.id,
@@ -49,71 +78,220 @@ export const KnowledgePage: React.FC = () => {
     }
   };
 
+  const toggleTheme = () => {
+    setThemeDark(!themeDark);
+    document.documentElement.classList.toggle("dark");
+  };
+
   return (
-    <div className="flex-1 flex min-h-0 h-full p-4 gap-4 bg-background text-foreground">
-      {/* 左栏：上传/导入与过滤面板 */}
-      <Card className="w-72 flex flex-col shrink-0 space-y-4 p-4">
-        <CardHeader className="p-0 mb-2">
-          <CardTitle className="text-base font-semibold">资料导入</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0 space-y-3">
+    <div className={`flex-1 flex flex-col min-h-0 h-full p-4 bg-[#eff2f7] dark:bg-background text-[#111827] dark:text-foreground font-sans ${themeDark ? "dark" : ""}`}>
+      <div className="flex-1 flex flex-col min-h-0 border border-[#dfe4eb] dark:border-border rounded-[10px] bg-white dark:bg-card shadow-lg overflow-hidden">
+        
+        {/* 1. Header */}
+        <header className="h-[56px] bg-white dark:bg-card border-b border-[#e5e9ef] dark:border-border flex items-center px-4 gap-6 shrink-0">
+          <div className="flex items-center gap-2.5 text-[15px] font-bold whitespace-nowrap cursor-pointer" onClick={() => navigate("/")}>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366f1] to-[#9333ea] text-white grid place-items-center text-[17px] shadow-md">
+              ⌁
+            </div>
+            <span>超级大脑</span>
+          </div>
+
+          <nav className="self-stretch flex items-center gap-1.5 ml-3.5">
+            <button
+              onClick={() => navigate("/")}
+              className="h-full flex items-center px-3.25 text-[#64748b] dark:text-muted-foreground text-xs font-semibold border-b-2 border-transparent hover:text-foreground transition-colors"
+            >
+              创作工作台
+            </button>
+            <button className="h-full flex items-center px-3.25 text-[#111827] dark:text-foreground text-xs font-semibold border-b-2 border-[#334155] dark:border-primary">
+              私有资料库
+            </button>
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/settings")}
+              className="h-8 border-[#e0e5ec] text-[#1f2937] dark:text-foreground text-xs font-semibold px-3 gap-1.5"
+            >
+              ⚙　提示词
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleTheme}
+              className="w-8.5 h-8 p-0 justify-center text-xs"
+            >
+              {themeDark ? "☼" : "☾"}
+            </Button>
+          </div>
+        </header>
+
+        {/* 2. Pagebar */}
+        <div className="h-[58px] bg-white dark:bg-card border-b border-[#e5e9ef] dark:border-border flex items-center px-5 gap-3.5 shrink-0">
           <div>
-            <Label htmlFor="file-upload" className="text-xs mb-1 block">
-              上传本地文件 (PDF/MD/TXT/图片)
-            </Label>
+            <div className="text-sm font-bold">私有资料库</div>
+            <div className="text-[10px] text-[#7b8797] dark:text-muted-foreground mt-0.5">
+              管理 Agent 创作时可检索和引用的个人资料
+            </div>
+          </div>
+
+          <div className="ml-auto relative w-[220px] flex items-center">
             <Input
-              id="file-upload"
+              type="text"
+              placeholder="⌕　搜索标题、来源或内容"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 text-[11px] bg-[#fbfcfd] dark:bg-secondary border-[#e0e5ec] dark:border-input rounded-md px-2.5 placeholder:text-[#94a3b8]"
+            />
+          </div>
+
+          <div className="relative">
+            <input
               type="file"
+              id="kb-file-input"
               onChange={handleFileUpload}
-              className="cursor-pointer text-xs"
+              className="hidden"
             />
+            <Button
+              onClick={() => document.getElementById("kb-file-input")?.click()}
+              className="h-8 bg-[#1e293b] hover:bg-[#0f172a] text-white text-xs font-semibold px-3 rounded-md"
+            >
+              ＋　添加资料
+            </Button>
           </div>
 
-          <Button variant="outline" className="w-full justify-start text-xs" onClick={() => setUrlModalOpen(true)}>
-            🌐 导入网页 URL
+          <Button
+            variant="outline"
+            onClick={() => setUrlModalOpen(true)}
+            className="h-8 text-xs px-2.5"
+          >
+            🌐 URL
           </Button>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* 中栏：资料列表 */}
-      <Card className="w-80 flex flex-col shrink-0 p-4 min-h-0 overflow-auto">
-        <CardHeader className="p-0 mb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold">资料列表</CardTitle>
-          <span className="text-xs text-muted-foreground">共 {documents.length} 条</span>
-        </CardHeader>
-        <CardContent className="p-0 flex-1 min-h-0 overflow-auto">
-          {isLoading ? (
-            <p className="text-xs text-muted-foreground p-4 text-center">加载中...</p>
-          ) : (
-            <KnowledgeList
-              documents={documents}
-              selectedDocId={selectedDoc?.id}
-              onSelectDoc={setSelectedDoc}
-            />
-          )}
-        </CardContent>
-      </Card>
+        {/* 3. Three Columns */}
+        <div className="flex-1 grid grid-cols-[190px_350px_minmax(430px,1fr)] bg-white dark:bg-card min-h-0 overflow-hidden">
+          <aside className="border-r border-[#e5e9ef] dark:border-border bg-[#fbfcfd] dark:bg-card/50 p-4 space-y-1 overflow-y-auto">
+            <div className="text-[9px] tracking-wider uppercase text-[#94a3b8] font-bold px-2 mb-2">
+              资料状态
+            </div>
 
-      {/* 右栏：详情与 Markdown 编辑 */}
-      <div className="flex-1 border rounded-xl p-4 bg-card min-h-0 overflow-auto">
-        {selectedDoc ? (
-          <KnowledgeDetail
-            document={selectedDoc}
-            markdownContent={markdownData?.markdown}
-            isCandidate={selectedDoc.status === "awaiting_confirmation"}
-            onSaveMarkdown={(md) => updateMarkdownMutation.mutate({ documentId: selectedDoc.id, markdown: md })}
-            onConfirm={() => confirmMutation.mutate(selectedDoc.id)}
-            onReconvert={() => reconvertMutation.mutate(selectedDoc.id)}
-            onDelete={() => deleteMutation.mutate(selectedDoc.id)}
-          />
-        ) : (
-          <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-            请在左侧列表选择一份资料查看或编辑
-          </div>
-        )}
+            <button
+              onClick={() => setStatusFilter("all")}
+              className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
+                statusFilter === "all"
+                  ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
+                  : "text-[#526071] hover:bg-muted/50"
+              }`}
+            >
+              <span>▦</span> 全部资料
+              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.25 py-0.25">
+                {allDocuments.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setStatusFilter("awaiting_confirmation")}
+              className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
+                statusFilter === "awaiting_confirmation"
+                  ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
+                  : "text-[#526071] hover:bg-muted/50"
+              }`}
+            >
+              <span className="w-1.75 h-1.75 rounded-full bg-[#d97706]"></span>
+              待确认
+              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.25 py-0.25">
+                {awaitingCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setStatusFilter("available")}
+              className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
+                statusFilter === "available"
+                  ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
+                  : "text-[#526071] hover:bg-muted/50"
+              }`}
+            >
+              <span className="w-1.75 h-1.75 rounded-full bg-[#059669]"></span>
+              已索引
+              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.25 py-0.25">
+                {readyCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setStatusFilter("failed")}
+              className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
+                statusFilter === "failed"
+                  ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
+                  : "text-[#526071] hover:bg-muted/50"
+              }`}
+            >
+              <span className="w-1.75 h-1.75 rounded-full bg-[#dc2626]"></span>
+              处理失败
+              <span className="ml-auto text-[9px] text-[#8a96a5] bg-white dark:bg-secondary border border-[#e5e9ef] dark:border-border rounded px-1.25 py-0.25">
+                {failCount}
+              </span>
+            </button>
+
+            <div className="h-px bg-[#e8ecf1] dark:bg-border my-3 mx-2"></div>
+
+            <div className="text-[9px] tracking-wider uppercase text-[#94a3b8] font-bold px-2 mb-2">
+              来源类型
+            </div>
+
+            {["all", "markdown", "pdf", "url", "image"].map((t) => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(t)}
+                className={`w-full h-8.5 rounded-md flex items-center gap-2.25 px-2.25 text-[11px] mb-0.5 transition-colors ${
+                  typeFilter === t
+                    ? "bg-[#e9edf3] text-[#1f2937] font-semibold"
+                    : "text-[#526071] hover:bg-muted/50"
+                }`}
+              >
+                <span>{t === "all" ? "▦" : t.toUpperCase()}</span>
+                {t === "all" ? "全部类型" : t.toUpperCase()}
+              </button>
+            ))}
+          </aside>
+
+          <section className="border-r border-[#e5e9ef] dark:border-border flex flex-col min-w-0 bg-white dark:bg-card">
+            {isLoading ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">加载中...</div>
+            ) : (
+              <KnowledgeList
+                documents={filteredDocuments}
+                selectedDocId={selectedDoc?.id}
+                onSelectDoc={setSelectedDoc}
+              />
+            )}
+          </section>
+
+          <section className="flex flex-col min-w-0 bg-white dark:bg-card overflow-hidden">
+            {selectedDoc ? (
+              <KnowledgeDetail
+                document={selectedDoc}
+                markdownContent={markdownData?.markdown}
+                isCandidate={selectedDoc.status === "awaiting_confirmation"}
+                onSaveMarkdown={(md) => updateMarkdownMutation.mutate({ documentId: selectedDoc.id, markdown: md })}
+                onConfirm={() => confirmMutation.mutate(selectedDoc.id)}
+                onReconvert={() => reconvertMutation.mutate(selectedDoc.id)}
+                onDelete={() => deleteMutation.mutate(selectedDoc.id)}
+              />
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-xs gap-2 p-4">
+                <span className="text-2xl">📄</span>
+                请在中间列表选择一份资料进行查看、编辑或确认
+              </div>
+            )}
+          </section>
+        </div>
       </div>
 
-      {/* URL 导入对话框 (全 shadcn Dialog) */}
       <Dialog open={urlModalOpen} onOpenChange={setUrlModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
