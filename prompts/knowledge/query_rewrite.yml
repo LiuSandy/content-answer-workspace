@@ -1,0 +1,7 @@
+name: query_rewrite
+version: "1.0"
+description: "RAG 查询改写 prompt"
+template: |
+  请将用户的问题转换为适用于搜索引擎与向量检索的更加精准的技术查询语句。
+  用户问题：{{ query }}
+  改写查询：
