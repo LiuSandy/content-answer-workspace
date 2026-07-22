@@ -1,5 +1,7 @@
+import uuid
 from uuid import UUID
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -7,6 +9,10 @@ from app.domain.knowledge import KnowledgeDocumentStatus, SourceType
 from app.application.knowledge.document_service import DocumentService
 
 router = APIRouter(prefix="/api", tags=["knowledge"])
+
+# 内存型真实知识库动态存储
+_DOCUMENTS_STORE: Dict[str, Dict[str, Any]] = {}
+_MARKDOWN_STORE: Dict[str, str] = {}
 
 
 class ImportUrlRequest(BaseModel):
@@ -24,7 +30,6 @@ class UpdateMarkdownRequest(BaseModel):
     workspace_id: str = Field("default", alias="workspaceId")
 
 
-
 @router.get("/knowledge/documents")
 async def list_documents(
     workspace_id: str = Query("default", alias="workspaceId"),
@@ -32,12 +37,20 @@ async def list_documents(
     limit: int = Query(50),
     offset: int = Query(0),
 ):
-    # 第一版返回成功的数据包装
+    docs = list(_DOCUMENTS_STORE.values())
+    
+    # 按 workspaceId 过滤
+    filtered = [d for d in docs if d.get("workspaceId") == workspace_id]
+    
+    # 按 status 过滤
+    if status:
+        filtered = [d for d in filtered if d.get("status") == status]
+
     return {
         "ok": True,
         "data": {
-            "documents": [],
-            "total": 0,
+            "documents": filtered,
+            "total": len(filtered),
             "limit": limit,
             "offset": offset,
         },
@@ -58,54 +71,80 @@ async def upload_document(
 
     initial_status = DocumentService.determine_initial_status(final_source_type)
 
+    doc_id = str(uuid.uuid4())
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    doc_obj = {
+        "id": doc_id,
+        "workspaceId": workspace_id,
+        "ownerId": owner_id,
+        "sourceType": final_source_type,
+        "title": filename,
+        "sourcePath": f"uploads/{filename}",
+        "status": initial_status.value,
+        "hasManualEdits": False,
+        "createdAt": now_iso,
+        "updatedAt": now_iso,
+    }
+
+    _DOCUMENTS_STORE[doc_id] = doc_obj
+    _MARKDOWN_STORE[doc_id] = f"# {filename}\n\n已成功解析文件内容。"
+
     return {
         "ok": True,
-        "data": {
-            "id": "00000000-0000-0000-0000-000000000000",
-            "title": filename,
-            "sourceType": final_source_type,
-            "status": initial_status.value,
-            "workspaceId": workspace_id,
-            "ownerId": owner_id,
-        },
+        "data": doc_obj,
     }
 
 
 @router.post("/knowledge/documents/import-url")
 async def import_url(payload: ImportUrlRequest):
     initial_status = DocumentService.determine_initial_status(SourceType.URL)
+    doc_id = str(uuid.uuid4())
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    doc_obj = {
+        "id": doc_id,
+        "workspaceId": payload.workspace_id,
+        "ownerId": payload.owner_id,
+        "sourceType": SourceType.URL.value,
+        "title": payload.url,
+        "sourceUrl": payload.url,
+        "status": initial_status.value,
+        "hasManualEdits": False,
+        "createdAt": now_iso,
+        "updatedAt": now_iso,
+    }
+
+    _DOCUMENTS_STORE[doc_id] = doc_obj
+    _MARKDOWN_STORE[doc_id] = f"# 网页导出：{payload.url}\n\n网页文章内容解析完成。"
+
     return {
         "ok": True,
-        "data": {
-            "id": "00000000-0000-0000-0000-000000000000",
-            "title": payload.url,
-            "sourceType": SourceType.URL.value,
-            "sourceUrl": payload.url,
-            "status": initial_status.value,
-            "workspaceId": payload.workspace_id,
-        },
+        "data": doc_obj,
     }
 
 
 @router.get("/knowledge/documents/{document_id}")
 async def get_document(document_id: UUID):
+    doc_id_str = str(document_id)
+    doc = _DOCUMENTS_STORE.get(doc_id_str)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
     return {
         "ok": True,
-        "data": {
-            "id": str(document_id),
-            "title": "Document Title",
-            "status": "available",
-        },
+        "data": doc,
     }
 
 
 @router.get("/knowledge/documents/{document_id}/markdown")
 async def get_document_markdown(document_id: UUID, is_candidate: bool = Query(False, alias="isCandidate")):
+    doc_id_str = str(document_id)
+    content = _MARKDOWN_STORE.get(doc_id_str, "# 暂无解析 Markdown 内容")
     return {
         "ok": True,
         "data": {
-            "documentId": str(document_id),
-            "markdown": "# Markdown Content\n\nSample content.",
+            "documentId": doc_id_str,
+            "markdown": content,
             "isCandidate": is_candidate,
         },
     }
@@ -113,10 +152,15 @@ async def get_document_markdown(document_id: UUID, is_candidate: bool = Query(Fa
 
 @router.put("/knowledge/documents/{document_id}/markdown")
 async def update_document_markdown(document_id: UUID, payload: UpdateMarkdownRequest):
+    doc_id_str = str(document_id)
+    _MARKDOWN_STORE[doc_id_str] = payload.markdown
+    if doc_id_str in _DOCUMENTS_STORE:
+        _DOCUMENTS_STORE[doc_id_str]["updatedAt"] = datetime.now(timezone.utc).isoformat()
+        _DOCUMENTS_STORE[doc_id_str]["hasManualEdits"] = True
     return {
         "ok": True,
         "data": {
-            "documentId": str(document_id),
+            "documentId": doc_id_str,
             "updated": True,
         },
     }
@@ -124,33 +168,45 @@ async def update_document_markdown(document_id: UUID, payload: UpdateMarkdownReq
 
 @router.post("/knowledge/documents/{document_id}/confirm")
 async def confirm_document(document_id: UUID):
+    doc_id_str = str(document_id)
+    if doc_id_str in _DOCUMENTS_STORE:
+        _DOCUMENTS_STORE[doc_id_str]["status"] = KnowledgeDocumentStatus.AVAILABLE.value
+        _DOCUMENTS_STORE[doc_id_str]["updatedAt"] = datetime.now(timezone.utc).isoformat()
     return {
         "ok": True,
         "data": {
-            "documentId": str(document_id),
-            "status": KnowledgeDocumentStatus.INDEXING.value,
+            "documentId": doc_id_str,
+            "status": KnowledgeDocumentStatus.AVAILABLE.value,
         },
     }
 
 
 @router.post("/knowledge/documents/{document_id}/reconvert")
 async def reconvert_document(document_id: UUID):
+    doc_id_str = str(document_id)
+    if doc_id_str in _DOCUMENTS_STORE:
+        _DOCUMENTS_STORE[doc_id_str]["status"] = KnowledgeDocumentStatus.AWAITING_CONFIRMATION.value
     return {
         "ok": True,
         "data": {
-            "documentId": str(document_id),
+            "documentId": doc_id_str,
             "status": KnowledgeDocumentStatus.AWAITING_CONFIRMATION.value,
-            "diff": "--- Original\n+++ Candidate\n- Old text\n+ New text",
+            "diff": "--- 现有的 Markdown\n+++ 新解析候选版本\n- 旧解析文本\n+ 新重新解析的改进文本",
         },
     }
 
 
 @router.delete("/knowledge/documents/{document_id}")
 async def delete_document(document_id: UUID):
+    doc_id_str = str(document_id)
+    if doc_id_str in _DOCUMENTS_STORE:
+        del _DOCUMENTS_STORE[doc_id_str]
+    if doc_id_str in _MARKDOWN_STORE:
+        del _MARKDOWN_STORE[doc_id_str]
     return {
         "ok": True,
         "data": {
-            "documentId": str(document_id),
+            "documentId": doc_id_str,
             "status": KnowledgeDocumentStatus.DELETED.value,
         },
     }
