@@ -1,0 +1,6 @@
+name: decision
+version: "1.0"
+description: "RAG 检索必要性决策 prompt"
+template: |
+  请评估当前用户问题是否需要检索私有资料库。
+  问题：{{ query }}
