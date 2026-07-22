@@ -16,6 +16,15 @@ def compute_rrf_scores(
     return sorted_results
 
 
+def safe_compute_rrf_scores(
+    bm25_ranks: dict[str, int] | None, vector_ranks: dict[str, int] | None, k: int = 60
+) -> list[tuple[str, float]]:
+    safe_bm25 = bm25_ranks or {}
+    safe_vector = vector_ranks or {}
+    return compute_rrf_scores(safe_bm25, safe_vector, k=k)
+
+
+
 def evaluate_evidence_threshold(scores: list[float], threshold: float = 0.55) -> bool:
     if not scores:
         return False

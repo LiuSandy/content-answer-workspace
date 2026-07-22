@@ -23,6 +23,7 @@ from .api.routes.knowledge import router as knowledge_router
 from .application.agent.graphs.conversation import build_conversation_graph
 from .config.loader import warmup as warmup_config
 from .core.config import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
+from sqlalchemy.exc import DBAPIError
 from .errors import AppError, DocumentConflictError
 from .prompts.registry import warmup as warmup_prompts
 
@@ -37,6 +38,16 @@ async def lifespan(app: FastAPI):
     load_env_file()
     warmup_config()
     
+    # 尝试连通性测试
+    try:
+        from .persistence.session import get_engine
+        from sqlalchemy import text
+        async with get_engine().connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        logging.info("Database connection established successfully.")
+    except Exception as e:
+        logging.warning(f"Database pre-flight check warning (PostgreSQL container might be offline): {e}")
+
     # 初始化 Prompt Registry，直接指向项目根目录下的 prompts 目录
     prompts_dir = ROOT_DIR / "prompts"
     warmup_prompts(prompts_dir, freeze=True)
@@ -64,6 +75,22 @@ app.mount("/generated-images", StaticFiles(directory=GENERATED_IMAGES_DIR), name
 
 
 # ── 异常处理器 ────────────────────────────────────────────────────────────────
+
+@app.exception_handler(DBAPIError)
+async def handle_db_exception(_: Request, error: DBAPIError) -> JSONResponse:
+    """数据库连接或 SQL 执行异常统一拦截。"""
+    logging.error(f"Database error encountered: {error}")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "ok": False,
+            "error": {
+                "code": "database_error",
+                "message": "Database connection or execution failed. Please ensure PostgreSQL and Alembic migrations are running.",
+            },
+        },
+    )
+
 
 @app.exception_handler(AppError)
 async def handle_app_exception(_: Request, error: AppError) -> JSONResponse:
