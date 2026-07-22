@@ -31,6 +31,7 @@ import {Skeleton} from "@/components/ui/skeleton";
 import {cn} from "@/lib/utils";
 import {PromptInput} from "@/components/ui/prompt-input";
 import {Textarea} from "@/components/ui/textarea";
+import {SourceList} from "@/features/knowledge/source-list";
 
 type Message = {
     messageId: string;

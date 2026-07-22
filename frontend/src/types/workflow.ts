@@ -240,6 +240,7 @@ export type ChatMessage = {
 export type ConversationPayload = {
   sessionId: string;
   message: string;
+  knowledgeMode?: "off" | "normal" | "strict";
 };
 
 export type ConversationResponse = {
