@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..application.document_service import DocumentService
+from ..errors import DocumentConflictError
 from ..domain.dto import LLMRequest
 from ..infrastructure.llm.registry import llm_provider_registry
 from ..persistence.models.documents import AIOperation, VERSION_TYPE_INITIAL_GENERATION
@@ -143,16 +144,36 @@ async def generate_answer_workflow(
         # 4. 生成完成，写入版本快照和更新文档
         full_content = "".join(full_content_parts)
         doc_service = DocumentService(session)
-        version = await doc_service.create_version(
-            document_id=document_id,
-            content=full_content,
-            version_type=VERSION_TYPE_INITIAL_GENERATION,
-            expected_lock_version=expected_lock_version,
-            prompt_id=rendered.prompt_id,
-            prompt_version="1.0.0",
-            provider=provider.key,
-            model=rendered.model,
-        )
+        try:
+            version = await doc_service.create_version(
+                document_id=document_id,
+                content=full_content,
+                version_type=VERSION_TYPE_INITIAL_GENERATION,
+                expected_lock_version=expected_lock_version,
+                prompt_id=rendered.prompt_id,
+                prompt_version="1.0.0",
+                provider=provider.key,
+                model=rendered.model,
+            )
+        except DocumentConflictError as conflict_err:
+            logger.warning(
+                "Lock version conflict during answer generation: expected %s, got %s. Retrying with latest lock_version...",
+                conflict_err.expected,
+                conflict_err.actual,
+            )
+            # 在流式生成期间出现锁版本自增（如草稿自动保存），拉取最新文档锁版本并平滑重试保存
+            current_doc = await doc_service.get_document(document_id)
+            latest_lock = current_doc.lock_version if current_doc else None
+            version = await doc_service.create_version(
+                document_id=document_id,
+                content=full_content,
+                version_type=VERSION_TYPE_INITIAL_GENERATION,
+                expected_lock_version=latest_lock,
+                prompt_id=rendered.prompt_id,
+                prompt_version="1.0.0",
+                provider=provider.key,
+                model=rendered.model,
+            )
 
         # 5. 更新 AIOperation 状态
         ai_op.status = "completed"
