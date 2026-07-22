@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { ReconvertDiffDialog } from "./reconvert-diff-dialog";
 import type { KnowledgeDocument } from "./types";
@@ -109,7 +111,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
               : "text-[#8a96a5] border-transparent hover:text-foreground"
           }`}
         >
-          Markdown
+          Markdown 源码
         </button>
         <button
           onClick={() => setActiveTab("preview")}
@@ -119,29 +121,31 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
               : "text-[#8a96a5] border-transparent hover:text-foreground"
           }`}
         >
-          预览
+          GFM 视觉渲染
         </button>
         <span className="ml-auto pb-2.5 text-[9px] text-[#94a3b8]">
           已自动保存
         </span>
       </div>
 
-      {/* 4. 编辑器内容区域 */}
+      {/* 4. 内容区域（源码编辑 vs react-markdown 视觉预览） */}
       <div className="flex-1 mx-4 border border-[#e1e6ed] dark:border-border border-t-0 rounded-b-[7px] bg-[#fbfcfd] dark:bg-card/30 overflow-hidden min-h-0 flex flex-col">
         {activeTab === "editor" ? (
           <textarea
             value={editorText}
             onChange={(e) => setEditorText(e.target.value)}
-            className="flex-1 w-full p-3.5 font-mono text-[10px] leading-[1.72] text-[#334155] dark:text-foreground bg-transparent border-0 outline-none resize-none overflow-y-auto whitespace-pre-wrap"
+            className="flex-1 w-full p-4 font-mono text-xs leading-relaxed text-[#334155] dark:text-foreground bg-transparent border-0 outline-none resize-none overflow-y-auto whitespace-pre-wrap"
             placeholder="---
 document_id: ...
 source_type: ...
 ---
-# 请在此编辑 Markdown 内容"
+# 请在此编辑 Markdown 源码..."
           />
         ) : (
-          <div className="flex-1 w-full p-4 overflow-y-auto prose dark:prose-invert max-w-none text-xs">
-            <pre className="whitespace-pre-wrap font-sans">{editorText}</pre>
+          <div className="flex-1 w-full p-5 overflow-y-auto prose dark:prose-invert max-w-none text-xs leading-normal">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {editorText}
+            </ReactMarkdown>
           </div>
         )}
       </div>
