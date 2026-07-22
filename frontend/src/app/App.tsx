@@ -4,6 +4,7 @@ import { WorkspaceLayout } from "@/features/chat/workspace-shell";
 import { ChatWorkspace } from "@/features/chat/chat-workspace";
 import { HotlistPage } from "@/features/hotlist/hotlist-page";
 import { SettingsPage } from "@/features/settings/settings-page";
+import { KnowledgePage } from "@/features/knowledge/knowledge-page";
 
 /**
  * 应用路由根组件。
@@ -18,6 +19,7 @@ export function App() {
         <Route path="/" element={<WorkspaceLayout />}>
           <Route index element={<ChatWorkspace />} />
           <Route path="chat/:chatId" element={<ChatWorkspace />} />
+          <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="hotlist" element={<HotlistPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

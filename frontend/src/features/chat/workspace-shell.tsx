@@ -41,6 +41,10 @@ export function WorkspaceLayout() {
 
         {/* 右侧操作区 */}
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/knowledge">📚 私有资料库</Link>
+          </Button>
+
           <Button variant="outline" size="sm" onClick={() => setIsPromptDialogOpen(true)}>
             <Settings className="h-4 w-4" />
             提示词
