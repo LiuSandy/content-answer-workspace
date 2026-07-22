@@ -119,3 +119,23 @@ class TopicExpanderPort(Protocol):
     """历史遗留的主题扩展接口。"""
     async def expand_topic(self, *args: Any, **kwargs: Any) -> Any: ...
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 知识库扩展 Ports (Knowledge Ports)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DocumentParserPort(Protocol):
+    """知识库文档解析器端口。"""
+    async def parse(self, source_path: str, doc_id: str) -> Any: ...
+
+
+class EmbeddingProviderPort(Protocol):
+    """Embedding 向量计算端口。"""
+    async def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+class RerankerProviderPort(Protocol):
+    """Reranker 重排序端口。"""
+    async def rerank(self, query: str, documents: list[str]) -> list[float]: ...
+
+
