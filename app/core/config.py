@@ -108,3 +108,58 @@ def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConf
         ctaText=cta_text,
         outputDir=str(Path(os.getenv("OUTPUT_DIR", "./output")).resolve()),
     )
+
+
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class KnowledgeSettings:
+    sources_dir: Path = field(default_factory=lambda: (OUTPUT_DIR / "knowledge" / "sources").resolve())
+    documents_dir: Path = field(default_factory=lambda: (OUTPUT_DIR / "knowledge" / "documents").resolve())
+    embedding_dimensions: int = 1536
+    parent_chunk_max_tokens: int = 1200
+    child_chunk_max_tokens: int = 350
+    child_chunk_overlap_tokens: int = 50
+    bm25_top_k: int = 20
+    vector_top_k: int = 20
+    rrf_k: int = 60
+    reranker_top_k: int = 8
+    evidence_threshold: float = 0.55
+    context_token_budget: int = 6000
+    embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
+    embedding_base_url: str = field(default_factory=lambda: os.getenv("EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
+    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"))
+    ocr_api_key: str = field(default_factory=lambda: os.getenv("OCR_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
+    ocr_base_url: str = field(default_factory=lambda: os.getenv("OCR_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
+    ocr_model: str = field(default_factory=lambda: os.getenv("OCR_MODEL", "gpt-4o-mini"))
+    reranker_api_key: str = field(default_factory=lambda: os.getenv("RERANKER_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
+    reranker_base_url: str = field(default_factory=lambda: os.getenv("RERANKER_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
+    reranker_model: str = field(default_factory=lambda: os.getenv("RERANKER_MODEL", "gpt-4o-mini"))
+
+
+def get_knowledge_settings() -> KnowledgeSettings:
+    load_env_file()
+    sources_dir = Path(os.getenv("KNOWLEDGE_SOURCES_DIR", OUTPUT_DIR / "knowledge" / "sources")).resolve()
+    documents_dir = Path(os.getenv("KNOWLEDGE_DOCUMENTS_DIR", OUTPUT_DIR / "knowledge" / "documents")).resolve()
+    embedding_dims = parse_positive_int(os.getenv("EMBEDDING_DIMENSIONS"), 1536)
+    rrf_k = parse_positive_int(os.getenv("KNOWLEDGE_RRF_K"), 60)
+
+    try:
+        threshold = float(os.getenv("KNOWLEDGE_EVIDENCE_THRESHOLD", "0.55"))
+        if threshold <= 0 or threshold >= 1:
+            threshold = 0.55
+    except ValueError:
+        threshold = 0.55
+
+    return KnowledgeSettings(
+        sources_dir=sources_dir,
+        documents_dir=documents_dir,
+        embedding_dimensions=embedding_dims,
+        rrf_k=rrf_k,
+        evidence_threshold=threshold,
+        parent_chunk_max_tokens=parse_positive_int(os.getenv("KNOWLEDGE_PARENT_CHUNK_MAX_TOKENS"), 1200),
+        child_chunk_max_tokens=parse_positive_int(os.getenv("KNOWLEDGE_CHILD_CHUNK_MAX_TOKENS"), 350),
+        context_token_budget=parse_positive_int(os.getenv("KNOWLEDGE_CONTEXT_TOKEN_BUDGET"), 6000),
+    )
+

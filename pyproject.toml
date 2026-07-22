@@ -28,6 +28,11 @@ dependencies = [
   "sqlalchemy>=2.0",
   "alembic>=1.13",
   "asyncpg>=0.30",
+  "pgvector>=0.4",
+  "python-multipart>=0.0.20",
+  "pymupdf4llm>=0.0.27",
+  "markdownify>=1.2",
+  "tiktoken>=0.12",
 ]
 
 [tool.uv]
