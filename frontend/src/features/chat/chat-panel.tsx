@@ -2,6 +2,7 @@ import {useState, useRef, useEffect} from "react";
 import {useQuery, useQueryClient} from "@tanstack/react-query";
 import {
     Send,
+    BookMarked,
     Globe,
     Loader2,
     Sparkles,
@@ -151,10 +152,36 @@ export function ChatPanel() {
     const [streamingSourceList, setStreamingSourceList] = useState<any | null>(null);
     const [streamingError, setStreamingError] = useState<string | null>(null);
 
+    // RAG 相关状态
+    const [knowledgeMode, setKnowledgeMode] = useState<"normal" | "strict">("normal");
+    const [ragSources, setRagSources] = useState<Array<{label: string; title: string; sourceType: string; sourceUrl?: string | null; contentSnippet?: string}> | null>(null);
+    const [ragFallback, setRagFallback] = useState<string | null>(null);
+
     // 编辑消息状态
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // 流式请求的中断控制器：切换会话或卸载组件时必须 abort，
+    // 否则旧流会继续向新会话的界面状态写入数据（串话 + 卸载后 setState）
+    const abortRef = useRef<AbortController | null>(null);
+    useEffect(() => {
+        return () => {
+            abortRef.current?.abort();
+            abortRef.current = null;
+        };
+    }, [currentChatId]);
+
+    // 切换会话时清空上一个会话遗留的流式状态（错误提示、半截文本等）
+    useEffect(() => {
+        setIsStreaming(false);
+        setAgentStatus(null);
+        setStreamingText("");
+        setStreamingSourceList(null);
+        setStreamingError(null);
+        setRagSources(null);
+        setRagFallback(null);
+    }, [currentChatId]);
 
     // 获取消息历史
     const {data: messages = [], isLoading} = useQuery<Message[]>({
@@ -245,6 +272,8 @@ export function ChatPanel() {
         setAgentStatus("发送中...");
         setStreamingSourceList(null);
         setStreamingError(null);
+        setRagSources(null);
+        setRagFallback(null);
 
         let activeChatId = currentChatId;
         if (!activeChatId) {
@@ -282,10 +311,14 @@ export function ChatPanel() {
         // 立即更新 activeLeafMessageId 为 temp-user-msg，确保 getActivePathAndInit 能够将其追踪并渲染上屏
         setActiveLeafMessageId("temp-user-msg");
 
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         try {
             await streamPost(`/api/chats/${activeChatId}/messages/stream`, {
                 content,
-                parentMessageId
+                parentMessageId,
+                knowledgeMode,
             }, {
                 onEvent: (event, data) => {
                     if (event === "agent.status") {
@@ -306,6 +339,12 @@ export function ChatPanel() {
                     } else if (event === "source.list.completed") {
                         setAgentStatus(null);
                         setStreamingSourceList(data);
+                    } else if (event === "rag.sources") {
+                        // RAG 私有资料来源
+                        setRagSources(data.sources || []);
+                        if (data.fallbackNotice) setRagFallback(data.fallbackNotice);
+                    } else if (event === "rag.fallback") {
+                        setRagFallback(data.reason || "私有资料证据不足，使用了其他知识来源");
                     } else if (event === "run.failed") {
                         setAgentStatus(null);
                         setStreamingError(data.message || "请求处理失败");
@@ -313,30 +352,48 @@ export function ChatPanel() {
                 },
                 onError: (err) => {
                     setStreamingError(err.message);
-                    setIsStreaming(false);
                     setAgentStatus(null);
                 },
-            });
-        } catch {
-            // onError 已处理
+            }, controller.signal);
+        } catch (err) {
+            // 主动中断静默返回；其余错误已由 onError 写入 streamingError
+            if (!(err instanceof DOMException && err.name === "AbortError")) {
+                console.error("流式请求失败:", err);
+            }
         } finally {
+            if (abortRef.current === controller) {
+                abortRef.current = null;
+            }
             setIsStreaming(false);
             setAgentStatus(null);
             setStreamingText("");
             setStreamingSourceList(null);
+            setRagSources(null);
+            setRagFallback(null);
 
-            // 刷新对话列表，保证如果对话名在后端被自动重命名（例如第一条消息），前端能同步拉取到最新名字
-            queryClient.invalidateQueries({ queryKey: ["chats"] });
+            // 被中断说明用户已切换会话：不再刷新旧会话数据、不覆盖新会话的叶子节点
+            if (!controller.signal.aborted) {
+                // 刷新对话列表，保证如果对话名在后端被自动重命名（例如第一条消息），前端能同步拉取到最新名字
+                queryClient.invalidateQueries({ queryKey: ["chats"] });
 
-            // 强制更新消息历史列表，更新 activeLeafMessageId 为最新节点
-            const updatedMessages = await queryClient.fetchQuery<Message[]>({
-                queryKey: ["messages", activeChatId],
-                queryFn: () => apiGet(`/api/chats/${activeChatId}/messages`),
-            });
-
-            if (updatedMessages.length > 0) {
-                const lastMsg = updatedMessages[updatedMessages.length - 1];
-                setActiveLeafMessageId(lastMsg.messageId);
+                // 强制更新消息历史列表，更新 activeLeafMessageId 为最新节点
+                try {
+                    const updatedMessages = await queryClient.fetchQuery<Message[]>({
+                        queryKey: ["messages", activeChatId],
+                        queryFn: () => apiGet(`/api/chats/${activeChatId}/messages`),
+                    });
+                    if (updatedMessages.length > 0) {
+                        const lastMsg = updatedMessages[updatedMessages.length - 1];
+                        setActiveLeafMessageId(lastMsg.messageId);
+                    }
+                } catch (refreshErr) {
+                    // 拉取失败时回滚乐观插入的临时消息，避免幽灵用户消息残留
+                    console.error("刷新消息历史失败:", refreshErr);
+                    queryClient.setQueryData<Message[]>(["messages", activeChatId], (prev = []) =>
+                        prev.filter((m) => m.messageId !== "temp-user-msg"),
+                    );
+                    setStreamingError((prev) => prev ?? "消息已发送，但刷新历史失败，请手动刷新");
+                }
             }
         }
     };
@@ -441,8 +498,8 @@ export function ChatPanel() {
                         })
                     )}
 
-                    {/* 实时流式响应 */}
-                    {isStreaming && (
+                    {/* 实时流式响应；出错后卡片保留展示错误，直到下一次发送 */}
+                    {(isStreaming || streamingError) && (
                         <div className="flex justify-start w-full">
                             <Card className="max-w-[calc(100%-3rem)] w-full border-none bg-card shadow-sm">
                                 <CardContent className="p-3.5">
@@ -489,6 +546,21 @@ export function ChatPanel() {
 
             {/* ── 底部输入框 ── */}
             <div className="shrink-0 border-t bg-card p-4 fixed-bottom-input-area">
+                {/* knowledgeMode 选择器 */}
+                <div className="flex items-center gap-2 mb-2">
+                    <button
+                        onClick={() => setKnowledgeMode(knowledgeMode === "normal" ? "strict" : "normal")}
+                        className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                            knowledgeMode === "strict"
+                                ? "bg-primary/10 border-primary/30 text-primary font-medium"
+                                : "border-border/40 text-muted-foreground hover:text-foreground"
+                        }`}
+                        title={knowledgeMode === "strict" ? "当前：仅依据私有资料（点击切换）" : "当前：普通创作模式（点击切换）"}
+                    >
+                        <BookMarked className="h-2.5 w-2.5" />
+                        {knowledgeMode === "strict" ? "仅私有资料" : "普通模式"}
+                    </button>
+                </div>
                 <PromptInput
                     value={inputText}
                     onChange={setInputText}
@@ -632,6 +704,14 @@ function MessageBubble({
                                 >
                                     {msg.content || ""}
                                 </ReactMarkdown>
+                                {/* RAG 私有资料来源展示 */}
+                                {!isUser && msg.payload?.ragSources && (
+                                    <SourceList
+                                        sources={msg.payload.ragSources}
+                                        fallbackNotice={msg.payload.ragFallback}
+                                        traceId={msg.payload.traceId}
+                                    />
+                                )}
                             </div>
                         )}
                         {msg.messageType === "error" && (
