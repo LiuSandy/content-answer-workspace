@@ -84,6 +84,7 @@ export interface TestRetrievalResponse {
     documentId: string;
     title: string;
     sourceUrl?: string;
+    headingPath?: string;
     text?: string;
     score?: number;
     label?: string;
@@ -92,16 +93,24 @@ export interface TestRetrievalResponse {
     chunk_id: string;
     document_id: string;
     retrieval_source: string;
+    heading_path?: string;
     rank: number;
     bm25_score: number;
     vector_score: number;
     rrf_score: number;
-    rerank_score: number;
+    rerank_score: number | null;
     included_in_context: boolean;
     citation_label?: string;
     context_snapshot?: string;
   }>;
   indexVersion?: string;
+  pipelineSteps?: Array<{
+    step: string;
+    title: string;
+    status: "ok" | "skipped" | "error" | "blocked";
+    durationMs: number;
+    detail: string;
+  }>;
 }
 
 export async function testKnowledgeRetrieval(

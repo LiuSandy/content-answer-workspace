@@ -24,6 +24,7 @@ from app.prompts.registry import prompt_registry
 from app.application.knowledge.context_builder import ContextBuilder, ContextBlock
 import logging
 import re
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,34 @@ class RetrievalResult:
     fallback_reason: str | None = None
     # 检索链路的降级说明（如向量/rerank 不可用），供 trace 与前端展示
     degradation_notes: list[str] = field(default_factory=list)
+    # 检索各阶段的执行记录（阶段名/状态/耗时/说明），供测试面板可视化流程
+    pipeline_steps: list[dict] = field(default_factory=list)
+
+
+class _PipelineRecorder:
+    """记录检索流水线各阶段的状态、耗时与说明。
+
+    单独封装是为了让 retrieve() 主流程只写一行记录调用，
+    不被计时样板代码淹没；status 取值：ok / skipped / error / blocked。
+    """
+
+    def __init__(self) -> None:
+        self.steps: list[dict] = []
+        self._t0 = time.monotonic()
+
+    def mark(self) -> None:
+        """重置计时起点；在每个阶段开始前调用。"""
+        self._t0 = time.monotonic()
+
+    def add(self, step: str, title: str, status: str, detail: str) -> None:
+        self.steps.append({
+            "step": step,
+            "title": title,
+            "status": status,
+            "durationMs": int((time.monotonic() - self._t0) * 1000),
+            "detail": detail,
+        })
+        self._t0 = time.monotonic()
 
 
 class KnowledgeRetrievalService:
@@ -268,69 +297,118 @@ class KnowledgeRetrievalService:
         if request.mode == "off":
             return RetrievalResult(False, "", [], [], request.query, fallback_reason="Retrieval mode is off")
 
+        recorder = _PipelineRecorder()
         degradation_notes: list[str] = []
-        rewritten_query = await self._rewrite_query(request.query)
 
+        # ── 阶段 1：查询改写 ──
+        recorder.mark()
+        rewritten_query = await self._rewrite_query(request.query)
+        if rewritten_query != request.query:
+            recorder.add("query_rewrite", "查询改写", "ok", f"「{request.query}」→「{rewritten_query}」")
+        else:
+            recorder.add("query_rewrite", "查询改写", "skipped", "改写未生效或与原查询一致，使用原始查询")
+
+        # ── 阶段 2：查询向量化 ──
         query_vec: list[float] = []
         try:
             embed_provider = get_embedding_provider()
             vecs = await embed_provider.embed([rewritten_query])
             if vecs:
                 query_vec = vecs[0]
+            recorder.add("embedding", "查询向量化", "ok", f"生成 {len(query_vec)} 维查询向量")
         except EmbeddingNotConfiguredError as e:
             logger.warning("Embedding 未配置，向量检索不可用: %s", e)
             degradation_notes.append("embedding_not_configured")
+            recorder.add("embedding", "查询向量化", "skipped", "Embedding 未配置，向量检索不可用")
         except Exception as e:
             logger.error(f"Embedding failed: {e}")
             degradation_notes.append("embedding_error")
+            recorder.add("embedding", "查询向量化", "error", "Embedding 调用失败，向量检索不可用")
 
+        # ── 阶段 3：双路召回 ──
         bm25_hits: list[SearchHit] = []
         vector_hits: list[SearchHit] = []
 
         try:
             bm25_hits = await self._search_bm25(rewritten_query, request.scope, request.top_k_bm25)
+            recorder.add("bm25_search", "BM25 全文召回", "ok", f"命中 {len(bm25_hits)} 条（Top {request.top_k_bm25}）")
         except Exception as e:
             logger.error(f"BM25 failed: {e}")
             degradation_notes.append("bm25_error")
+            recorder.add("bm25_search", "BM25 全文召回", "error", "BM25 查询失败，该路召回为空")
 
         if query_vec:
             try:
                 vector_hits = await self._search_vector(query_vec, request.scope, request.top_k_vector)
+                recorder.add("vector_search", "向量相似召回", "ok", f"命中 {len(vector_hits)} 条（Top {request.top_k_vector}）")
             except Exception as e:
                 logger.error(f"Vector search failed: {e}")
                 degradation_notes.append("vector_error")
+                recorder.add("vector_search", "向量相似召回", "error", "向量查询失败，该路召回为空")
+        else:
+            recorder.add("vector_search", "向量相似召回", "skipped", "无查询向量，跳过向量召回")
 
+        # ── 阶段 4：RRF 融合 ──
         settings = get_knowledge_settings()
         fused = compute_rrf(bm25_hits, vector_hits, k=settings.rrf_k)
         top_n = fused[:request.reranker_top_k]
+        both_count = sum(1 for item in fused if item["source"] == "hybrid")
+        recorder.add(
+            "rrf_fusion", "RRF 融合排序", "ok",
+            f"两路去重融合为 {len(fused)} 条（双路同时命中 {both_count} 条），取 Top {request.reranker_top_k} 进入重排",
+        )
 
         if not top_n:
+            recorder.add("evidence", "证据判定", "blocked", "两路召回均为空，返回无证据")
             return RetrievalResult(
                 False, "", [], [], rewritten_query,
                 fallback_reason="No documents retrieved",
                 degradation_notes=degradation_notes,
+                pipeline_steps=recorder.steps,
             )
 
+        # ── 阶段 5：LLM 重排 ──
         has_evidence, rerank_notes = await self._rerank_or_fallback(
             rewritten_query, top_n, request.evidence_threshold, request.mode
         )
         degradation_notes.extend(rerank_notes)
         rerank_unavailable = bool(rerank_notes)
+        if rerank_unavailable:
+            recorder.add("rerank", "LLM 重排打分", "error", f"重排不可用（{'; '.join(rerank_notes)}），保持 RRF 排序")
+        else:
+            top_score = max((item['rerank_score'] for item in top_n), default=0.0)
+            recorder.add("rerank", "LLM 重排打分", "ok", f"对 {len(top_n)} 条候选逐条打分，最高 {top_score:.2f}")
 
+        # ── 阶段 6：证据阈值判定 ──
         if request.mode == "strict" and rerank_unavailable:
             # strict 模式承诺"只依据达到阈值的证据作答"；rerank 不可用时
             # 无法校验阈值，显式拒绝而非假装有证据。
+            recorder.add("evidence", "证据判定", "blocked", "strict 模式下重排不可用，无法校验阈值，拒绝作答")
             return RetrievalResult(
                 False, "", [], [], rewritten_query,
                 fallback_reason="Reranker unavailable; cannot verify evidence threshold in strict mode",
                 degradation_notes=degradation_notes,
+                pipeline_steps=recorder.steps,
             )
 
         if request.mode == "strict" and not has_evidence:
+            recorder.add(
+                "evidence", "证据判定", "blocked",
+                f"最高重排分未达阈值 {request.evidence_threshold}，strict 模式拒绝作答",
+            )
             return RetrievalResult(
                 False, "", [], [], rewritten_query,
                 fallback_reason="No evidence above threshold in strict mode",
                 degradation_notes=degradation_notes,
+                pipeline_steps=recorder.steps,
+            )
+
+        if rerank_unavailable:
+            recorder.add("evidence", "证据判定", "ok", "重排不可用，降级为『有召回即视为有证据』")
+        else:
+            recorder.add(
+                "evidence", "证据判定", "ok",
+                f"阈值 {request.evidence_threshold}：{'达标，判定有证据' if has_evidence else '未达标，判定证据不足'}",
             )
 
         # 取 parent 上下文
@@ -406,6 +484,7 @@ class KnowledgeRetrievalService:
                     "documentId": item['doc_id'],
                     "title": doc_meta.get('title', 'Unknown Document'),
                     "sourceUrl": doc_meta.get('source_url'),
+                    "headingPath": item.get('heading_path') or "",
                     "text": content_to_use[:300],
                     "score": item['rerank_score'] if item['rerank_score'] is not None else item['rrf_score'],
                     "label": label
@@ -415,6 +494,7 @@ class KnowledgeRetrievalService:
                 "chunk_id": item['chunk_id'],
                 "document_id": item['doc_id'],
                 "retrieval_source": item['source'],
+                "heading_path": item.get('heading_path') or "",
                 "rank": item.get('rrf_rank', 0),
                 "bm25_score": item.get('bm25_score', 0.0),
                 "vector_score": item.get('vector_score', 0.0),
@@ -425,6 +505,13 @@ class KnowledgeRetrievalService:
                 "context_snapshot": content_to_use[:200]
             })
 
+        # ── 阶段 7：上下文组装 ──
+        recorder.add(
+            "context", "上下文组装", "ok",
+            f"父块回填后按 {request.context_token_budget} token 预算裁剪，"
+            f"纳入 {included_count}/{len(top_n)} 块，生成 [S1]~[S{included_count}] 引用标签",
+        )
+
         return RetrievalResult(
             has_evidence=has_evidence,
             context_text=context_text,
@@ -433,4 +520,5 @@ class KnowledgeRetrievalService:
             rewritten_query=rewritten_query,
             fallback_reason="; ".join(degradation_notes) if degradation_notes else None,
             degradation_notes=degradation_notes,
+            pipeline_steps=recorder.steps,
         )

@@ -78,7 +78,8 @@ class LLMRerankerProvider:
             logger.warning("Reranker 输出无法解析为分数: %r", content[:100])
             return 0.5
         except Exception as e:
-            logger.warning(f"Reranker error: {e}")
+            # repr 而非 str：TimeoutError 等异常 str 为空，日志会丢失错误类型
+            logger.warning("Reranker error: %r", e)
             return 0.5
 
     async def rerank(self, query: str, documents: list[str]) -> list[float]:

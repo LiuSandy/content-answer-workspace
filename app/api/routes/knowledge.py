@@ -462,5 +462,6 @@ async def test_knowledge_retrieval(
             "sources": result.sources,
             "traceHits": result.trace_hits,
             "indexVersion": result.index_version,
+            "pipelineSteps": result.pipeline_steps,
         }
     }
