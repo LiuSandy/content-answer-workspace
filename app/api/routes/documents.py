@@ -139,8 +139,9 @@ async def create_checkpoint(
                 {"ok": False, "error": {"code": "document_conflict", "message": str(e)}},
                 status_code=409,
             )
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        except Exception:
+            logger.exception("Document version operation failed")
+            return JSONResponse({"ok": False, "error": "操作失败，请稍后重试"}, status_code=400)
     return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
 
 
@@ -167,8 +168,9 @@ async def restore_version(
                 {"ok": False, "error": {"code": "document_conflict", "message": str(e)}},
                 status_code=409,
             )
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        except Exception:
+            logger.exception("Document version operation failed")
+            return JSONResponse({"ok": False, "error": "操作失败，请稍后重试"}, status_code=400)
     return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
 
 
@@ -225,7 +227,7 @@ async def generate_answer_stream(
 
         except Exception as e:
             logger.error("Answer generation stream failed: %s", e)
-            yield sse_named_event("run.failed", {"error_code": "generation_failed", "message": str(e)})
+            yield sse_named_event("run.failed", {"error_code": "generation_failed", "message": "生成失败，请稍后重试"})
 
     return make_sse_response(_event_generator())
 
@@ -260,7 +262,7 @@ async def refine_document_stream(
 
         except Exception as e:
             logger.error("Inline refinement stream failed: %s", e)
-            yield sse_named_event("run.failed", {"error_code": "refine_failed", "message": str(e)})
+            yield sse_named_event("run.failed", {"error_code": "refine_failed", "message": "精修失败，请稍后重试"})
 
     return make_sse_response(_event_generator())
 
@@ -297,6 +299,6 @@ async def rewrite_document_stream(
 
         except Exception as e:
             logger.error("Full rewrite stream failed: %s", e)
-            yield sse_named_event("run.failed", {"error_code": "rewrite_failed", "message": str(e)})
+            yield sse_named_event("run.failed", {"error_code": "rewrite_failed", "message": "重写失败，请稍后重试"})
 
     return make_sse_response(_event_generator())

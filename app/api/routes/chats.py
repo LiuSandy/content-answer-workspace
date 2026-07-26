@@ -369,7 +369,7 @@ async def send_message_stream(
 
         except Exception as e:
             logger.error("Chat agent stream execution failed: %s", e)
-            err_data = {"error_code": "agent_failed", "message": str(e)}
+            err_data = {"error_code": "agent_failed", "message": "对话执行失败，请稍后重试"}
             
             # 尝试写入错误消息到数据库
             try:
