@@ -164,7 +164,9 @@ class KnowledgeRetrievalService:
         """BM25 全文召回；走 ParadeDB pg_search 的 bm25 索引。
 
         计划明确禁止用 ts_rank_cd 静默替代（'simple' 分词对中文完全失效）。
-        查询词先清洗掉 pg_search 查询语法字符，避免用户输入触发解析错误。
+        使用 ||| （match disjunction）而非 @@@：后者把查询串交给语法解析器
+        当整体短语处理，与 chinese_compatible 的单字 token 无法匹配；
+        ||| 会按字段 tokenizer 切分后 OR 匹配，再靠 BM25 评分排序保证相关性。
         """
         sanitized = _sanitize_bm25_query(query)
         if not sanitized:
@@ -174,7 +176,7 @@ class KnowledgeRetrievalService:
             SELECT id::text, content, document_id::text, heading_path, parent_chunk_id::text,
                    paradedb.score(id) AS score
             FROM knowledge_chunks
-            WHERE content @@@ :query
+            WHERE content ||| :query
               AND chunk_type = 'child'
               AND deleted_at IS NULL
               AND workspace_id = :workspace_id
