@@ -33,6 +33,15 @@ version: "1.0.0"
 content: "样式规范文字"
 """, encoding="utf-8")
 
+    # 平台包（content-only 片段格式）
+    platforms_dir = prompts_dir / "platforms"
+    platforms_dir.mkdir()
+    (platforms_dir / "zhihu.yml").write_text("""
+id: platform.zhihu
+version: "1.0.0"
+content: "知乎平台创作规范初始内容"
+""", encoding="utf-8")
+
     # answer_generate
     writing_dir = prompts_dir / "writing"
     writing_dir.mkdir()
@@ -106,6 +115,30 @@ def test_update_prompt_endpoint_success() -> None:
         platform="p",
     )
     assert "更新后的系统提示词" in rendered.messages[0].content
+
+
+def test_get_fragment_prompt_endpoint() -> None:
+    # 平台包是 content-only 片段格式，应以 kind=fragment 返回 content 内容
+    client = TestClient(app)
+    response = client.get("/api/prompts/platform.zhihu")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["data"]["kind"] == "fragment"
+    assert "知乎平台创作规范初始内容" in data["data"]["systemPrompt"]
+
+
+def test_update_fragment_prompt_endpoint() -> None:
+    client = TestClient(app)
+    response = client.put(
+        "/api/prompts/platform.zhihu",
+        json={"systemPrompt": "更新后的知乎平台规范", "userPrompt": ""},
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+    # 验证 Registry 内存状态已刷新，render_fragment 立即拿到新内容
+    assert "更新后的知乎平台规范" in prompt_registry.render_fragment("platform.zhihu")
 
 
 def test_update_prompt_endpoint_invalid_payload() -> None:

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,56 +18,81 @@ interface PromptTemplatesDialogProps {
 
 type PromptData = {
   id: string;
+  kind: "messages" | "fragment";
   systemPrompt: string;
   userPrompt: string;
   filePath: string;
 };
 
+/**
+ * 提示词分层 Tab 配置。
+ * 最终发给大模型的 system prompt = 通用原则 + 目标平台包 + 风格规则 + 字数约束，
+ * 这里暴露前两层供用户编辑；新增平台包时在此追加一项即可，无需改其他代码。
+ */
+const PROMPT_TABS: Array<{ id: string; label: string; hint: string }> = [
+  { id: "writing.answer_generate", label: "通用原则", hint: "所有平台共用的创作心智与避坑约束" },
+  { id: "platform.zhihu", label: "知乎", hint: "知乎平台的格式规范、结构模式与雷区" },
+  { id: "platform.xiaohongshu", label: "小红书", hint: "小红书平台的格式规范、结构模式与雷区" },
+  { id: "platform.default", label: "其他平台", hint: "未单独适配平台的通用兜底规范" },
+];
+
 export function PromptTemplatesDialog({
   open,
   onOpenChange,
 }: PromptTemplatesDialogProps) {
-  const promptId = "writing.answer_generate";
+  const [activeTabId, setActiveTabId] = useState<string>(PROMPT_TABS[0].id);
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [systemPrompt, setSystemPrompt] = useState<string>("");
+  const [loadedPrompt, setLoadedPrompt] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [successMsg, setSuccessMsg] = useState<string>("");
 
-  // 当弹窗打开时，从后端拉取系统提示词内容
+  const isDirty = systemPrompt !== loadedPrompt;
+
+  const fetchPrompt = useCallback(async (promptId: string) => {
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+    setSystemPrompt("");
+    setLoadedPrompt("");
+    try {
+      const res = await apiGet<PromptData>(`/api/prompts/${promptId}`);
+      setSystemPrompt(res.systemPrompt || "");
+      setLoadedPrompt(res.systemPrompt || "");
+    } catch (err: any) {
+      console.error("Failed to load prompt template:", err);
+      setErrorMsg(err.message || "拉取提示词模板失败，请检查后端服务。");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 弹窗打开时加载当前 Tab 对应的提示词
   useEffect(() => {
     if (!open) return;
+    fetchPrompt(activeTabId);
+  }, [open, activeTabId, fetchPrompt]);
 
-    const fetchPrompt = async () => {
-      setLoading(true);
-      setErrorMsg("");
-      setSuccessMsg("");
-      setSystemPrompt("");
-      try {
-        const res = await apiGet<PromptData>(
-          `/api/prompts/${promptId}`
-        );
-        setSystemPrompt(res.systemPrompt || "");
-      } catch (err: any) {
-        console.error("Failed to load prompt template:", err);
-        setErrorMsg(err.message || "拉取提示词模板失败，请检查后端服务。");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPrompt();
-  }, [open]);
+  const handleSwitchTab = (tabId: string) => {
+    if (tabId === activeTabId) return;
+    // 有未保存修改时切换需确认，防止误丢编辑内容
+    if (isDirty && !window.confirm("当前提示词有未保存的修改，切换后将丢失，确定切换吗？")) {
+      return;
+    }
+    setActiveTabId(tabId);
+  };
 
   const handleSave = async () => {
     setSaving(true);
     setErrorMsg("");
     setSuccessMsg("");
     try {
-      await apiPut(`/api/prompts/${promptId}`, {
+      await apiPut(`/api/prompts/${activeTabId}`, {
         systemPrompt,
         userPrompt: "",
       });
+      setLoadedPrompt(systemPrompt);
       setSuccessMsg("提示词修改保存成功，已实时生效！");
       setTimeout(() => setSuccessMsg(""), 3000);
     } catch (err: any) {
@@ -77,6 +102,8 @@ export function PromptTemplatesDialog({
       setSaving(false);
     }
   };
+
+  const activeTab = PROMPT_TABS.find((t) => t.id === activeTabId) ?? PROMPT_TABS[0];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -91,11 +118,32 @@ export function PromptTemplatesDialog({
         <DialogHeader className="shrink-0">
           <DialogTitle className="text-lg font-bold">提示词管理</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground mt-1">
-            编辑 AI 创作所使用的核心系统提示词 (System Prompt) 模板文本。
+            最终提示词按「通用原则 + 目标平台包 + 风格规则 + 字数约束」分层拼接；此处编辑前两层。
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 relative flex flex-col mt-4">
+        {/* ── 分层 Tab 切换 ── */}
+        <div className="shrink-0 mt-3 flex items-center gap-1.5 border-b border-zinc-200 dark:border-zinc-800 pb-2">
+          {PROMPT_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => handleSwitchTab(tab.id)}
+              disabled={saving || loading}
+              className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                tab.id === activeTabId
+                  ? "bg-indigo-600 text-white font-semibold"
+                  : "text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+          <span className="ml-2 text-[10px] text-muted-foreground truncate">
+            {activeTab.hint}
+          </span>
+        </div>
+
+        <div className="flex-1 min-h-0 relative flex flex-col mt-3">
           {loading ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/50">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -121,7 +169,6 @@ export function PromptTemplatesDialog({
 
               {/* 编辑区 */}
               <div className="flex-1 min-h-0 flex flex-col">
-                {/* 系统提示词 */}
                 <div className="flex-1 flex flex-col min-h-0">
                   <div className="flex-1 min-h-0 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-950 p-4 flex flex-col">
                     <textarea
@@ -130,7 +177,7 @@ export function PromptTemplatesDialog({
                       disabled={saving}
                       className="w-full flex-1 bg-transparent resize-none border-0 text-zinc-100 font-mono text-xs leading-relaxed outline-none focus:outline-none focus:ring-0 overflow-y-auto no-scrollbar"
                       style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-                      placeholder="输入系统提示词模板..."
+                      placeholder="输入提示词内容..."
                     />
                   </div>
                 </div>
@@ -140,6 +187,11 @@ export function PromptTemplatesDialog({
         </div>
 
         <DialogFooter className="shrink-0 border-t pt-4 mt-4 gap-2 flex items-center justify-end">
+          {isDirty && !saving && (
+            <span className="mr-auto text-[10px] text-amber-600 dark:text-amber-400">
+              有未保存的修改
+            </span>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -152,7 +204,7 @@ export function PromptTemplatesDialog({
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={loading || saving || !(systemPrompt || "").trim()}
+            disabled={loading || saving || !(systemPrompt || "").trim() || !isDirty}
             className="text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             {saving ? (

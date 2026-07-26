@@ -127,6 +127,24 @@ class PromptRegistry:
         """判断 Prompt 是否已注册；供调用方做兜底选择（如平台包回退 default）。"""
         return prompt_id in self._prompts
 
+    def get_source_path(self, prompt_id: str) -> Path:
+        """返回 Prompt 的源 YAML 文件路径；供编辑接口读写文件用。"""
+        if prompt_id not in self._sources:
+            raise PromptNotFoundError(prompt_id)
+        return Path(self._sources[prompt_id])
+
+    def reload(self) -> None:
+        """重新从磁盘加载全部 Prompt（编辑保存后调用），完成后恢复冻结状态。"""
+        if not self._sources:
+            return
+        first_source = Path(next(iter(self._sources.values())))
+        prompts_dir = first_source.parent.parent
+        self._frozen = False
+        self._prompts.clear()
+        self._sources.clear()
+        self.load_from_dir(prompts_dir)
+        self.freeze()
+
     def render_fragment(self, prompt_id: str, **variables: Any) -> str:
         """渲染 content-only 共享片段并返回纯文本。
 
