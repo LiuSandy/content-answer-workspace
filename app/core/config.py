@@ -136,6 +136,13 @@ class KnowledgeSettings:
     reranker_api_key: str = field(default_factory=lambda: os.getenv("RERANKER_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
     reranker_base_url: str = field(default_factory=lambda: os.getenv("RERANKER_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
     reranker_model: str = field(default_factory=lambda: os.getenv("RERANKER_MODEL", "gpt-4o-mini"))
+    mineru_api_key: str = field(default_factory=lambda: os.getenv("MINERU_API_KEY", ""), repr=False)
+    mineru_api_base_url: str = field(default_factory=lambda: os.getenv("MINERU_API_BASE_URL", "https://mineru.net/api/v4"))
+    mineru_model_version: str = field(default_factory=lambda: os.getenv("MINERU_MODEL_VERSION", "vlm"))
+    pdf_max_pages_per_chunk: int = 150
+    pdf_max_bytes_per_chunk: int = 150 * 1024 * 1024
+    # 单文件上传上限；防止超大文件全量读入内存造成 DoS
+    max_upload_bytes: int = 50 * 1024 * 1024
 
 
 def get_knowledge_settings() -> KnowledgeSettings:
@@ -161,5 +168,6 @@ def get_knowledge_settings() -> KnowledgeSettings:
         parent_chunk_max_tokens=parse_positive_int(os.getenv("KNOWLEDGE_PARENT_CHUNK_MAX_TOKENS"), 1200),
         child_chunk_max_tokens=parse_positive_int(os.getenv("KNOWLEDGE_CHILD_CHUNK_MAX_TOKENS"), 350),
         context_token_budget=parse_positive_int(os.getenv("KNOWLEDGE_CONTEXT_TOKEN_BUDGET"), 6000),
+        max_upload_bytes=parse_positive_int(os.getenv("KNOWLEDGE_MAX_UPLOAD_BYTES"), 50 * 1024 * 1024),
     )
 

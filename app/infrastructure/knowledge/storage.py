@@ -39,6 +39,19 @@ class KnowledgeStorage:
             return None
         return target_path.read_text(encoding="utf-8")
 
+    def read_source(self, source_path: str | Path) -> bytes | None:
+        """读取已落盘的原始上传文件；供重新解析（reconvert）使用。
+
+        校验路径必须位于 sources_dir 之内——source_path 来自数据库，
+        若被篡改成任意路径不应导致越权读取。
+        """
+        target_path = Path(source_path).resolve()
+        if not target_path.is_relative_to(self.sources_dir):
+            raise ValueError(f"Source path escapes sources dir: {source_path}")
+        if not target_path.exists():
+            return None
+        return target_path.read_bytes()
+
     def compute_hash(self, content: bytes | str) -> str:
         if isinstance(content, str):
             content = content.encode("utf-8")
