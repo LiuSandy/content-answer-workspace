@@ -14,6 +14,7 @@ from ..errors import DocumentConflictError
 from ..domain.dto import LLMRequest
 from ..infrastructure.llm.registry import llm_provider_registry
 from ..persistence.models.documents import AIOperation, VERSION_TYPE_INITIAL_GENERATION
+from ..prompts.composer import compose_writing_prompt
 from ..prompts.registry import prompt_registry
 
 from ..persistence.models.content import SourceItem
@@ -40,48 +41,14 @@ async def generate_answer_workflow(
     if source_item and source_item.raw_metadata:
         content_mode = source_item.raw_metadata.get("content_mode") or "answer"
 
-    # 2. 渲染 Prompt
+    # 2. 装配 Prompt：通用写作原则 + 平台包 + 风格规则 + 字数约束
     try:
-        rendered = prompt_registry.render(
+        rendered = compose_writing_prompt(
             "writing.answer_generate",
+            platform=platform,
+            style_rules=style_rules,
+            word_count=word_count,
         )
-        
-        # 动态拼接 platform 与 style_rules 到 system 提示词中
-        from jinja2 import Template
-        for msg in rendered.messages:
-            if msg.role == "system":
-                # 从 prompts/shared/platform_header.yml 读取人设提示词
-                header = ""
-                header_tpl = prompt_registry._prompts.get("shared.platform_header")
-                if header_tpl:
-                    header = Template(header_tpl.content).render(platform=platform) + "\n\n"
-                    
-                original = msg.content
-                
-                # 获取默认的风格规范
-                shared_prompt = prompt_registry._prompts.get("shared.style_rules")
-                base_rules = shared_prompt.content.strip() if shared_prompt else ""
-                
-                # 如果前端传入了特定的风格，则在默认规范后追加
-                if style_rules and style_rules.strip():
-                    rules = f"{base_rules}\n{style_rules.strip()}"
-                else:
-                    rules = base_rules
-                
-                # 从 prompts/shared/style_rules_footer.yml 读取风格尾部提示词
-                footer = ""
-                footer_tpl = prompt_registry._prompts.get("shared.style_rules_footer")
-                if footer_tpl and rules:
-                    footer = "\n\n" + Template(footer_tpl.content).render(rules=rules)
-                
-                # 从 prompts/shared/word_limit_footer.yml 读取字数限制尾部提示词
-                word_limit = ""
-                word_limit_tpl = prompt_registry._prompts.get("shared.word_limit_footer")
-                if word_limit_tpl:
-                    word_limit = "\n\n" + Template(word_limit_tpl.content).render(word_count=word_count)
-                
-                msg.content = f"{header}{original}{footer}{word_limit}"
-                break
 
         # 动态组装并渲染 user 提示词
         user_rendered = prompt_registry.render(

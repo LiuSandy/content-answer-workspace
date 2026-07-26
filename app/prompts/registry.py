@@ -123,6 +123,23 @@ class PromptRegistry:
             raise PromptNotFoundError(prompt_id)
         return self._prompts[prompt_id]
 
+    def has(self, prompt_id: str) -> bool:
+        """判断 Prompt 是否已注册；供调用方做兜底选择（如平台包回退 default）。"""
+        return prompt_id in self._prompts
+
+    def render_fragment(self, prompt_id: str, **variables: Any) -> str:
+        """渲染 content-only 共享片段并返回纯文本。
+
+        这是拼接场景（平台包、风格尾部等）的唯一公开入口——
+        业务代码不得访问 _prompts 私有属性自行渲染。
+        """
+        schema = self.get(prompt_id)
+        if schema.content is None:
+            raise PromptRenderError(
+                f"Prompt '{prompt_id}' has no 'content' field, cannot render as fragment"
+            )
+        return self._render_str(schema.content, dict(variables), prompt_id).strip()
+
     def list_ids(self) -> list[str]:
         return sorted(self._prompts.keys())
 
