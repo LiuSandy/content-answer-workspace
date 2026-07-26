@@ -4,7 +4,7 @@ State 只保存本次图运行需要的数据，不保存编辑器内容、历�
 """
 from __future__ import annotations
 
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 from langgraph.graph.message import add_messages
 from ...domain.dto import AgentError, ChatResponsePayload, CollectionRequest, ToolResult
 
@@ -23,6 +23,16 @@ class ChatAgentState(TypedDict):
     tool_result: ToolResult | None
     response_payload: ChatResponsePayload | None
     error: AgentError | None
+
+    # ── RAG 相关字段
+    workspace_id: str
+    owner_id: str
+    knowledge_mode: str  # "off" | "normal" | "strict"
+    rag_decision: bool | None
+    decision_reason: str | None
+    retrieval_result: Any | None  # RetrievalResult dataclass
+    trace_id: str | None
+    fallback_reason: str | None
 
 
 class ConversationState(TypedDict):

@@ -12,6 +12,8 @@ from ..nodes.tool_nodes import (
     normalize_and_persist_node,
     parse_url_node,
 )
+from ..nodes.retrieve_knowledge import retrieve_knowledge_node
+from ..nodes.knowledge_decision import make_knowledge_decision
 from ..state import ChatAgentState
 
 
@@ -23,7 +25,36 @@ def _route_after_intent(state: ChatAgentState) -> str:
     intent = state.get("intent", "chat")
     if intent == "parse_url":
         return "parse_url"
-    return "chat"
+    return "knowledge_decision"
+
+
+async def knowledge_decision_node(state: ChatAgentState) -> dict:
+    """决定是否需要 RAG 检索；决策逻辑唯一入口是 make_knowledge_decision。"""
+    mode = state.get("knowledge_mode", "normal")
+    needed, reason = make_knowledge_decision(state.get("user_message", ""), mode)
+    return {"rag_decision": needed, "decision_reason": reason}
+
+
+def _route_after_knowledge_decision(state: ChatAgentState) -> str:
+    if not state.get("rag_decision", False):
+        return "chat"
+    return "retrieve_knowledge"
+
+
+def _route_after_retrieval(state: ChatAgentState) -> str:
+    mode = state.get("knowledge_mode", "normal")
+    result = state.get("retrieval_result")
+    if result and getattr(result, "has_evidence", False):
+        return "chat"  # chat_node 会读取 retrieval_result 注入 grounded context
+    if mode == "strict":
+        return "strict_refusal"
+    return "chat"  # fallback: chat_node 依据 retrieval_result.has_evidence 提示"通用知识作答"
+
+
+async def strict_refusal_node(state: ChatAgentState) -> dict:
+    from langchain_core.messages import AIMessage
+    msg = AIMessage(content="私有资料库中没有足够的相关证据，在严格知识库模式下无法回答该问题。请切换至普通模式或补充相关资料后重试。")
+    return {"messages": [msg]}
 
 
 def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
@@ -32,6 +63,11 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
 
     graph.add_node("preprocess", preprocess_node)
     graph.add_node("route_intent", route_intent_node)
+    
+    graph.add_node("knowledge_decision", knowledge_decision_node)
+    graph.add_node("retrieve_knowledge", retrieve_knowledge_node)
+    graph.add_node("strict_refusal", strict_refusal_node)
+    
     graph.add_node("chat", chat_node)
     graph.add_node("chat_tools", ToolNode(ALL_TOOLS))
     graph.add_node("parse_url", parse_url_node)
@@ -43,8 +79,22 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     graph.add_conditional_edges(
         "route_intent",
         _route_after_intent,
-        {"chat": "chat", "parse_url": "parse_url"},
+        {"knowledge_decision": "knowledge_decision", "parse_url": "parse_url"},
     )
+    
+    graph.add_conditional_edges(
+        "knowledge_decision",
+        _route_after_knowledge_decision,
+        {"chat": "chat", "retrieve_knowledge": "retrieve_knowledge"},
+    )
+    
+    graph.add_conditional_edges(
+        "retrieve_knowledge",
+        _route_after_retrieval,
+        {"chat": "chat", "strict_refusal": "strict_refusal"}
+    )
+    
+    graph.add_edge("strict_refusal", END)
     
     # 将 chat 节点扩展为支持工具的 ReAct 环路
     graph.add_conditional_edges(

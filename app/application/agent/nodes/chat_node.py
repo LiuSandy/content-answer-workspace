@@ -6,7 +6,7 @@ from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 
 from ....prompts.registry import prompt_registry
-from ..state import ConversationState
+from ..state import ChatAgentState
 
 
 from ..tools import ALL_TOOLS
@@ -27,7 +27,7 @@ def _get_chat_llm() -> ChatOpenAI:
 _llm: ChatOpenAI | None = None
 
 
-async def chat_node(state: ConversationState) -> dict:
+async def chat_node(state: ChatAgentState) -> dict:
     global _llm
     if _llm is None:
         _llm = _get_chat_llm()
@@ -38,6 +38,14 @@ async def chat_node(state: ConversationState) -> dict:
         system_content = rendered.messages[0].content
     except Exception:
         system_content = "你是一个内容创作助手，帮助用户从平台发现优质帖子，并为其创作高质量回答。"
+
+    retrieval_result = state.get("retrieval_result")
+    if retrieval_result and getattr(retrieval_result, "has_evidence", False):
+        grounded_context = f"\n\n【私有资料上下文】\n{getattr(retrieval_result, 'context_text', '')}\n\n请在回答中使用 [S1]、[S2] 等标签引用对应资料，且只能引用上述资料中实际存在的内容。"
+        system_content = system_content + grounded_context
+    elif retrieval_result and not getattr(retrieval_result, "has_evidence", False):
+        fallback_notice = "\n\n【提示】私有资料库中没有找到足够的相关证据，本回答将基于通用知识作答。"
+        system_content = system_content + fallback_notice
 
     messages = [SystemMessage(content=system_content)] + list(state.get("messages", []))
     response = await _llm.ainvoke(messages)
