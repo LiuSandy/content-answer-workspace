@@ -1,8 +1,18 @@
 id: knowledge.query_rewrite
 name: query_rewrite
-version: "1.0.0"
+version: "1.1.0"
 description: "RAG 查询改写 prompt"
-content: |
-  请将用户的问题转换为适用于搜索引擎与向量检索的更加精准的技术查询语句。
-  用户问题：{{ query }}
-  改写查询：
+model:
+  profile: router
+  temperature: 0.0
+  max_tokens: 256
+variables:
+  required:
+    - query
+messages:
+  - role: user
+    content: |
+      请将用户的问题改写为更适合在知识库中进行全文和向量检索的查询语句，
+      提取核心关键词，去除多余语气词，保留原始问题中的关键实体。
+      只输出改写后的查询，不要输出任何解释。
+      用户问题：{{ query }}

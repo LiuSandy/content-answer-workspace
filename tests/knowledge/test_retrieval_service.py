@@ -1,5 +1,9 @@
 import pytest
-from app.application.knowledge.retrieval_service import compute_rrf_scores, evaluate_evidence_threshold, safe_compute_rrf_scores
+from app.application.knowledge.retrieval_service import (
+    SearchHit,
+    compute_rrf,
+    evaluate_evidence_threshold,
+)
 
 
 def test_evaluate_evidence_threshold():
@@ -8,10 +12,12 @@ def test_evaluate_evidence_threshold():
     assert evaluate_evidence_threshold([], threshold=0.55) is False
 
 
-def test_safe_compute_rrf_scores():
-    # 当 BM25 为空或出现异常时，安全降级至仅依赖向量检索
-    bm25_ranks = {}
-    vector_ranks = {"chunk_vec_1": 1}
-    fused = safe_compute_rrf_scores(bm25_ranks, vector_ranks)
+def test_compute_rrf_vector_only():
+    # BM25 为空时（如 embedding 正常但全文无命中），RRF 应只依赖向量结果
+    vector_hits = [
+        SearchHit(chunk_id="chunk_vec_1", doc_id="doc_a", content="c", score=0.9, source="vector"),
+    ]
+    fused = compute_rrf([], vector_hits)
     assert len(fused) == 1
-    assert fused[0][0] == "chunk_vec_1"
+    assert fused[0]["chunk_id"] == "chunk_vec_1"
+    assert fused[0]["source"] == "vector"
