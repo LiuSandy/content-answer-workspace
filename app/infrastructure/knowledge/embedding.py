@@ -38,9 +38,11 @@ class MockEmbeddingProvider:
 
 
 class OpenAIEmbeddingProvider:
-    """OpenAI 兼容 embedding 客户端；按批次调用并做维度校验与归一化。"""
+    """OpenAI 兼容 embedding 客户端；按批次调用并做维度校验与归一化。
 
-    BATCH_SIZE = 64
+    批大小从配置读取（EMBEDDING_BATCH_SIZE，默认 20）：
+    各服务商上限不同（阿里云百炼 20、OpenAI 2048），取保守默认值。
+    """
 
     def __init__(self):
         settings = get_knowledge_settings()
@@ -50,6 +52,7 @@ class OpenAIEmbeddingProvider:
         )
         self.model = settings.embedding_model
         self.dimensions = settings.embedding_dimensions
+        self.batch_size = settings.embedding_batch_size
 
     async def _embed_batch(self, batch: list[str]) -> list[list[float]]:
         """单批次 embedding，带独立重试。
@@ -90,8 +93,8 @@ class OpenAIEmbeddingProvider:
         if not texts:
             return []
         results: list[list[float]] = []
-        for i in range(0, len(texts), self.BATCH_SIZE):
-            batch = texts[i:i + self.BATCH_SIZE]
+        for i in range(0, len(texts), self.batch_size):
+            batch = texts[i:i + self.batch_size]
             results.extend(await self._embed_batch(batch))
         return results
 

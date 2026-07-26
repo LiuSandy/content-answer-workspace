@@ -130,6 +130,8 @@ class KnowledgeSettings:
     embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
     embedding_base_url: str = field(default_factory=lambda: os.getenv("EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
     embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"))
+    # 单次 embedding 请求的批大小；默认 20 以兼容阿里云百炼等上限较低的服务
+    embedding_batch_size: int = 20
     ocr_api_key: str = field(default_factory=lambda: os.getenv("OCR_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
     ocr_base_url: str = field(default_factory=lambda: os.getenv("OCR_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
     ocr_model: str = field(default_factory=lambda: os.getenv("OCR_MODEL", "gpt-4o-mini"))
@@ -169,5 +171,6 @@ def get_knowledge_settings() -> KnowledgeSettings:
         child_chunk_max_tokens=parse_positive_int(os.getenv("KNOWLEDGE_CHILD_CHUNK_MAX_TOKENS"), 350),
         context_token_budget=parse_positive_int(os.getenv("KNOWLEDGE_CONTEXT_TOKEN_BUDGET"), 6000),
         max_upload_bytes=parse_positive_int(os.getenv("KNOWLEDGE_MAX_UPLOAD_BYTES"), 50 * 1024 * 1024),
+        embedding_batch_size=parse_positive_int(os.getenv("EMBEDDING_BATCH_SIZE"), 20),
     )
 
