@@ -73,3 +73,45 @@ export async function reconvertKnowledgeDocument(
 export async function deleteKnowledgeDocument(documentId: string): Promise<void> {
   await apiDelete(`/api/knowledge/documents/${documentId}`);
 }
+
+export interface TestRetrievalResponse {
+  query: string;
+  rewrittenQuery?: string;
+  hasEvidence: boolean;
+  fallbackReason?: string;
+  contextText?: string;
+  sources?: Array<{
+    documentId: string;
+    title: string;
+    sourceUrl?: string;
+    text?: string;
+    score?: number;
+    label?: string;
+  }>;
+  traceHits?: Array<{
+    chunk_id: string;
+    document_id: string;
+    retrieval_source: string;
+    rank: number;
+    bm25_score: number;
+    vector_score: number;
+    rrf_score: number;
+    rerank_score: number;
+    included_in_context: boolean;
+    citation_label?: string;
+    context_snapshot?: string;
+  }>;
+  indexVersion?: string;
+}
+
+export async function testKnowledgeRetrieval(
+  query: string,
+  mode: string = "normal",
+  workspaceId: string = "default"
+): Promise<TestRetrievalResponse> {
+  return apiPost<TestRetrievalResponse>("/api/knowledge/test-search", {
+    query,
+    mode,
+    workspaceId,
+  });
+}

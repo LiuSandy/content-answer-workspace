@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReconvertDiffDialog } from "./reconvert-diff-dialog";
 import type { KnowledgeDocument } from "./types";
@@ -8,7 +9,12 @@ import type { KnowledgeDocument } from "./types";
 interface KnowledgeDetailProps {
   document: KnowledgeDocument;
   markdownContent?: string;
+  isMarkdownLoading?: boolean;
   isCandidate?: boolean;
+  isSaving?: boolean;
+  isConfirming?: boolean;
+  isReconverting?: boolean;
+  isDeleting?: boolean;
   onSaveMarkdown: (markdown: string) => void;
   onConfirm: () => void;
   onReconvert: () => void;
@@ -18,7 +24,12 @@ interface KnowledgeDetailProps {
 export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
   document,
   markdownContent = "",
+  isMarkdownLoading = false,
   isCandidate = false,
+  isSaving = false,
+  isConfirming = false,
+  isReconverting = false,
+  isDeleting = false,
   onSaveMarkdown,
   onConfirm,
   onReconvert,
@@ -42,6 +53,9 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
     if (document.sourceType === "url" || document.sourceUrl) return "URL";
     return "DOC";
   };
+
+  // 是否有任何操作正在进行
+  const isAnyBusy = isSaving || isConfirming || isReconverting || isDeleting;
 
   return (
     <div className="flex-1 flex flex-col min-w-0 h-full bg-white dark:bg-card overflow-hidden">
@@ -72,18 +86,31 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
           <Button
             variant="outline"
             size="sm"
+            disabled={isAnyBusy}
             onClick={() => setDiffOpen(true)}
             className="h-7 text-[10px] px-2"
           >
-            重新解析 Diff
+            {isReconverting ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                重新解析中...
+              </>
+            ) : (
+              "重新解析 Diff"
+            )}
           </Button>
           <Button
             variant="destructive"
             size="sm"
+            disabled={isAnyBusy}
             onClick={onDelete}
-            className="h-7 text-[10px] px-2"
+            className="h-7 text-[10px] px-2 min-w-[52px]"
           >
-            删除
+            {isDeleting ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              "删除"
+            )}
           </Button>
         </div>
       </div>
@@ -123,23 +150,32 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
         >
           GFM 视觉渲染
         </button>
-        <span className="ml-auto pb-2.5 text-[9px] text-[#94a3b8]">
-          已自动保存
+        <span className="ml-auto pb-2.5 text-[9px] text-[#94a3b8] flex items-center gap-1">
+          {isSaving ? (
+            <>
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              保存中...
+            </>
+          ) : (
+            "已自动保存"
+          )}
         </span>
       </div>
 
       {/* 4. 内容区域（源码编辑 vs react-markdown 视觉预览） */}
       <div className="flex-1 mx-4 border border-[#e1e6ed] dark:border-border border-t-0 rounded-b-[7px] bg-[#fbfcfd] dark:bg-card/30 overflow-hidden min-h-0 flex flex-col">
-        {activeTab === "editor" ? (
+        {isMarkdownLoading ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <span className="text-xs">正在加载文档内容...</span>
+          </div>
+        ) : activeTab === "editor" ? (
           <textarea
             value={editorText}
             onChange={(e) => setEditorText(e.target.value)}
-            className="flex-1 w-full p-4 font-mono text-xs leading-relaxed text-[#334155] dark:text-foreground bg-transparent border-0 outline-none resize-none overflow-y-auto whitespace-pre-wrap"
-            placeholder="---
-document_id: ...
-source_type: ...
----
-# 请在此编辑 Markdown 源码..."
+            disabled={isAnyBusy}
+            className="flex-1 w-full p-4 font-mono text-xs leading-relaxed text-[#334155] dark:text-foreground bg-transparent border-0 outline-none resize-none overflow-y-auto whitespace-pre-wrap disabled:opacity-50 disabled:cursor-not-allowed"
+            placeholder={"---\ndocument_id: ...\nsource_type: ...\n---\n# 请在此编辑 Markdown 源码..."}
           />
         ) : (
           <div className="flex-1 w-full p-5 overflow-y-auto prose dark:prose-invert max-w-none text-xs leading-normal">
@@ -162,19 +198,35 @@ source_type: ...
           <Button
             variant="outline"
             size="sm"
+            disabled={isAnyBusy}
             onClick={handleSave}
-            className="h-[30px] text-[10px] px-3"
+            className="h-[30px] text-[10px] px-3 min-w-[80px]"
           >
-            保存草稿
+            {isSaving ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                保存中...
+              </>
+            ) : (
+              "保存草稿"
+            )}
           </Button>
 
           {isCandidate && (
             <Button
               size="sm"
+              disabled={isAnyBusy}
               onClick={onConfirm}
-              className="h-[30px] bg-[#1e293b] hover:bg-[#0f172a] text-white text-[10px] px-3.5 font-semibold"
+              className="h-[30px] bg-[#1e293b] hover:bg-[#0f172a] text-white text-[10px] px-3.5 font-semibold min-w-[130px]"
             >
-              ✓　确认并建立索引
+              {isConfirming ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                  建立索引中...
+                </>
+              ) : (
+                "✓　确认并建立索引"
+              )}
             </Button>
           )}
         </div>

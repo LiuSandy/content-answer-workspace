@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -19,7 +20,6 @@ export const KnowledgePage: React.FC = () => {
   const { data, isLoading } = useKnowledgeDocuments();
   const allDocuments = data?.documents || [];
 
-  // 前端过滤逻辑
   const filteredDocuments = allDocuments.filter((doc) => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -43,7 +43,7 @@ export const KnowledgePage: React.FC = () => {
   const readyCount = allDocuments.filter((d) => d.status === "available").length;
   const failCount = allDocuments.filter((d) => d.status === "failed").length;
 
-  const { data: markdownData } = useKnowledgeMarkdown(
+  const { data: markdownData, isLoading: isMarkdownLoading } = useKnowledgeMarkdown(
     selectedDoc?.id,
     selectedDoc?.status === "awaiting_confirmation"
   );
@@ -61,6 +61,7 @@ export const KnowledgePage: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       uploadMutation.mutate(file);
+      e.target.value = "";
     }
   };
 
@@ -77,7 +78,7 @@ export const KnowledgePage: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 h-full w-full bg-white dark:bg-background text-[#111827] dark:text-foreground font-sans p-0 m-0 overflow-hidden">
-      {/* 1. 页面功能标题与搜索行 (.kb-pagebar) — 高度 58px，与顶部 Header 紧密衔接 */}
+      {/* 1. 功能标题与搜索行 (.kb-pagebar) */}
       <div className="h-[58px] bg-white dark:bg-card border-b border-[#e5e9ef] dark:border-border flex items-center px-5 gap-3.5 shrink-0">
         <div>
           <div className="text-sm font-bold">私有资料库</div>
@@ -96,21 +97,32 @@ export const KnowledgePage: React.FC = () => {
           />
         </div>
 
+        {/* ＋ 添加资料按钮（带 Loading 状态） */}
         <div className="relative">
           <input
             type="file"
             id="kb-file-input"
+            disabled={uploadMutation.isPending}
             onChange={handleFileUpload}
             className="hidden"
           />
           <Button
+            disabled={uploadMutation.isPending}
             onClick={() => document.getElementById("kb-file-input")?.click()}
-            className="h-8 bg-[#1e293b] hover:bg-[#0f172a] text-white text-xs font-semibold px-3 rounded-md"
+            className="h-8 bg-[#1e293b] hover:bg-[#0f172a] text-white text-xs font-semibold px-3 rounded-md min-w-[100px]"
           >
-            ＋　添加资料
+            {uploadMutation.isPending ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                上传解析中...
+              </>
+            ) : (
+              "＋　添加资料"
+            )}
           </Button>
         </div>
 
+        {/* 🌐 导入 URL 按钮 */}
         <Button
           variant="outline"
           onClick={() => setUrlModalOpen(true)}
@@ -120,10 +132,10 @@ export const KnowledgePage: React.FC = () => {
         </Button>
       </div>
 
-      {/* 2. 三栏主体工作区 (.kb-body) — 无缝全屏撑满 Grid (190px / 350px / 1fr) */}
+      {/* 2. 三栏主体工作区 (.kb-body) */}
       <div className="flex-1 grid grid-cols-[190px_350px_minmax(430px,1fr)] bg-white dark:bg-card min-h-0 overflow-hidden">
         
-        {/* 【左栏：筛选侧边栏 (.kb-filter)】 */}
+        {/* 左栏：筛选侧边栏 */}
         <aside className="border-r border-[#e5e9ef] dark:border-border bg-[#fbfcfd] dark:bg-card/50 p-3.5 space-y-1 overflow-y-auto min-h-0">
           <div className="text-[9px] tracking-wider uppercase text-[#94a3b8] font-bold px-2 mb-2">
             资料状态
@@ -216,10 +228,13 @@ export const KnowledgePage: React.FC = () => {
           ))}
         </aside>
 
-        {/* 【中栏：资料列表区 (.kb-list)】 */}
+        {/* 中栏：资料列表 */}
         <section className="border-r border-[#e5e9ef] dark:border-border flex flex-col min-w-0 bg-white dark:bg-card min-h-0">
           {isLoading ? (
-            <div className="p-4 text-center text-xs text-muted-foreground">加载资料中...</div>
+            <div className="p-8 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              加载资料列表中...
+            </div>
           ) : (
             <KnowledgeList
               documents={filteredDocuments}
@@ -229,17 +244,26 @@ export const KnowledgePage: React.FC = () => {
           )}
         </section>
 
-        {/* 【右栏：资料详情与编辑器区 (.kb-detail)】 */}
+        {/* 右栏：资料详情 */}
         <section className="flex flex-col min-w-0 bg-white dark:bg-card overflow-hidden min-h-0">
           {selectedDoc ? (
             <KnowledgeDetail
               document={selectedDoc}
               markdownContent={markdownData?.markdown}
+              isMarkdownLoading={isMarkdownLoading}
               isCandidate={selectedDoc.status === "awaiting_confirmation"}
+              isSaving={updateMarkdownMutation.isPending}
+              isConfirming={confirmMutation.isPending}
+              isReconverting={reconvertMutation.isPending}
+              isDeleting={deleteMutation.isPending}
               onSaveMarkdown={(md) => updateMarkdownMutation.mutate({ documentId: selectedDoc.id, markdown: md })}
               onConfirm={() => confirmMutation.mutate(selectedDoc.id)}
               onReconvert={() => reconvertMutation.mutate(selectedDoc.id)}
-              onDelete={() => deleteMutation.mutate(selectedDoc.id)}
+              onDelete={() => {
+                deleteMutation.mutate(selectedDoc.id, {
+                  onSuccess: () => setSelectedDoc(undefined),
+                });
+              }}
             />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-xs gap-2 p-4">
@@ -261,6 +285,7 @@ export const KnowledgePage: React.FC = () => {
               <Label htmlFor="url-input">网页地址</Label>
               <Input
                 id="url-input"
+                disabled={importUrlMutation.isPending}
                 placeholder="https://example.com/article"
                 value={inputUrl}
                 onChange={(e) => setInputUrl(e.target.value)}
@@ -268,10 +293,27 @@ export const KnowledgePage: React.FC = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setUrlModalOpen(false)}>
+            <Button
+              variant="outline"
+              disabled={importUrlMutation.isPending}
+              onClick={() => setUrlModalOpen(false)}
+            >
               取消
             </Button>
-            <Button onClick={handleImportUrl}>确认导入</Button>
+            <Button
+              disabled={importUrlMutation.isPending}
+              onClick={handleImportUrl}
+              className="min-w-[90px]"
+            >
+              {importUrlMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  抓取中...
+                </>
+              ) : (
+                "确认导入"
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

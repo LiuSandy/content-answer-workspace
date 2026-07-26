@@ -29,3 +29,30 @@ async def test_html_cleaner_parser():
     assert "alert(1)" not in result.markdown
     assert "# Hello" in result.markdown
     assert "World" in result.markdown
+
+
+def test_pdf_splitter():
+    import fitz
+    from app.infrastructure.knowledge.parsers import PdfSplitter
+
+    # 创建一个 5 页的测试 PDF
+    doc = fitz.open()
+    for i in range(5):
+        page = doc.new_page()
+        page.insert_text((50, 50), f"Page {i+1}")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    # 设置 max_pages = 2，预期切分为 3 个小 PDF (2页 + 2页 + 1页)
+    splitter = PdfSplitter(max_pages=2, max_bytes=10 * 1024 * 1024)
+    chunks = splitter.inspect_and_split(pdf_bytes)
+
+    assert len(chunks) == 3
+    # 验证第一个 chunk 有 2 页
+    doc1 = fitz.open(stream=chunks[0], filetype="pdf")
+    assert len(doc1) == 2
+    doc1.close()
+    # 验证第三个 chunk 有 1 页
+    doc3 = fitz.open(stream=chunks[2], filetype="pdf")
+    assert len(doc3) == 1
+    doc3.close()

@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { BrainCircuit, Settings, Moon, Sun } from "lucide-react";
+import { BrainCircuit, Settings, Moon, Sun, SearchCode } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PromptTemplatesDialog } from "./prompt-templates-dialog";
+import { RagSearchTestDialog } from "../knowledge/rag-search-test-dialog";
 
 /**
  * 应用外壳：顶部 Header + 主体 Outlet。
@@ -16,6 +17,7 @@ export function WorkspaceLayout() {
   const location = useLocation();
   const [darkMode, setDarkMode] = useState(false);
   const [isPromptDialogOpen, setIsPromptDialogOpen] = useState(false);
+  const [isRagTestOpen, setIsRagTestOpen] = useState(false);
 
   useEffect(() => {
     setDarkMode(document.documentElement.classList.contains("dark"));
@@ -67,6 +69,17 @@ export function WorkspaceLayout() {
 
         {/* 右侧操作区 (.kb-actions) */}
         <div className="ml-auto flex items-center gap-2">
+          {/* 在“提示词”按钮左侧放置 RAG 检索测试按钮 */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsRagTestOpen(true)}
+            className="h-8 gap-1.5 text-xs font-semibold px-3 border-indigo-500/30 hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30"
+          >
+            <SearchCode className="h-3.5 w-3.5 text-indigo-500" />
+            RAG 测试
+          </Button>
+
           <Button variant="outline" size="sm" onClick={() => setIsPromptDialogOpen(true)} className="h-8 gap-1.5 text-xs font-semibold px-3">
             <Settings className="h-3.5 w-3.5" />
             提示词
@@ -91,6 +104,12 @@ export function WorkspaceLayout() {
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
+
+      {/* ── RAG 检索测试弹窗 ── */}
+      <RagSearchTestDialog
+        open={isRagTestOpen}
+        onOpenChange={setIsRagTestOpen}
+      />
 
       {/* ── 提示词模板管理弹窗 ── */}
       <PromptTemplatesDialog
