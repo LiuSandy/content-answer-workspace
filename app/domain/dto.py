@@ -167,8 +167,8 @@ class ChatResponsePayload(BaseModel):
 class SelectionDTO(BaseModel):
     """编辑器文字选区；用于局部润色请求。"""
 
-    from_pos: int = Field(alias="from")
-    to_pos: int = Field(alias="to")
+    from_pos: int = Field(alias="fromPos")
+    to_pos: int = Field(alias="toPos")
     text: str  # 当前选中的原始文字（用于后端校验位置是否仍匹配）
 
     model_config = {"populate_by_name": True}
@@ -177,7 +177,7 @@ class SelectionDTO(BaseModel):
 class InlineRefineRequest(BaseModel):
     """局部润色请求体；前端提交选区、指令和乐观锁版本号。"""
 
-    expected_lock_version: int
+    expected_lock_version: int = Field(alias="expectedLockVersion")
     selection: SelectionDTO
     instruction: str
 

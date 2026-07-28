@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, AlertCircle, CheckCircle2 } from "lucide-react";
 import { apiGet, apiPut } from "@/lib/api";
+import { useAlertDialog } from "@/hooks/use-alert-dialog";
 
 interface PromptTemplatesDialogProps {
   open: boolean;
@@ -47,6 +48,7 @@ export function PromptTemplatesDialog({
   const [loadedPrompt, setLoadedPrompt] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [successMsg, setSuccessMsg] = useState<string>("");
+  const { confirm } = useAlertDialog();
 
   const isDirty = systemPrompt !== loadedPrompt;
 
@@ -74,11 +76,12 @@ export function PromptTemplatesDialog({
     fetchPrompt(activeTabId);
   }, [open, activeTabId, fetchPrompt]);
 
-  const handleSwitchTab = (tabId: string) => {
+  const handleSwitchTab = async (tabId: string) => {
     if (tabId === activeTabId) return;
     // 有未保存修改时切换需确认，防止误丢编辑内容
-    if (isDirty && !window.confirm("当前提示词有未保存的修改，切换后将丢失，确定切换吗？")) {
-      return;
+    if (isDirty) {
+      const confirmed = await confirm("当前提示词有未保存的修改，切换后将丢失，确定切换吗？");
+      if (!confirmed) return;
     }
     setActiveTabId(tabId);
   };

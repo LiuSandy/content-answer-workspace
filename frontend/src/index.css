@@ -326,3 +326,14 @@
   border-top-color: oklch(0.25 0.01 240);
 }
 
+/* 局部优化对话框打开期间的持久选区高亮：编辑器失焦后浏览器原生选区会消失，
+   这里用独立的 Decoration 类渲染，保证用户能一直看到自己选中的内容。 */
+.selection-highlight {
+  background-color: oklch(0.52 0.17 252 / 22%);
+  border-radius: 0.15em;
+}
+
+.dark .selection-highlight {
+  background-color: oklch(0.52 0.17 252 / 35%);
+}
+

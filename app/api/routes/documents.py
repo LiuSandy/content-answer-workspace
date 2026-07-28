@@ -18,11 +18,23 @@ from ...workflows.answer_generation import generate_answer_workflow
 from ...workflows.inline_refinement import inline_refinement_workflow
 from ...workflows.full_rewrite import full_rewrite_workflow
 from ..sse_utils import sse_named_event, make_sse_response
-from ...errors import DocumentConflictError
+from ...errors import AppError, DocumentConflictError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["documents"])
+
+
+def _run_failed_event(exc: Exception, fallback_message: str) -> str:
+    """将工作流异常转换为 run.failed 事件负载。
+
+    AppError 及其子类的 message 是特意写给用户看的业务提示（如选区不匹配、
+    锁版本冲突），可以安全透出；其他未预期异常只暴露通用文案，避免把内部
+    堆栈信息泄露给前端。
+    """
+    if isinstance(exc, AppError):
+        return sse_named_event("run.failed", {"errorCode": exc.error_code, "message": str(exc)})
+    return sse_named_event("run.failed", {"errorCode": "internal_error", "message": fallback_message})
 
 
 class UpdateDocumentRequest(BaseModel):
@@ -189,7 +201,7 @@ async def generate_answer_stream(
         async with session_factory() as session:
             source_item = await session.get(SourceItem, source_item_id)
             if not source_item:
-                yield sse_named_event("run.failed", {"error_code": "not_found", "message": "Source item not found"})
+                yield sse_named_event("run.failed", {"errorCode": "not_found", "message": "未找到对应的帖子"})
                 return
             
             doc_service = DocumentService(session)
@@ -227,7 +239,7 @@ async def generate_answer_stream(
 
         except Exception as e:
             logger.error("Answer generation stream failed: %s", e)
-            yield sse_named_event("run.failed", {"error_code": "generation_failed", "message": "生成失败，请稍后重试"})
+            yield _run_failed_event(e, "生成失败，请稍后重试")
 
     return make_sse_response(_event_generator())
 
@@ -262,7 +274,7 @@ async def refine_document_stream(
 
         except Exception as e:
             logger.error("Inline refinement stream failed: %s", e)
-            yield sse_named_event("run.failed", {"error_code": "refine_failed", "message": "精修失败，请稍后重试"})
+            yield _run_failed_event(e, "精修失败，请稍后重试")
 
     return make_sse_response(_event_generator())
 
@@ -299,6 +311,6 @@ async def rewrite_document_stream(
 
         except Exception as e:
             logger.error("Full rewrite stream failed: %s", e)
-            yield sse_named_event("run.failed", {"error_code": "rewrite_failed", "message": "重写失败，请稍后重试"})
+            yield _run_failed_event(e, "重写失败，请稍后重试")
 
     return make_sse_response(_event_generator())

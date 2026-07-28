@@ -22,6 +22,9 @@ import {
 import { apiGet, apiPut, apiPost } from "@/lib/api";
 import { streamPost } from "@/lib/sse";
 import { useChatStore } from "@/store/chat-store";
+import { useAlertDialog } from "@/hooks/use-alert-dialog";
+import { InlineRefineMenu, type InlineRefineParams } from "./inline-refine-menu";
+import { SelectionHighlight } from "./selection-highlight-extension";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,6 +55,25 @@ type DocumentState = {
   } | null;
 };
 
+/**
+ * run.failed 事件携带的业务层错误负载；后端把工作流内部异常（如选区不匹配、
+ * 锁版本冲突）包装成这个 SSE 事件而不是 HTTP 错误状态码，因此不会触发
+ * streamPost 的 onError，必须在 onEvent 里单独识别。
+ */
+type RunFailedPayload = {
+  errorCode?: string;
+  message?: string;
+};
+
+/**
+ * 三处流式调用（生成 / 精修 / 重写）共用的 run.failed 处理逻辑：提示错误信息。
+ * notify 由调用组件通过 useAlertDialog() 传入，因为该函数定义在组件外部，
+ * 无法直接调用依赖 Context 的 Hook。
+ */
+function handleRunFailed(data: RunFailedPayload, notify: (options: { description: string }) => Promise<void>) {
+  void notify({ description: data.message || "操作失败，请稍后重试" });
+}
+
 type VersionSummary = {
   id: string;
   versionNumber: number;
@@ -73,8 +95,8 @@ type VersionSummary = {
 export function EditorPanel() {
   const queryClient = useQueryClient();
   const { selectedSourceItemId, setSelectedSourceItemId } = useChatStore();
+  const { confirm, notify } = useAlertDialog();
 
-  const [refineInstruction, setRefineInstruction] = useState("");
   const [rewriteInstruction, setRewriteInstruction] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const isGeneratingRef = useRef(isGenerating);
@@ -109,7 +131,7 @@ export function EditorPanel() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      alert("复制失败");
+      void notify("复制失败");
     }
   };
 
@@ -147,6 +169,7 @@ export function EditorPanel() {
       Placeholder.configure({
         placeholder: "点击上方「生成回答」开始创作，或者在此手动输入内容...",
       }),
+      SelectionHighlight,
     ],
     content: "",
     onUpdate: () => {
@@ -302,10 +325,13 @@ export function EditorPanel() {
                 contentType: "markdown",
                 emitUpdate: false,
               });
+            } else if (event === "run.failed") {
+              handleRunFailed(data, notify);
+              queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
             }
           },
           onError: (err) => {
-            alert(`生成失败: ${err.message}`);
+            void notify(`生成失败: ${err.message}`);
             queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
           },
         },
@@ -315,35 +341,28 @@ export function EditorPanel() {
     }
   };
 
-  // 5. 局部精修 (Stream)
-  const handleInlineRefinement = async () => {
+  // 5. 局部精修 (Stream)：由 InlineRefineMenu 在提交对话框时携带选区快照调用
+  const handleInlineRefinement = async ({ from, to, text: selectedText, instruction }: InlineRefineParams) => {
     const cachedDocState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
     const currentDocState = cachedDocState || docStateRef.current;
-    if (!currentDocState || isGenerating || !editor || !refineInstruction.trim()) return;
+    if (!currentDocState || isGenerating || !editor) return;
 
-    const { from, to } = editor.state.selection;
-    if (from === to) {
-      alert("请先在编辑器中划选一段要优化的文字");
-      return;
-    }
-    const selectedText = editor.state.doc.textBetween(from, to, " ");
-    
     // 立即保存挂起的修改，确保后端内容最新，并获取最新 lockVersion
     const updatedState = await flushPendingSave();
     const activeCachedState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
-    const activeLockVersion = updatedState 
-      ? updatedState.lockVersion 
+    const activeLockVersion = updatedState
+      ? updatedState.lockVersion
       : (activeCachedState ? activeCachedState.lockVersion : currentDocState.lockVersion);
-    
+
     setIsGenerating(true);
-    editor.commands.deleteSelection();
+    editor.commands.deleteRange({ from, to });
 
     try {
       await streamPost(
         `/api/documents/${currentDocState.documentId}/refine`,
         {
           expectedLockVersion: activeLockVersion,
-          instruction: refineInstruction,
+          instruction,
           selection: { fromPos: from, toPos: to, text: selectedText },
         },
         {
@@ -357,18 +376,23 @@ export function EditorPanel() {
                 contentType: "markdown",
                 emitUpdate: false,
               });
+            } else if (event === "run.failed") {
+              // run.failed 走的是业务层错误通道（HTTP 200 + SSE 事件），不经过 onError，
+              // 因此这里之前已执行的 deleteRange 从未被撤销——必须在这个分支里手动恢复。
+              handleRunFailed(data, notify);
+              editor.commands.insertContentAt(from, selectedText);
+              queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
             }
           },
           onError: (err) => {
-            alert(`精修失败: ${err.message}`);
-            editor.commands.insertContent(selectedText);
+            void notify(`精修失败: ${err.message}`);
+            editor.commands.insertContentAt(from, selectedText);
             queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
           },
         },
       );
     } finally {
       setIsGenerating(false);
-      setRefineInstruction("");
     }
   };
 
@@ -415,10 +439,13 @@ export function EditorPanel() {
                 contentType: "markdown",
                 emitUpdate: false,
               });
+            } else if (event === "run.failed") {
+              handleRunFailed(data, notify);
+              queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
             }
           },
           onError: (err) => {
-            alert(`重写失败: ${err.message}`);
+            void notify(`重写失败: ${err.message}`);
             queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
           },
         },
@@ -592,8 +619,12 @@ export function EditorPanel() {
 
                 <HistoryDrawerContent
                   versions={versions}
-                  onRestore={(versionId) => {
-                    if (confirm("确认恢复此版本？当前编辑中的内容将被覆盖。")) {
+                  currentVersionId={docState?.currentVersionId ?? null}
+                  onRestore={async (versionId) => {
+                    const confirmed = await confirm({
+                      description: "确认恢复此版本？当前编辑中的内容将被覆盖。",
+                    });
+                    if (confirmed) {
                       restoreVersionMutation.mutate(versionId);
                     }
                   }}
@@ -628,6 +659,7 @@ export function EditorPanel() {
         rewriteInstruction={rewriteInstruction}
         setRewriteInstruction={setRewriteInstruction}
         onRewrite={handleFullRewrite}
+        onInlineRefine={handleInlineRefinement}
         selectedStyles={selectedStyles}
         setSelectedStyles={setSelectedStyles}
         wordCount={wordCount}
@@ -643,6 +675,7 @@ function EditorTabContent({
   rewriteInstruction,
   setRewriteInstruction,
   onRewrite,
+  onInlineRefine,
   selectedStyles,
   setSelectedStyles,
   wordCount,
@@ -653,6 +686,7 @@ function EditorTabContent({
   rewriteInstruction: string;
   setRewriteInstruction: (v: string) => void;
   onRewrite: () => void;
+  onInlineRefine: (params: InlineRefineParams) => void;
   selectedStyles: string[];
   setSelectedStyles: (styles: string[]) => void;
   wordCount: number;
@@ -665,6 +699,7 @@ function EditorTabContent({
       {/* Tiptap 编辑区 */}
       <ScrollArea className="flex-1 min-h-0 p-4">
         <EditorContent editor={editor} className="prose dark:prose-invert max-w-none outline-none min-h-[300px]" />
+        <InlineRefineMenu editor={editor} isGenerating={isGenerating} onRefine={onInlineRefine} />
       </ScrollArea>
 
       {/* 居中加载浮层 */}
@@ -704,9 +739,11 @@ function EditorTabContent({
 
 function HistoryDrawerContent({
   versions,
+  currentVersionId,
   onRestore,
 }: {
   versions: VersionSummary[];
+  currentVersionId: string | null;
   onRestore: (versionId: string) => void;
 }) {
   if (versions.length === 0) {
@@ -720,42 +757,57 @@ function HistoryDrawerContent({
   return (
     <div className="flex-1 overflow-y-auto p-4">
       <div className="space-y-3">
-        {versions.map((ver) => (
-          <Card key={ver.id}>
-            <CardContent className="flex flex-col gap-3 p-4">
-              <div className="flex items-start justify-between">
-                <span className="text-sm font-bold">版本 {ver.versionNumber}</span>
-                <span className="text-[10px] text-muted-foreground">
-                  {new Date(ver.createdAt).toLocaleString()}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">类型:</span>
-                  <Badge variant="secondary" className="text-[10px] uppercase">
-                    {ver.versionType}
-                  </Badge>
+        {versions.map((ver) => {
+          const isCurrent = ver.id === currentVersionId;
+          return (
+            <Card key={ver.id} className={isCurrent ? "border-indigo-500/50 bg-indigo-50/50 dark:bg-indigo-950/20" : undefined}>
+              <CardContent className="flex flex-col gap-3 p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold">版本 {ver.versionNumber}</span>
+                    {isCurrent && (
+                      <Badge className="h-4 px-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-600">
+                        当前版本
+                      </Badge>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">
+                    {new Date(ver.createdAt).toLocaleString()}
+                  </span>
                 </div>
-                {ver.instruction && (
-                  <p className="text-xs text-muted-foreground">
-                    指令: <span className="italic">"{ver.instruction}"</span>
-                  </p>
-                )}
-                {(ver.provider || ver.model) && (
-                  <p className="text-[10px] text-muted-foreground">
-                    模型: {ver.provider}/{ver.model}
-                  </p>
-                )}
-              </div>
-              <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={() => onRestore(ver.id)}>
-                  <Undo2 className="h-3 w-3" />
-                  恢复此版本
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">类型:</span>
+                    <Badge variant="secondary" className="text-[10px] uppercase">
+                      {ver.versionType}
+                    </Badge>
+                  </div>
+                  {ver.instruction && (
+                    <p className="text-xs text-muted-foreground">
+                      指令: <span className="italic">"{ver.instruction}"</span>
+                    </p>
+                  )}
+                  {(ver.provider || ver.model) && (
+                    <p className="text-[10px] text-muted-foreground">
+                      模型: {ver.provider}/{ver.model}
+                    </p>
+                  )}
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onRestore(ver.id)}
+                    disabled={isCurrent}
+                  >
+                    <Undo2 className="h-3 w-3" />
+                    {isCurrent ? "当前版本" : "恢复此版本"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

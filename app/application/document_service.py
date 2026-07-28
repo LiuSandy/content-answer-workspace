@@ -13,13 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import DocumentConflictError
 from ..persistence.models.documents import AnswerDocument, AnswerVersion
-from ..persistence.models.documents import (
-    VERSION_TYPE_INITIAL_GENERATION,
-    VERSION_TYPE_INLINE_REFINEMENT,
-    VERSION_TYPE_FULL_REWRITE,
-    VERSION_TYPE_MANUAL_CHECKPOINT,
-    VERSION_TYPE_RESTORED,
-)
 from ..persistence.models.content import SourceItem
 from ..domain.dto import DocumentStateDTO, VersionSummaryDTO, SourceItemInfoDTO
 
@@ -144,18 +137,23 @@ class DocumentService:
         version_id: uuid.UUID,
         expected_lock_version: int,
     ) -> AnswerVersion:
-        """恢复特定版本；不删除任何现有历史，而是产生一个新的 restored 类型版本快照。"""
+        """恢复特定版本：语义等价于 Git reset——只把 Document 指针指回该历史版本，
+        不创建新的 AnswerVersion 记录，因此历史版本列表数量和编号保持不变。
+        """
+        doc = await self._get_doc_or_raise(document_id)
+        self._check_lock(doc, expected_lock_version)
+
         source_version = await self._session.get(AnswerVersion, version_id)
         if source_version is None or str(source_version.document_id) != str(document_id):
             raise ValueError(f"Version {version_id} not found in document {document_id}")
 
-        return await self.create_version(
-            document_id=document_id,
-            content=source_version.content,
-            version_type=VERSION_TYPE_RESTORED,
-            expected_lock_version=expected_lock_version,
-            restored_from_version_id=version_id,
-        )
+        doc.current_content = source_version.content
+        doc.current_version_id = source_version.id
+        doc.lock_version += 1
+
+        await self._session.commit()
+        await self._session.refresh(source_version)
+        return source_version
 
     async def get_document_state(self, document_id: uuid.UUID) -> DocumentStateDTO | None:
         """获取当前文档的最新状态，包含关联帖子的原文元数据。"""
@@ -194,4 +192,3 @@ class DocumentService:
     def _check_lock(self, doc: AnswerDocument, expected: int) -> None:
         if doc.lock_version != expected:
             raise DocumentConflictError(expected=expected, actual=doc.lock_version)
-stream = None
