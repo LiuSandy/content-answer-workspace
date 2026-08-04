@@ -40,7 +40,7 @@ import {SourceList} from "@/features/knowledge/source-list";
 type Message = {
     messageId: string;
     role: "user" | "assistant" | "tool";
-    messageType: "text" | "source_card" | "source_list" | "tool_status" | "error";
+    messageType: "text" | "source_card" | "source_list" | "tool_status" | "error" | "choice_request";
     content: string | null;
     parentMessageId?: string | null;
     payload: any;
@@ -438,6 +438,11 @@ export function ChatPanel() {
         await handleSendMessage(undefined, content, msg.parentMessageId);
     };
 
+    // Human-in-the-loop：用户点击选择卡片选项后，把选择作为下一条用户消息发出
+    const handleSelectChoice = async (label: string) => {
+        await handleSendMessage(undefined, label, undefined);
+    };
+
     const handleSwitchSibling = (msg: Message, direction: "prev" | "next") => {
         const siblings = resolvedMessages.filter(m => m.parentMessageId === msg.parentMessageId && m.role === "user");
         siblings.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -520,6 +525,7 @@ export function ChatPanel() {
                                     key={msg.messageId}
                                     msg={msg}
                                     onSelectItem={setSelectedSourceItemId}
+                                    onSelectChoice={handleSelectChoice}
                                     selectedId={selectedSourceItemId}
                                     isEditing={editingMessageId === msg.messageId}
                                     onStartEdit={() => setEditingMessageId(msg.messageId)}
@@ -614,6 +620,7 @@ export function ChatPanel() {
 function MessageBubble({
                            msg,
                            onSelectItem,
+                           onSelectChoice,
                            selectedId,
                            isEditing,
                            onStartEdit,
@@ -625,6 +632,7 @@ function MessageBubble({
                        }: {
     msg: Message;
     onSelectItem: (id: string) => void;
+    onSelectChoice: (label: string) => void;
     selectedId: string | null;
     isEditing: boolean;
     onStartEdit: () => void;
@@ -766,6 +774,12 @@ function MessageBubble({
                                 selectedId={selectedId}
                             />
                         )}
+                        {msg.messageType === "choice_request" && (
+                            <ChoiceRequestCard
+                                payload={msg.payload || {}}
+                                onSelect={(label) => onSelectChoice(label)}
+                            />
+                        )}
                         {msg.messageType === "source_card" && (
                             <SourceCardView
                                 data={msg.payload || msg.content}
@@ -829,6 +843,39 @@ function MessageBubble({
                         )}
                     </div>
                 )}
+            </div>
+        </div>
+    );
+}
+
+// ── Human-in-the-loop 选择卡片 ───────────────────────────────────────
+
+/** 渲染 Agent 的选择请求；用户点击选项后把选择作为下一条消息发回 */
+function ChoiceRequestCard({
+                               payload,
+                               onSelect,
+                           }: {
+    payload: any;
+    onSelect: (label: string) => void;
+}) {
+    const options: Array<{ id: string; label: string; description?: string }> = payload?.options || [];
+    if (options.length === 0) return null;
+    return (
+        <div className="mt-1 rounded-xl border border-amber-300/50 dark:border-amber-700/40 bg-amber-50/40 dark:bg-amber-950/10 p-3">
+            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">{payload?.question || "需要你选择一个处理方式："}</p>
+            <div className="mt-2 flex flex-col gap-1.5">
+                {options.map((opt) => (
+                    <button
+                        key={opt.id}
+                        onClick={() => onSelect(opt.label)}
+                        className="text-left text-xs px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800/50 bg-white/60 dark:bg-zinc-900/40 hover:bg-amber-100/60 dark:hover:bg-amber-900/20 transition-colors"
+                    >
+                        <span className="font-medium text-amber-900 dark:text-amber-200">{opt.label}</span>
+                        {opt.description && (
+                            <span className="block text-[10px] text-muted-foreground mt-0.5">{opt.description}</span>
+                        )}
+                    </button>
+                ))}
             </div>
         </div>
     );

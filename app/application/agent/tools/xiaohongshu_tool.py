@@ -70,6 +70,7 @@ def _normalize_item(item: dict) -> dict:
         "url": url,
         "excerpt": excerpt,
         "metric": metric,
+        "likes": likes,
         "author": author,
         "published_at": published_at,
     }
@@ -97,12 +98,14 @@ def _dedupe(items: list[dict]) -> list[dict]:
 
 
 @tool
-def xiaohongshu_search(query: str, limit: int = 5) -> str:
+def xiaohongshu_search(query: str, limit: int = 5, min_likes: int = 0) -> str:
     """在小红书搜索笔记，返回结构化 JSON，每条包含标题、链接、摘要、点赞数、作者和发布时间。
-    结果按发布时间从新到旧排序、去重，且精确返回 limit 条（默认 5 条）。
+    结果按发布时间从新到旧排序、去重，只保留点赞数 >= min_likes 的，并精确返回 limit 条。
+    若满足条件的不足 limit 条，返回所有满足的并标注 conflict 信息（total_found / filtered_out），
+    交由 Agent 决定是否询问用户（human-in-the-loop）。
     需要 Chrome 已打开并登录小红书，且安装了 OpenCLI 扩展。"""
     raw = _run(["opencli", "xiaohongshu", "search", query, "-f", "yaml"])
-    logger.info("[xiaohongshu_search] query: %s, raw output:\n%s", query, raw)
+    logger.info("[xiaohongshu_search] query: %s, min_likes=%s, raw output:\n%s", query, min_likes, raw)
     raw_items = _parse_yaml_list(raw)
     if not raw_items:
         logger.warning("[xiaohongshu_search] parse failed, raw_items is empty.")
@@ -112,8 +115,33 @@ def xiaohongshu_search(query: str, limit: int = 5) -> str:
     items = [_normalize_item(i) for i in raw_items if i.get("title") or i.get("name")]
     items = _sort_by_recent(items)
     items = _dedupe(items)
-    items = items[:top_n]
-    return json.dumps({"platform": _PLATFORM, "topic": query, "items": items}, ensure_ascii=False)
+
+    # 点赞过滤：优先用数值 likes，退化到从 metric 文本提取数字
+    def _likes_num(it: dict) -> int:
+        val = it.get("likes")
+        if isinstance(val, int):
+            return val
+        raw_likes = (it.get("metric") or "0")
+        digits = "".join(ch for ch in str(raw_likes) if ch.isdigit())
+        return int(digits) if digits else 0
+
+    if min_likes and min_likes > 0:
+        passed = [it for it in items if _likes_num(it) >= min_likes]
+        filtered_out = len(items) - len(passed)
+        items = passed
+    else:
+        filtered_out = 0
+
+    total_found = len(items)
+    result = {"platform": _PLATFORM, "topic": query, "items": items[:top_n]}
+    if total_found < top_n:
+        result["conflict"] = {
+            "requested": top_n,
+            "total_found": total_found,
+            "filtered_out": filtered_out,
+            "reason": f"only {total_found} results meet the constraints (publish time sort + min_likes={min_likes or 0})",
+        }
+    return json.dumps(result, ensure_ascii=False)
 
 
 @tool

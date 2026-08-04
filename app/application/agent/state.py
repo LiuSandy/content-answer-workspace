@@ -41,6 +41,14 @@ class ChatAgentState(TypedDict):
     # ── Phase 4 长期记忆注入片段（spec 3.3）
     applied_memories: list[dict] | None
 
+    # ── Human-in-the-loop（Phase 2 采集冲突；通用机制）
+    # 本轮是否要求用户选择（Agent 检测到约束冲突时置 True）
+    hitl_pending: bool | None
+    # 给用户的选择请求（choice_request 消息的持久化快照）
+    hitl_choice: dict | None  # {"question", "options": [{id, label, description}], "context": {...}}
+    # 用户的选择结果（下一轮由前端回传，Agent 据此继续）
+    hitl_selection: str | None
+
 
 class ConversationState(TypedDict):
     """LangGraph checkpoint 用的简化对话状态；仅保存消息序列，不保存业务数据。"""

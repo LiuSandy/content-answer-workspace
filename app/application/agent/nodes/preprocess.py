@@ -17,4 +17,8 @@ async def preprocess_node(state: ChatAgentState) -> dict:
         "error": None,
         "response_payload": None,
         "collection_request": None,
+        # Human-in-the-loop：每轮重置，避免上一轮的选择请求状态残留
+        "hitl_pending": False,
+        "hitl_choice": None,
+        "hitl_selection": None,
     }

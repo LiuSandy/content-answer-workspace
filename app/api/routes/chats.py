@@ -347,7 +347,20 @@ async def send_message_stream(
             async with session_factory() as session:
                 chat_service = ChatService(session)
 
-                if intent == "chat" and assistant_content_parts:
+                hitl_choice = values.get("hitl_choice")
+
+                if hitl_choice:
+                    # Human-in-the-loop：本轮需要用户选择，保存 choice_request 消息并透传事件
+                    await chat_service.save_assistant_message(
+                        chat_id=chat_id,
+                        message_type="choice_request",
+                        content=hitl_choice.get("question", ""),
+                        payload=hitl_choice,
+                        parent_message_id=user_msg.id,
+                        run_id=run_id,
+                    )
+                    yield sse_named_event("choice.requested", hitl_choice)
+                elif intent == "chat" and assistant_content_parts:
                     # 普通对话，保存回复文本
                     full_text = "".join(assistant_content_parts)
                     msg_payload = {}

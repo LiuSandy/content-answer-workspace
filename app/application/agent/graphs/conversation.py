@@ -17,6 +17,7 @@ from ..nodes.knowledge_decision import make_knowledge_decision
 from ..nodes.memory_retriever import memory_retriever_node
 from ..nodes.task_plan import task_plan_node
 from ..nodes.multi_agent_exec import multi_agent_node
+from ..nodes.hitl_decision import hitl_decision_node
 from ..state import ChatAgentState
 
 
@@ -64,6 +65,21 @@ async def strict_refusal_node(state: ChatAgentState) -> dict:
     return {"messages": [msg]}
 
 
+def _route_after_chat(state: ChatAgentState) -> str:
+    """chat 节点后路由：有工具调用则执行工具；否则直接结束。"""
+    result = tools_condition(state)
+    if result == END:
+        return END
+    return "tools"
+
+
+def _route_after_hitl(state: ChatAgentState) -> str:
+    """hitl_decision 后：已请求用户选择则终态；否则回到 chat 继续生成。"""
+    if state.get("hitl_pending"):
+        return END
+    return "chat"
+
+
 def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     """构建新的 Chat Agent 图。"""
     graph: StateGraph = StateGraph(ChatAgentState)
@@ -77,6 +93,7 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     graph.add_node("strict_refusal", strict_refusal_node)
     graph.add_node("task_plan", task_plan_node)
     graph.add_node("multi_agent", multi_agent_node)
+    graph.add_node("hitl_decision", hitl_decision_node)
     
     graph.add_node("chat", chat_node)
     graph.add_node("chat_tools", ToolNode(ALL_TOOLS))
@@ -117,12 +134,19 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     graph.add_edge("multi_agent", END)
     
     # 将 chat 节点扩展为支持工具的 ReAct 环路
+    # 工具执行后先经 hitl_decision：若工具结果带冲突，则请求用户选择（终态）；
+    # 无冲突则回到 chat 继续生成回复。
     graph.add_conditional_edges(
         "chat",
-        tools_condition,
+        _route_after_chat,
         {"tools": "chat_tools", END: END}
     )
-    graph.add_edge("chat_tools", "chat")
+    graph.add_edge("chat_tools", "hitl_decision")
+    graph.add_conditional_edges(
+        "hitl_decision",
+        _route_after_hitl,
+        {"chat": "chat", END: END}
+    )
     
     graph.add_edge("parse_url", "normalize_and_persist")
     graph.add_edge("normalize_and_persist", "build_response")
