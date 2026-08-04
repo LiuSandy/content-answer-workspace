@@ -1,0 +1,144 @@
+"""意图识别评测：规则层全量回归 + route_intent 三层集成。
+
+规则层用例（rule_only=True）不依赖 LLM，必须确定性通过。
+LLM 用例用 mock LLM 验证路由正确性。
+"""
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from app.application.agent.nodes.intent_rules import detect_intent_by_rules
+from app.application.agent.nodes.route_intent import route_intent_node
+from tests.intent_eval_cases import INTENT_EVAL_CASES
+
+
+# ── 规则层全量回归 ───────────────────────────────────────────────────────
+
+def test_rule_layer_all_rule_only_cases():
+    """所有 rule_only 用例必须被规则层确定性命中。"""
+    for case in INTENT_EVAL_CASES:
+        if not case.get("rule_only"):
+            continue
+        r = detect_intent_by_rules(case["input"])
+        assert r is not None, f"规则层未命中: {case['input']}"
+        assert r["intent"] == case["intent"], (
+            f"intent 不符: {case['input']} → {r['intent']}, 期望 {case['intent']}"
+        )
+        if case.get("platform"):
+            assert r.get("platform") == case["platform"], (
+                f"platform 不符: {case['input']} → {r.get('platform')}, 期望 {case['platform']}"
+            )
+        if case.get("knowledge_mode"):
+            assert r["knowledge_mode"] == case["knowledge_mode"], (
+                f"knowledge_mode 不符: {case['input']} → {r['knowledge_mode']}"
+            )
+
+
+def test_rule_layer_llm_only_cases_not_shortcircuited():
+    """非 rule_only 用例不应被规则层确定性命中（留给 LLM）。"""
+    for case in INTENT_EVAL_CASES:
+        if case.get("rule_only"):
+            continue
+        r = detect_intent_by_rules(case["input"])
+        assert r is None or r["confidence"] < 1.0, (
+            f"本应交 LLM 却被规则确定性命中: {case['input']}"
+        )
+
+
+# ── route_intent 三层集成（mock LLM） ────────────────────────────────────
+
+def _make_llm_mock(monkeypatch, content: str):
+    fake_rendered = MagicMock()
+    fake_rendered.to_llm_request.return_value = MagicMock()
+    fake_provider = MagicMock()
+    fake_provider.generate = AsyncMock(return_value=MagicMock(content=content))
+    fake_registry = MagicMock()
+    fake_registry.get.return_value = fake_provider
+    fake_prompt_registry = MagicMock()
+    fake_prompt_registry.render.return_value = fake_rendered
+    monkeypatch.setattr(
+        "app.application.agent.nodes.route_intent.llm_provider_registry", fake_registry
+    )
+    monkeypatch.setattr(
+        "app.application.agent.nodes.route_intent.prompt_registry", fake_prompt_registry
+    )
+    return fake_provider
+
+
+def _state(message: str, mode: str = "normal") -> dict:
+    return {"user_message": message, "extracted_urls": [], "knowledge_mode": mode}
+
+
+@pytest.mark.asyncio
+async def test_route_rule_layer_shortcircuits_llm(monkeypatch):
+    """规则命中时 LLM 不应被调用。"""
+    provider = _make_llm_mock(monkeypatch, '{"intent": "chat", "confidence": 1.0}')
+    out = await route_intent_node(_state("写一篇关于 RAG 的回答"))
+    assert out["intent"] == "task_plan"
+    provider.generate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_route_llm_used_when_rule_misses(monkeypatch):
+    """规则未命中时调用 LLM。"""
+    provider = _make_llm_mock(
+        monkeypatch,
+        '{"intent": "chat", "knowledge_mode": "normal", "confidence": 0.9, "reason": "qa"}',
+    )
+    out = await route_intent_node(_state("为什么天空是蓝色的"))
+    assert out["intent"] == "chat"
+    provider.generate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_route_low_confidence_falls_back_to_chat(monkeypatch):
+    """LLM 低置信度 → 降级 chat。"""
+    _make_llm_mock(
+        monkeypatch,
+        '{"intent": "multi_agent", "knowledge_mode": "normal", "confidence": 0.3, "reason": "uncertain"}',
+    )
+    out = await route_intent_node(_state("这个有点难判断"))
+    assert out["intent"] == "chat"
+    assert out["intent_confidence"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_route_invalid_intent_normalized(monkeypatch):
+    """LLM 返回非法 intent → 归一化为 chat。"""
+    _make_llm_mock(
+        monkeypatch,
+        '{"intent": "whatever", "knowledge_mode": "normal", "confidence": 0.9}',
+    )
+    out = await route_intent_node(_state("测试"))
+    assert out["intent"] == "chat"
+
+
+@pytest.mark.asyncio
+async def test_route_llm_platform_query_captured(monkeypatch):
+    """LLM 层返回的 platform/query 被捕获到 state。"""
+    _make_llm_mock(
+        monkeypatch,
+        '{"intent": "chat", "knowledge_mode": "normal", "platform": "zhihu", '
+        '"query": "AI 副业", "confidence": 0.9, "reason": "search"}',
+    )
+    out = await route_intent_node(_state("帮我找找 AI 副业的东西"))
+    assert out["intent_platform"] == "zhihu"
+    assert out["intent_query"] == "AI 副业"
+
+
+@pytest.mark.asyncio
+async def test_route_llm_bad_json_falls_back(monkeypatch):
+    """LLM 返回坏 JSON → 保守 chat（无法解析时按默认 chat）。"""
+    _make_llm_mock(monkeypatch, "完全不是 JSON")
+    out = await route_intent_node(_state("测试"))
+    assert out["intent"] == "chat"
+
+
+@pytest.mark.asyncio
+async def test_route_keeps_explicit_strict(monkeypatch):
+    """显式 strict 保留（兼容内部直连）。"""
+    _make_llm_mock(monkeypatch, '{"intent": "chat", "knowledge_mode": "normal", "confidence": 0.9}')
+    out = await route_intent_node(_state("解释下 RAG", mode="strict"))
+    assert out["knowledge_mode"] == "strict"

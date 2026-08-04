@@ -32,23 +32,30 @@ messages:
       - "strict"：仅依据私有资料库回答。仅在用户明确要求“只能根据我上传的资料/只许用私有资料/不要用通用知识”时使用。
 
       返回格式：
-      {"intent": "chat"|"parse_url"|"task_plan"|"multi_agent", "knowledge_mode": "off"|"normal"|"strict", "platform": null|"zhihu"|"xiaohongshu"|"reddit", "query": null|"提炼后的搜索词"}
+      {"intent": "chat"|"parse_url"|"task_plan"|"multi_agent", "knowledge_mode": "off"|"normal"|"strict", "platform": null|"zhihu"|"xiaohongshu"|"reddit"|"bilibili"|"youtube"|"twitter"|"github"|"rss"|"v2ex", "query": null|"提炼后的搜索词", "confidence": 0.0-1.0, "reason": "一句话判定理由"}
+
+      confidence 表示你对该判定的确信程度：
+      - ≥0.9：非常确定
+      - 0.7-0.9：比较确定
+      - <0.7：拿不准（此时系统会保守降级为普通对话，请尽量给出明确判定）
 
       示例：
       1. 用户：“你好，你叫什么名字？”
-         返回：{"intent": "chat", "knowledge_mode": "off", "platform": null, "query": null}
+         返回：{"intent": "chat", "knowledge_mode": "off", "platform": null, "query": null, "confidence": 1.0, "reason": "纯寒暄"}
       2. 用户：“帮我搜搜知乎上关于副业的热门讨论”
-         返回：{"intent": "chat", "knowledge_mode": "normal", "platform": "zhihu", "query": "副业"}
+         返回：{"intent": "chat", "knowledge_mode": "normal", "platform": "zhihu", "query": "副业", "confidence": 1.0, "reason": "平台搜索"}
       3. 用户：“请您检索一下小红书关于历史播客的帖子，需要发布时间最近的，只要五个，不要重复”
-         返回：{"intent": "chat", "knowledge_mode": "normal", "platform": "xiaohongshu", "query": "历史播客"}
+         返回：{"intent": "chat", "knowledge_mode": "normal", "platform": "xiaohongshu", "query": "历史播客", "confidence": 1.0, "reason": "平台采集，工具层处理约束"}
       4. 用户：“写一篇关于 RAG 的回答”
-         返回：{"intent": "task_plan", "knowledge_mode": "normal", "platform": null, "query": null}
+         返回：{"intent": "task_plan", "knowledge_mode": "normal", "platform": null, "query": null, "confidence": 0.95, "reason": "明确单篇创作"}
       5. 用户：“调研并输出一份 AI Agent 行业现状的完整分析报告”
-         返回：{"intent": "multi_agent", "knowledge_mode": "normal", "platform": null, "query": null}
+         返回：{"intent": "multi_agent", "knowledge_mode": "normal", "platform": null, "query": null, "confidence": 0.9, "reason": "多阶段调研+写作"}
       6. 用户：“只能根据我上传的文件回答，为什么 chmod 能防止未授权访问”
-         返回：{"intent": "chat", "knowledge_mode": "strict", "platform": null, "query": null}
+         返回：{"intent": "chat", "knowledge_mode": "strict", "platform": null, "query": null, "confidence": 1.0, "reason": "明确要求只用私有资料"}
       7. 用户：“提取一下这个网页 https://zhuanlan.zhihu.com/p/123”
-         返回：{"intent": "parse_url", "knowledge_mode": "normal", "platform": "zhihu", "query": null}
+         返回：{"intent": "parse_url", "knowledge_mode": "normal", "platform": "zhihu", "query": null, "confidence": 1.0, "reason": "URL 解析"}
+      8. 用户：“你觉得人工智能未来的发展趋势如何”
+         返回：{"intent": "chat", "knowledge_mode": "normal", "platform": null, "query": null, "confidence": 0.9, "reason": "观点问答，非创作任务"}
 
   - role: user
     content: |

@@ -18,6 +18,11 @@ class ChatAgentState(TypedDict):
     # ── 决策数据（节点间传递）
     messages: Annotated[list, add_messages]
     intent: Literal["chat", "parse_url", "collect", "task_plan", "multi_agent"] | None
+    # 意图识别明细（规则层/LLM 层产出）
+    intent_confidence: float | None
+    intent_reason: str | None
+    intent_platform: str | None
+    intent_query: str | None
     extracted_urls: list[str]
     collection_request: CollectionRequest | None
     tool_result: ToolResult | None

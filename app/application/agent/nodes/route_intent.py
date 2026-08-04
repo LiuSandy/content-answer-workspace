@@ -1,45 +1,66 @@
-"""意图路由节点：规则优先 + LLM 判断执行模式与知识模式。
+"""意图路由节点：三层意图识别（规则 → LLM → 校验兜底）。
 
-LLM 一次判定三个维度：
-  - intent: chat | parse_url | task_plan | multi_agent
-  - knowledge_mode: off | normal | strict（自动决定，不再由用户在前端选择）
-  - platform / query：平台采集相关
+设计理念：
+  - L0 规则层：确定性关键词/正则，命中即返回（可复现、零 LLM 成本、优先）
+  - L1 LLM 层：规则未命中/模糊时调用，一次判定 intent/knowledge_mode/platform/query，
+    并输出 confidence
+  - L2 校验层：Pydantic 校验 + 低置信度降级 + 规则与 LLM 冲突时规则优先
 
-设计理念：用户只需自然对话，Agent 自动决定该普通回答、查私有资料、
-走复合任务规划，还是启动多 Agent 协作。
+用户只需自然对话，Agent 自动决定普通回答、查私有资料、单篇创作、
+多阶段协作、平台采集。意图识别不依赖前端任何模式选择。
 """
 from __future__ import annotations
 
 import json
 import logging
-from typing import Literal
 
 from ....infrastructure.llm.registry import llm_provider_registry
 from ....prompts.registry import prompt_registry
+from .intent_rules import detect_intent_by_rules, extract_urls
 from ..state import ChatAgentState
 
 logger = logging.getLogger(__name__)
 
+_VALID_INTENTS = {"chat", "parse_url", "task_plan", "multi_agent"}
+_VALID_MODES = {"off", "normal", "strict"}
+# 置信度低于该值视为不可靠，降级为 chat（宁可走保守路线）
+_MIN_CONFIDENCE = 0.6
+
+
+def _default_result(message: str, existing_mode: str | None) -> dict:
+    """保守兜底：默认普通对话。"""
+    mode = existing_mode if existing_mode in _VALID_MODES else "normal"
+    return {
+        "intent": "chat",
+        "knowledge_mode": mode,
+        "intent_confidence": 0.0,
+        "intent_reason": "fallback: default chat",
+        "intent_platform": None,
+        "intent_query": None,
+    }
+
 
 async def route_intent_node(state: ChatAgentState) -> dict:
-    urls = state.get("extracted_urls", [])
     message = state.get("user_message", "")
+    existing_mode = state.get("knowledge_mode")
+    if existing_mode not in _VALID_MODES:
+        existing_mode = "normal"
 
-    # 规则优先：有 URL 且消息短（明显是粘贴 URL）
-    if urls and len(message.strip()) < 300:
-        words_without_url = message
-        for u in urls:
-            words_without_url = words_without_url.replace(u, "").strip()
-        if len(words_without_url) < 50:
-            existing_mode = state.get("knowledge_mode")
-            if existing_mode not in ("off", "normal", "strict"):
-                existing_mode = "normal"
-            return {
-                "intent": "parse_url",
-                "knowledge_mode": existing_mode,
-            }
-    # LLM 判断意图 + 知识模式
+    # ── L0 规则层 ──────────────────────────────────────────────────────────
+    rule_result = detect_intent_by_rules(message)
+    if rule_result is not None and rule_result.get("confidence", 1.0) >= 1.0:
+        rule_result.setdefault("intent_confidence", 1.0)
+        rule_result.setdefault("intent_reason", "rule")
+        rule_result.setdefault("intent_platform", rule_result.get("platform"))
+        rule_result.setdefault("intent_query", rule_result.get("query"))
+        # 显式 strict/off 优先保留（测试/内部直连兼容）
+        if existing_mode in ("strict", "off"):
+            rule_result["knowledge_mode"] = existing_mode
+        return rule_result
+
+    # ── L1 LLM 层（规则未命中） ────────────────────────────────────────────
     try:
+        urls = extract_urls(message)
         rendered = prompt_registry.render(
             "chat.intent_router",
             user_message=message,
@@ -49,35 +70,54 @@ async def route_intent_node(state: ChatAgentState) -> dict:
         resp = await provider.generate(rendered.to_llm_request())
         content = resp.content.strip()
 
-        data = {"intent": "chat", "knowledge_mode": "normal"}
+        data: dict = {}
         if "{" in content:
             json_str = content[content.index("{") : content.rindex("}") + 1]
             data = json.loads(json_str)
 
+        # ── L2 校验层 ────────────────────────────────────────────────────────
         intent = data.get("intent", "chat")
-        knowledge_mode = data.get("knowledge_mode", "normal")
-
-        # 合法化：intent 只接受这四个；knowledge_mode 只接受三个
-        valid_intents: set[str] = {"chat", "parse_url", "task_plan", "multi_agent"}
-        if intent not in valid_intents:
+        if intent not in _VALID_INTENTS:
             intent = "chat"
-        valid_modes: set[str] = {"off", "normal", "strict"}
-        if knowledge_mode not in valid_modes:
+        knowledge_mode = data.get("knowledge_mode", "normal")
+        if knowledge_mode not in _VALID_MODES:
             knowledge_mode = "normal"
+        confidence = data.get("confidence")
+        try:
+            confidence = float(confidence) if confidence is not None else 0.9
+        except (TypeError, ValueError):
+            confidence = 0.9
+        confidence = max(0.0, min(1.0, confidence))
 
-        # 仅当调用方显式指定了非默认的 knowledge_mode（strict/off）时优先保留，
-        # 用于兼容测试与内部直连。默认 normal 不覆盖 LLM 判定。
-        existing_mode = state.get("knowledge_mode")
+        # 显式 strict/off 优先保留
         if existing_mode in ("strict", "off"):
             knowledge_mode = existing_mode
+
+        # 低置信度降级：宁可 chat 也不要冒险进错模式
+        if confidence < _MIN_CONFIDENCE:
+            logger.info("Intent low confidence (%.2f) for %r, defaulting to chat", confidence, message[:50])
+            result = _default_result(message, existing_mode)
+            result["intent_reason"] = f"llm low confidence {confidence:.2f}"
+            return result
+
+        # 规则层已有低置信结果（如 generic collection）：用 LLM 精修其 platform/query
+        if rule_result is not None:
+            rule_result.update({
+                "intent_confidence": confidence,
+                "intent_reason": (data.get("reason") or "rule+llm"),
+                "intent_platform": data.get("platform") or rule_result.get("platform"),
+                "intent_query": data.get("query") or rule_result.get("query"),
+            })
+            return rule_result
 
         return {
             "intent": intent,
             "knowledge_mode": knowledge_mode,
+            "intent_confidence": confidence,
+            "intent_reason": data.get("reason") or "llm",
+            "intent_platform": data.get("platform"),
+            "intent_query": data.get("query"),
         }
     except Exception as e:
         logger.warning("Intent routing failed, defaulting to chat: %s", e)
-        existing_mode = state.get("knowledge_mode")
-        if existing_mode not in ("off", "normal", "strict"):
-            existing_mode = "normal"
-        return {"intent": "chat", "knowledge_mode": existing_mode}
+        return _default_result(message, existing_mode)
