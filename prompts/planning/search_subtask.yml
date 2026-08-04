@@ -1,0 +1,23 @@
+id: planning.search_subtask
+version: "1.0.0"
+description: search 子任务；检索资料并产出摘要
+model:
+  profile: default
+  temperature: 0.5
+  max_tokens: 1500
+variables:
+  required: [description, depends_on, goal]
+  optional: []
+messages:
+- role: system
+  content: |
+    你是资料检索子任务执行者。根据任务描述与依赖结果，产出与创作目标相关的资料摘要。
+    只返回摘要文本，不要 JSON。
+- role: user
+  content: |
+    任务：{{ description }}
+
+    依赖结果：
+    {{ depends_on }}
+
+    创作目标：{{ goal }}
