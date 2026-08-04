@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from .agent.collect_results import extract_collect_result
 from .agent.process_steps import tool_end_step, tool_start_step
+from ..core.config import AGENT_MAX_RECURSION
 
 ChatRunStatus = Literal["pending", "running", "done", "error", "canceled"]
 ChatRunEventName = Literal[
@@ -179,7 +180,10 @@ class ChatConversationRunService:
             run = self._get_required_run(run_id)
             session_id = run.session_id
             message = run.message
-            config = {"configurable": {"thread_id": session_id}}
+            config = {
+                "configurable": {"thread_id": session_id},
+                "recursion_limit": AGENT_MAX_RECURSION,
+            }
             existing_state = await graph.aget_state(config)
             state_values = getattr(existing_state, "values", {}) or {}
             is_first_message = not state_values.get("messages")

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from ...application.chat_service import ChatService
 from ...persistence.session import get_db_session, get_session_factory
 from ..sse_utils import sse_named_event, make_sse_response
+from ...core.config import AGENT_MAX_RECURSION
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +258,10 @@ async def send_message_stream(
 
         # 2. 准备 LangGraph 运行配置
         # 使用当前用户消息 ID 作为 thread_id 隔离分支
-        config = {"configurable": {"thread_id": f"{chat_id_str}_{user_msg.id}"}}
+        config = {
+            "configurable": {"thread_id": f"{chat_id_str}_{user_msg.id}"},
+            "recursion_limit": AGENT_MAX_RECURSION,
+        }
         inputs = {
             "chat_id": chat_id_str,
             "user_message_id": str(user_msg.id),
@@ -512,7 +516,13 @@ async def send_message_stream(
 
         except Exception as e:
             logger.error("Chat agent stream execution failed: %s", e)
-            err_data = {"error_code": "agent_failed", "message": "对话执行失败，请稍后重试"}
+            if type(e).__name__ == "GraphRecursionError" or "recursion" in str(e).lower():
+                err_data = {
+                    "error_code": "agent_recursion_limit",
+                    "message": f"本轮处理步骤过多已自动停止（上限 {AGENT_MAX_RECURSION} 步）。请换个更明确的说法重试。",
+                }
+            else:
+                err_data = {"error_code": "agent_failed", "message": "对话执行失败，请稍后重试"}
             
             # 尝试写入错误消息到数据库
             try:

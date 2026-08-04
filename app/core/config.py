@@ -18,6 +18,10 @@ XIAOHONGSHU_COOKIE_PATH_DEFAULT = ROOT_DIR / ".secrets" / "xiaohongshu.cookie"
 DEFAULT_PLATFORM = get_settings().collect.default_platform
 MAX_PUSH_COUNT_LIMIT = get_settings().collect.max_push_count_limit
 
+# Agent 图执行的最大循环次数；超过后 LangGraph 抛 GraphRecursionError，
+# 防止 ReAct 工具环 / hitl 回环在工具反复失败时死循环（默认 10007 近乎无限）。
+AGENT_MAX_RECURSION = 20
+
 
 def load_env_file() -> None:
     """加载项目根目录的 .env；这样后端入口、CLI 和测试都能复用同一套环境变量来源。"""
