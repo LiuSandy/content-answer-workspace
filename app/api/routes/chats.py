@@ -18,6 +18,50 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 
+def _build_rag_payload(node_state: dict) -> dict | None:
+    """从 retrieve_knowledge 节点输出构造 RAG 参考来源 payload。
+
+    返回 None 表示该轮没有检索或检索无命中来源。
+    payload 结构：
+        sources: [{label, title, sourceType, sourceUrl, contentSnippet}]
+        fallbackNotice: str | None
+        traceId: str | None
+    """
+    retrieval = node_state.get("retrieval_result")
+    trace_id = node_state.get("trace_id")
+    if retrieval is None:
+        return None
+
+    has_evidence = getattr(retrieval, "has_evidence", False)
+    sources = [
+        {
+            "label": s.get("label"),
+            "title": s.get("title", "Unknown Document"),
+            "sourceType": s.get("sourceType", "私有资料"),
+            "sourceUrl": s.get("sourceUrl"),
+            "contentSnippet": (s.get("text") or "")[:300],
+        }
+        for s in (getattr(retrieval, "sources", None) or [])
+        if s.get("label")
+    ]
+    if has_evidence and sources:
+        return {
+            "sources": sources,
+            "fallbackNotice": None,
+            "traceId": trace_id,
+        }
+    if not has_evidence:
+        return {
+            "sources": [],
+            "fallbackNotice": (
+                getattr(retrieval, "fallback_reason", None)
+                or "私有资料证据不足，使用了其他知识来源"
+            ),
+            "traceId": trace_id,
+        }
+    return None
+
+
 class CreateChatRequest(BaseModel):
     title: str = "新对话"
 
@@ -226,6 +270,7 @@ async def send_message_stream(
         try:
             # 3. 运行图并捕捉事件
             # version="v2" 是 langgraph.astream_events 所需参数
+            rag_payload: dict | None = None
             async for event in graph.astream_events(inputs, config, version="v2"):
                 kind = event.get("event")
                 name = event.get("name")
@@ -239,6 +284,50 @@ async def send_message_stream(
                         yield sse_named_event("tool.started", {"tool_type": "parse_url"})
                     elif name == "collect":
                         yield sse_named_event("tool.started", {"tool_type": "collect"})
+
+                elif kind == "on_chain_end" and (event.get("metadata") or {}).get("langgraph_node") == "retrieve_knowledge":
+                    # RAG 检索结束：透传命中来源给前端（受 RAG_SOURCE_DISPLAY 开关控制）
+                    from app.core.config import is_rag_source_display_enabled
+                    if is_rag_source_display_enabled():
+                        node_state = (event.get("data") or {}).get("output")
+                        if not isinstance(node_state, dict):
+                            node_state = {}
+                        built = _build_rag_payload(node_state)
+                        if built is not None:
+                            rag_payload = built
+                            if built["sources"]:
+                                yield sse_named_event("rag.sources", {
+                                    "sources": built["sources"],
+                                    "traceId": built["traceId"],
+                                })
+                            else:
+                                yield sse_named_event("rag.fallback", {
+                                    "reason": built["fallbackNotice"],
+                                    "traceId": built["traceId"],
+                                })
+
+                elif kind == "on_chain_end" and (event.get("metadata") or {}).get("langgraph_node") == "task_plan":
+                    # 复合任务规划执行结束：透传 plan 概要给前端展示卡片
+                    node_state = (event.get("data") or {}).get("output")
+                    if isinstance(node_state, dict) and node_state.get("task_plan_result"):
+                        tp = node_state["task_plan_result"]
+                        yield sse_named_event("task_plan.created", {
+                            "planId": tp.get("planId"),
+                            "goal": tp.get("goal"),
+                            "status": tp.get("status"),
+                            "preview": tp.get("preview"),
+                        })
+
+                elif kind == "on_chain_end" and (event.get("metadata") or {}).get("langgraph_node") == "multi_agent":
+                    # 多 Agent 协作结束：透传 5 个子 Agent 状态给前端展示
+                    node_state = (event.get("data") or {}).get("output")
+                    if isinstance(node_state, dict) and node_state.get("multi_agent_result"):
+                        ma = node_state["multi_agent_result"]
+                        yield sse_named_event("multi_agent.status", {
+                            "status": ma.get("status"),
+                            "agents": ma.get("agents", []),
+                            "finalContent": ma.get("finalContent"),
+                        })
 
                 elif kind == "on_chat_model_stream":
                     data = event.get("data", {})
@@ -261,10 +350,16 @@ async def send_message_stream(
                 if intent == "chat" and assistant_content_parts:
                     # 普通对话，保存回复文本
                     full_text = "".join(assistant_content_parts)
+                    msg_payload = {}
+                    if rag_payload:
+                        msg_payload["ragSources"] = rag_payload.get("sources") or []
+                        msg_payload["ragFallback"] = rag_payload.get("fallbackNotice")
+                        msg_payload["traceId"] = rag_payload.get("traceId")
                     await chat_service.save_assistant_message(
                         chat_id=chat_id,
                         message_type="text",
                         content=full_text,
+                        payload=msg_payload if msg_payload else None,
                         parent_message_id=user_msg.id,
                         run_id=run_id,
                     )
@@ -291,10 +386,20 @@ async def send_message_stream(
 
                     if tool_items:
                         try:
+                            from datetime import datetime as _dt
                             from ...domain.dto import SourceItemDTO
                             dto_items = []
                             for i in tool_items:
                                 ext_id = i.get("url") or i.get("link") or ""
+                                published = None
+                                raw_pub = i.get("published_at")
+                                if raw_pub:
+                                    try:
+                                        published = _dt.fromisoformat(str(raw_pub).replace("Z", "+00:00"))
+                                    except ValueError:
+                                        published = None
+                                metric = i.get("metric") or ""
+                                likes_raw = i.get("likes") or 0
                                 dto_items.append(
                                     SourceItemDTO(
                                         platform=tool_platform,
@@ -304,7 +409,8 @@ async def send_message_stream(
                                         content=i.get("excerpt") or i.get("summary") or "",
                                         author=i.get("author") or "",
                                         summary=i.get("excerpt") or i.get("summary") or "",
-                                        metrics={"likes": i.get("metric") or i.get("answer_count") or 0}
+                                        metrics={"likes": metric or likes_raw},
+                                        published_at=published,
                                     )
                                 )
 
@@ -319,6 +425,8 @@ async def send_message_stream(
                                 item_dict = item.model_dump(by_alias=True)
                                 if item_dict.get("id"):
                                     item_dict["id"] = str(item_dict["id"])
+                                if item_dict.get("publishedAt") is not None:
+                                    item_dict["publishedAt"] = item_dict["publishedAt"].isoformat()
                                 serialized_items.append(item_dict)
 
                             payload_data = {
@@ -339,6 +447,28 @@ async def send_message_stream(
                             yield sse_named_event("source.list.completed", payload_data)
                         except Exception as e:
                             logger.error("Failed to persist and yield source items from tool call: %s", e)
+                elif intent == "task_plan":
+                    # 复合任务：从 state 取结果并落库为结构化消息
+                    tp_result = values.get("task_plan_result") or {}
+                    await chat_service.save_assistant_message(
+                        chat_id=chat_id,
+                        message_type="text",
+                        content=tp_result.get("preview") or "复合任务已完成",
+                        payload={"taskPlanResult": tp_result},
+                        parent_message_id=user_msg.id,
+                        run_id=run_id,
+                    )
+                elif intent == "multi_agent":
+                    # 多 Agent 协作：从 state 取结果并落库为结构化消息
+                    ma_result = values.get("multi_agent_result") or {}
+                    await chat_service.save_assistant_message(
+                        chat_id=chat_id,
+                        message_type="text",
+                        content=ma_result.get("finalContent") or "多 Agent 协作已完成",
+                        payload={"multiAgentResult": ma_result},
+                        parent_message_id=user_msg.id,
+                        run_id=run_id,
+                    )
                 elif response_payload:
                     # 字典安全兼容处理：适配反序列化降级为 dict 的情况
                     if isinstance(response_payload, dict):

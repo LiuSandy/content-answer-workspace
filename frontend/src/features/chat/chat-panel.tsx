@@ -2,7 +2,6 @@ import {useState, useRef, useEffect} from "react";
 import {useQuery, useQueryClient} from "@tanstack/react-query";
 import {
     Send,
-    BookMarked,
     Globe,
     Loader2,
     Sparkles,
@@ -14,7 +13,8 @@ import {
     ChevronLeft,
     ChevronRight,
     Wrench,
-    ArrowUp
+    ArrowUp,
+    Clock
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -29,6 +29,9 @@ import {Card, CardContent} from "@/components/ui/card";
 import {Badge} from "@/components/ui/badge";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {Skeleton} from "@/components/ui/skeleton";
+import {TaskPlanCard} from "./task-plan-card";
+import {MemoryAppliedBadge} from "./memory-applied-badge";
+import {AgentWorkspacePanel, type MultiAgentRunResult} from "./agent-workspace-panel";
 import {cn} from "@/lib/utils";
 import {PromptInput} from "@/components/ui/prompt-input";
 import {Textarea} from "@/components/ui/textarea";
@@ -153,12 +156,25 @@ export function ChatPanel() {
     const [streamingError, setStreamingError] = useState<string | null>(null);
 
     // RAG 相关状态
-    const [knowledgeMode, setKnowledgeMode] = useState<"normal" | "strict">("normal");
     const [ragSources, setRagSources] = useState<Array<{label: string; title: string; sourceType: string; sourceUrl?: string | null; contentSnippet?: string}> | null>(null);
     const [ragFallback, setRagFallback] = useState<string | null>(null);
 
     // 编辑消息状态
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    // TaskPlan ID（由后端意图识别触发 task_plan.created SSE 事件写入）
+    const [activeTaskPlanId, setActiveTaskPlanId] = useState<string | null>(null);
+    // 多 Agent 协作执行状态（由 multi_agent.status SSE 事件写入）
+    const [multiAgentResult, setMultiAgentResult] = useState<MultiAgentRunResult | null>(null);
+
+    // 机会横幅「一键创作」触发的 TaskPlan 也在此展示
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail as { planId?: string };
+            if (detail?.planId) setActiveTaskPlanId(detail.planId);
+        };
+        window.addEventListener("taskplan:created", handler);
+        return () => window.removeEventListener("taskplan:created", handler);
+    }, []);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -181,6 +197,8 @@ export function ChatPanel() {
         setStreamingError(null);
         setRagSources(null);
         setRagFallback(null);
+        setMultiAgentResult(null);
+        setActiveTaskPlanId(null);
     }, [currentChatId]);
 
     // 获取消息历史
@@ -274,6 +292,9 @@ export function ChatPanel() {
         setStreamingError(null);
         setRagSources(null);
         setRagFallback(null);
+        // 新一轮对话：清掉上一次的 Agent 协作卡片，避免旧状态残留
+        setMultiAgentResult(null);
+        setActiveTaskPlanId(null);
 
         let activeChatId = currentChatId;
         if (!activeChatId) {
@@ -318,7 +339,6 @@ export function ChatPanel() {
             await streamPost(`/api/chats/${activeChatId}/messages/stream`, {
                 content,
                 parentMessageId,
-                knowledgeMode,
             }, {
                 onEvent: (event, data) => {
                     if (event === "agent.status") {
@@ -333,6 +353,21 @@ export function ChatPanel() {
                             collect: "采集帖子中...",
                         };
                         setAgentStatus(toolMap[data.tool_type] || `执行工具: ${data.tool_type}`);
+                    } else if (event === "task_plan.created") {
+                        // 意图识别判定为复合任务：展示 TaskPlan 结果卡片
+                        setAgentStatus("复合任务执行中...");
+                        if (data?.planId) setActiveTaskPlanId(data.planId);
+                    } else if (event === "multi_agent.status") {
+                        // 意图识别判定为多 Agent 协作：展示 5 个子 Agent 状态
+                        setAgentStatus("多 Agent 协作中...");
+                        if (data?.status) {
+                            setMultiAgentResult({
+                                runId: data.runId || "chat-run",
+                                status: data.status,
+                                agents: data.agents || [],
+                                finalContent: data.finalContent,
+                            });
+                        }
                     } else if (event === "message.delta") {
                         setAgentStatus(null);
                         setStreamingText((prev) => prev + data.delta);
@@ -544,22 +579,22 @@ export function ChatPanel() {
                 </div>
             </ScrollArea>
 
+            {/* ── TaskPlan 进度卡片（如果当前 chat 创建过 plan）── */}
+            {activeTaskPlanId && <TaskPlanCard planId={activeTaskPlanId} />}
+
+            {/* ── Phase 4 Agent 协作执行状态卡片（由后端意图识别触发，无独立输入框）── */}
+            {multiAgentResult && (
+                <AgentWorkspacePanel
+                    goal=""
+                    running={multiAgentResult.status === "running" || multiAgentResult.status === "pending"}
+                    result={multiAgentResult}
+                />
+            )}
+
             {/* ── 底部输入框 ── */}
             <div className="shrink-0 border-t bg-card p-4 fixed-bottom-input-area">
-                {/* knowledgeMode 选择器 */}
                 <div className="flex items-center gap-2 mb-2">
-                    <button
-                        onClick={() => setKnowledgeMode(knowledgeMode === "normal" ? "strict" : "normal")}
-                        className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-                            knowledgeMode === "strict"
-                                ? "bg-primary/10 border-primary/30 text-primary font-medium"
-                                : "border-border/40 text-muted-foreground hover:text-foreground"
-                        }`}
-                        title={knowledgeMode === "strict" ? "当前：仅依据私有资料（点击切换）" : "当前：普通创作模式（点击切换）"}
-                    >
-                        <BookMarked className="h-2.5 w-2.5" />
-                        {knowledgeMode === "strict" ? "仅私有资料" : "普通模式"}
-                    </button>
+                    <MemoryAppliedBadge />
                 </div>
                 <PromptInput
                     value={inputText}
@@ -849,6 +884,21 @@ function SourceListCard({
                                         {item.summary}
                                     </p>
                                 )}
+                                <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-2 flex-wrap">
+                                    {item.publishedAt && (
+                                        <span className="inline-flex items-center gap-1">
+                                            <Clock className="h-3 w-3"/>
+                                            {item.publishedAt}
+                                        </span>
+                                    )}
+                                    {item.metrics?.likes && (
+                                        <span className="inline-flex items-center gap-1">
+                                            <Sparkles className="h-3 w-3 text-amber-500"/>
+                                            {item.metrics.likes}
+                                        </span>
+                                    )}
+                                    {item.author && <span>作者：{item.author}</span>}
+                                </div>
                                 <div className="flex items-center justify-between">
                                     <Badge variant="secondary" className="text-[10px] uppercase">
                                         {item.platform || "zhihu"}

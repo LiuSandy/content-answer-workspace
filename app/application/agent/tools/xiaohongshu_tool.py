@@ -1,5 +1,11 @@
 """小红书工具；通过 OpenCLI（复用 Chrome 浏览器登录态）搜索和读取笔记。
-需要：① Chrome 已打开 ② 装了 OpenCLI 扩展 ③ 在 Chrome 中已登录小红书。"""
+需要：① Chrome 已打开 ② 装了 OpenCLI 扩展 ③ 在 Chrome 中已登录小红书。
+
+约束由工具层保证（不依赖 LLM 判断）：
+  - 按发布时间从新到旧排序（published_at 降序）
+  - 精确限制返回条数（top_n）
+  - 按 URL 去重
+"""
 
 from __future__ import annotations
 
@@ -58,12 +64,42 @@ def _normalize_item(item: dict) -> dict:
     likes = int(raw_likes) if str(raw_likes).isdigit() else 0
     author = str(item.get("author") or item.get("user") or item.get("username") or "")
     metric = f"{likes:,} 赞" if likes > 0 else ""
-    return {"title": title, "url": url, "excerpt": excerpt, "metric": metric, "author": author}
+    published_at = str(item.get("published_at") or item.get("time") or item.get("lastUpdateTime") or "")
+    return {
+        "title": title,
+        "url": url,
+        "excerpt": excerpt,
+        "metric": metric,
+        "author": author,
+        "published_at": published_at,
+    }
+
+
+def _sort_by_recent(items: list[dict]) -> list[dict]:
+    """按 published_at 从新到旧排序；无有效时间的条目排最后。"""
+    def _key(it: dict) -> str:
+        return it.get("published_at") or ""
+
+    return sorted(items, key=_key, reverse=True)
+
+
+def _dedupe(items: list[dict]) -> list[dict]:
+    """按 URL 去重；无 URL 的条目直接丢弃（无法可靠去重）。"""
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for it in items:
+        key = it.get("url") or ""
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(it)
+    return unique
 
 
 @tool
-def xiaohongshu_search(query: str) -> str:
-    """在小红书搜索笔记，返回结构化 JSON，每条包含标题、链接、摘要、点赞数和作者。
+def xiaohongshu_search(query: str, limit: int = 5) -> str:
+    """在小红书搜索笔记，返回结构化 JSON，每条包含标题、链接、摘要、点赞数、作者和发布时间。
+    结果按发布时间从新到旧排序、去重，且精确返回 limit 条（默认 5 条）。
     需要 Chrome 已打开并登录小红书，且安装了 OpenCLI 扩展。"""
     raw = _run(["opencli", "xiaohongshu", "search", query, "-f", "yaml"])
     logger.info("[xiaohongshu_search] query: %s, raw output:\n%s", query, raw)
@@ -71,7 +107,12 @@ def xiaohongshu_search(query: str) -> str:
     if not raw_items:
         logger.warning("[xiaohongshu_search] parse failed, raw_items is empty.")
         return json.dumps({"platform": _PLATFORM, "topic": query, "error": raw, "items": []}, ensure_ascii=False)
-    items = [_normalize_item(i) for i in raw_items[:_MAX_ITEMS] if i.get("title") or i.get("name")]
+
+    top_n = max(1, min(int(limit), _MAX_ITEMS))
+    items = [_normalize_item(i) for i in raw_items if i.get("title") or i.get("name")]
+    items = _sort_by_recent(items)
+    items = _dedupe(items)
+    items = items[:top_n]
     return json.dumps({"platform": _PLATFORM, "topic": query, "items": items}, ensure_ascii=False)
 
 
@@ -89,4 +130,6 @@ def xiaohongshu_feed() -> str:
     if not raw_items:
         return json.dumps({"platform": _PLATFORM, "topic": "推荐", "error": raw or "无结果", "items": []}, ensure_ascii=False)
     items = [_normalize_item(i) for i in raw_items[:_MAX_ITEMS] if i.get("title") or i.get("name")]
+    items = _sort_by_recent(items)
+    items = _dedupe(items)
     return json.dumps({"platform": _PLATFORM, "topic": "推荐", "items": items}, ensure_ascii=False)

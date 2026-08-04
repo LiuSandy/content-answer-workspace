@@ -50,6 +50,18 @@ def is_truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def is_rag_source_display_enabled() -> bool:
+    """是否向对话界面返回 RAG 参考来源明细。
+
+    参考来源（含文档标题、命中片段、Trace ID）属于调试信息，正式环境不应暴露给用户。
+    通过 RAG_SOURCE_DISPLAY 环境变量控制，默认开启（便于本地开发/调试时直接观察命中情况）。
+    生产环境设置 RAG_SOURCE_DISPLAY=false 即可关闭。
+    """
+
+    load_env_file()
+    return is_truthy(os.getenv("RAG_SOURCE_DISPLAY", "true"))
+
+
 def get_default_topics() -> list[Topic]:
     """提供后端默认主题；主题定义已外置到 default_topics.toml，这里只负责按 preset 组装成 Topic。"""
 
