@@ -14,6 +14,9 @@ from ..nodes.tool_nodes import (
 )
 from ..nodes.retrieve_knowledge import retrieve_knowledge_node
 from ..nodes.knowledge_decision import make_knowledge_decision
+from ..nodes.memory_retriever import memory_retriever_node
+from ..nodes.task_plan import task_plan_node
+from ..nodes.multi_agent_exec import multi_agent_node
 from ..state import ChatAgentState
 
 
@@ -25,6 +28,10 @@ def _route_after_intent(state: ChatAgentState) -> str:
     intent = state.get("intent", "chat")
     if intent == "parse_url":
         return "parse_url"
+    if intent == "task_plan":
+        return "task_plan"
+    if intent == "multi_agent":
+        return "multi_agent"
     return "knowledge_decision"
 
 
@@ -62,11 +69,14 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     graph: StateGraph = StateGraph(ChatAgentState)
 
     graph.add_node("preprocess", preprocess_node)
+    graph.add_node("memory_retriever", memory_retriever_node)
     graph.add_node("route_intent", route_intent_node)
     
     graph.add_node("knowledge_decision", knowledge_decision_node)
     graph.add_node("retrieve_knowledge", retrieve_knowledge_node)
     graph.add_node("strict_refusal", strict_refusal_node)
+    graph.add_node("task_plan", task_plan_node)
+    graph.add_node("multi_agent", multi_agent_node)
     
     graph.add_node("chat", chat_node)
     graph.add_node("chat_tools", ToolNode(ALL_TOOLS))
@@ -75,11 +85,17 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     graph.add_node("build_response", build_response_node)
 
     graph.add_edge(START, "preprocess")
-    graph.add_edge("preprocess", "route_intent")
+    graph.add_edge("preprocess", "memory_retriever")
+    graph.add_edge("memory_retriever", "route_intent")
     graph.add_conditional_edges(
         "route_intent",
         _route_after_intent,
-        {"knowledge_decision": "knowledge_decision", "parse_url": "parse_url"},
+        {
+            "knowledge_decision": "knowledge_decision",
+            "parse_url": "parse_url",
+            "task_plan": "task_plan",
+            "multi_agent": "multi_agent",
+        },
     )
     
     graph.add_conditional_edges(
@@ -95,6 +111,10 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     )
     
     graph.add_edge("strict_refusal", END)
+    
+    # 复合任务 / 多 Agent 协作产出即终态
+    graph.add_edge("task_plan", END)
+    graph.add_edge("multi_agent", END)
     
     # 将 chat 节点扩展为支持工具的 ReAct 环路
     graph.add_conditional_edges(

@@ -1,6 +1,6 @@
 id: chat.intent_router
-version: "1.0.0"
-description: 意图路由 Prompt，用于判断用户消息是普通对话、URL 解析还是主题采集
+version: "2.0.0"
+description: 意图路由 Prompt，自动判定执行模式（普通对话/私有资料/复合任务/多Agent协作）与知识检索模式
 
 variables:
   required:
@@ -10,30 +10,49 @@ variables:
 messages:
   - role: system
     content: |
-      你是意图分类器。根据用户消息判断意图，只返回 JSON，不返回其他内容。
-      
-      意图类型：
-      - "chat"：普通对话或问答
+      你是意图分类器。根据用户消息自动判断执行模式与知识模式，只返回 JSON，不返回其他内容。
+
+      一、执行模式 intent：
+      - "chat"：普通对话、问答，以及**搜索/检索/采集平台帖子**的需求（如“搜一下知乎关于 X 的讨论”“采集小红书上关于 Y 的帖子”）。搜索/采集类需求由对话 Agent 自主调用平台搜索工具完成，不需要规划。
       - "parse_url"：用户提供了 URL 想要解析内容（已由规则预检测）
-      - "collect"：用户想要搜索/采集某个主题的帖子
-      
+      - "task_plan"：复合创作任务——用户要求产出一篇完整的文章/回答/方案/笔记。**只要用户说"写/创作/产出一篇（个）……"且目标是单一作品，就归为 task_plan**（如"写一篇关于 RAG 的回答""创作一篇小红书种草笔记"）。Agent 会先规划再分步执行。
+      - "multi_agent"：复杂的多阶段创作目标——需要先调研再写作再评审，且最终要产出一份完整作品（如"调研并写一份完整的技术报告""策划并产出一个小红书爆款选题矩阵""帮我做一份行业分析报告"）。Agent 会启动 5 个子 Agent（编排/调研/写作/自评/记忆）协作完成。
+
+      ⚠️ 判定要点：
+      - 只搜索/检索/采集帖子、不要作品产出 → chat（Agent 会调用平台搜索工具）
+      - "写/创作/产出一篇(个)…" 明确是产出作品 → task_plan（即使很短）
+      - "解释/什么是/为什么/如何" 是问答 → chat
+      - "调研/分析/报告/研究…并输出完整作品" 多阶段 → multi_agent
+      - 含多个子问题或需要多份产出 → multi_agent
+      - 采集类消息即使很长、含很多细节约束（如数量、排序、去重），只要目标是"拿到帖子列表"而非"产出作品"→ chat
+
+      二、知识模式 knowledge_mode（自动判断是否需要查阅用户私有资料库）：
+      - "off"：纯寒暄或与内容创作完全无关
+      - "normal"：普通模式。先尝试检索私有资料库，若无足够证据则基于通用知识作答。
+      - "strict"：仅依据私有资料库回答。仅在用户明确要求“只能根据我上传的资料/只许用私有资料/不要用通用知识”时使用。
+
       返回格式：
-      {"intent": "chat"|"parse_url"|"collect", "platform": null|"zhihu"|"xiaohongshu"|"reddit", "query": null|"提炼后的搜索词"}
+      {"intent": "chat"|"parse_url"|"task_plan"|"multi_agent", "knowledge_mode": "off"|"normal"|"strict", "platform": null|"zhihu"|"xiaohongshu"|"reddit", "query": null|"提炼后的搜索词"}
 
       示例：
-      1. 用户：“帮我搜搜知乎上关于副业的热门讨论”
-         返回：{"intent": "collect", "platform": "zhihu", "query": "副业"}
-      2. 用户：“小红书上关于播客的最新热门笔记”
-         返回：{"intent": "collect", "platform": "xiaohongshu", "query": "播客"}
-      3. 用户：“你好，你叫什么名字？”
-         返回：{"intent": "chat", "platform": null, "query": null}
-      4. 用户：“提取一下这个网页 https://zhuanlan.zhihu.com/p/123”
-         返回：{"intent": "parse_url", "platform": "zhihu", "query": null}
+      1. 用户：“你好，你叫什么名字？”
+         返回：{"intent": "chat", "knowledge_mode": "off", "platform": null, "query": null}
+      2. 用户：“帮我搜搜知乎上关于副业的热门讨论”
+         返回：{"intent": "chat", "knowledge_mode": "normal", "platform": "zhihu", "query": "副业"}
+      3. 用户：“请您检索一下小红书关于历史播客的帖子，需要发布时间最近的，只要五个，不要重复”
+         返回：{"intent": "chat", "knowledge_mode": "normal", "platform": "xiaohongshu", "query": "历史播客"}
+      4. 用户：“写一篇关于 RAG 的回答”
+         返回：{"intent": "task_plan", "knowledge_mode": "normal", "platform": null, "query": null}
+      5. 用户：“调研并输出一份 AI Agent 行业现状的完整分析报告”
+         返回：{"intent": "multi_agent", "knowledge_mode": "normal", "platform": null, "query": null}
+      6. 用户：“只能根据我上传的文件回答，为什么 chmod 能防止未授权访问”
+         返回：{"intent": "chat", "knowledge_mode": "strict", "platform": null, "query": null}
+      7. 用户：“提取一下这个网页 https://zhuanlan.zhihu.com/p/123”
+         返回：{"intent": "parse_url", "knowledge_mode": "normal", "platform": "zhihu", "query": null}
 
-      
   - role: user
     content: |
       用户消息：{{ user_message }}
       已检测到的 URL：{{ extracted_urls }}
-      
+
       判断意图：

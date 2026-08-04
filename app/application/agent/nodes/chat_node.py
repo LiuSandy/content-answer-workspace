@@ -47,6 +47,15 @@ async def chat_node(state: ChatAgentState) -> dict:
         fallback_notice = "\n\n【提示】私有资料库中没有找到足够的相关证据，本回答将基于通用知识作答。"
         system_content = system_content + fallback_notice
 
+    # Phase 4 长期记忆注入：spec 3.3 让 Agent 体现用户偏好
+    applied = state.get("applied_memories") or []
+    if applied:
+        memories_block = "\n\n【用户长期偏好（已应用 {} 条记忆）】\n".format(len(applied))
+        for i, m in enumerate(applied, 1):
+            memories_block += f"[M{i}] ({m.get('memory_type')}) {m.get('content')}\n"
+        memories_block += "\n请在回答中体现上述偏好；不要直接引用 [Mx] 标签。"
+        system_content = system_content + memories_block
+
     messages = [SystemMessage(content=system_content)] + list(state.get("messages", []))
     response = await _llm.ainvoke(messages)
     return {"messages": [response]}
