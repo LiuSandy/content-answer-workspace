@@ -20,6 +20,10 @@ from .api.routes.hotlist import router as hotlist_router
 from .api.routes.settings import router as settings_router
 from .api.routes.prompts import router as prompts_router
 from .api.routes.knowledge import router as knowledge_router
+from .api.routes.opportunities import router as opportunities_router
+from .api.routes.task_plans import router as task_plans_router
+from .api.routes.memories import router as memories_router
+from .api.routes.multi_agent import router as multi_agent_router
 from .application.agent.graphs.conversation import build_conversation_graph
 from .config.loader import warmup as warmup_config
 from .core.config import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
@@ -69,13 +73,31 @@ async def lifespan(app: FastAPI):
         ("app.domain.dto", "ToolResult"),
         ("app.domain.dto", "SourceItemDTO"),
         "app.domain.dto",
+        ("app.application.knowledge.retrieval_service", "RetrievalResult"),
+        ("app.application.knowledge.retrieval_service", "RetrievalRequest"),
+        ("app.application.agent.state", "ChatAgentState"),
         "asyncpg.pgproto.pgproto",
     ])
     CONVERSATION_CHECKPOINT_DB.parent.mkdir(parents=True, exist_ok=True)
     async with AsyncSqliteSaver.from_conn_string(str(CONVERSATION_CHECKPOINT_DB)) as checkpointer:
         checkpointer.serde = serde
         app.state.conversation_graph = build_conversation_graph(checkpointer)
+
+        # 启动定时任务基建（Phase 2 主动感知）
+        try:
+            from .infrastructure.scheduler import start_scheduler
+            await start_scheduler()
+        except Exception as e:
+            logging.warning(f"Scheduler startup warning (non-critical): {e}")
+
         yield
+
+        # 关闭定时任务
+        try:
+            from .infrastructure.scheduler import stop_scheduler
+            await stop_scheduler()
+        except Exception:
+            pass
 
 
 app = FastAPI(lifespan=lifespan)
@@ -160,6 +182,10 @@ app.include_router(hotlist_router)
 app.include_router(settings_router)
 app.include_router(prompts_router)
 app.include_router(knowledge_router)
+app.include_router(opportunities_router)
+app.include_router(task_plans_router)
+app.include_router(memories_router)
+app.include_router(multi_agent_router)
 
 
 # ── 静态文件托管 ──────────────────────────────────────────────────────────────

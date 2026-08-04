@@ -148,13 +148,26 @@ RAG 质量保障当前只需要保留现有"检索测试面板"（`/api/knowledg
 ### 路线图裁定
 
 1. 优先修复本文档第 1、2 节记录的缺口（图片/OCR 范围已收窄为"暂不做"，
-   conversion_confidence 按第 2 节方案打通）。
+    conversion_confidence 按第 2 节方案打通）。
 2. 待上述问题修复后，工作重心转向 agent 平台建设（对应
-   `docs/specs/feature-full-agent-upgrade.md` 的规划范围）。
+    `docs/specs/feature-full-agent-upgrade.md` 的规划范围）。
 3. RAG 私有知识库检索最终要被**集成进 agent 平台**，而非长期作为独立的
-   "检索测试面板"孤立存在——这与 `feature-private-knowledge-rag.md` 背景
-   章节"本功能为现有创作 Agent 增加可持续更新的私有资料库"的原始定位一致，
-   测试面板只是当前阶段的验证手段，不是终态。
+    "检索测试面板"孤立存在——这与 `feature-private-knowledge-rag.md` 背景
+    章节"本功能为现有创作 Agent 增加可持续更新的私有资料库"的原始定位一致，
+    测试面板只是当前阶段的验证手段，不是终态。
+
+### Phase 1.5 完成记录（2026-08-04）
+
+Phase 1.5 两项前置条件（`docs/plans/plan-full-agent-upgrade.md` Task 1、2）已完成：
+1. **conversion_confidence 链路打通**：`tests/test_pdf_confidence_live.py` 用真实
+   PyMuPDF 生成的 PDF + mock MinerU 验证整条 `_parse_pdf_to_markdown` 链路——
+   扫描页 PDF 产出 confidence < 0.7 且附警告，富文本 PDF ≥ 0.9 无警告，
+   MinerU 不可用/失败时本地降级仍按启发式算分（非硬编码 1.0）。
+2. **RAG 检索接入对话主链路**：`tests/test_conversation_graph_rag_e2e.py` 跑编译后
+   conversation graph 覆盖四条路径（normal+证据/normal+不足/strict 拒答/off），
+   断言 retrieve_knowledge 执行、Trace 落库三段式（create_trace + record_hits +
+   finalize_trace）、chat_node system_message 含 grounded context 与 [Sx] 引用指令、
+   state.trace_id 透传。Phase 2 可启动。
 
 ### 需要同步纠正的交叉引用
 

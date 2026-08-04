@@ -23,9 +23,21 @@
 | 意图路由（规则 + LLM） | `nodes/route_intent.py` | ✅ 已上线 |
 | 18 个平台工具 | `tools/` | ✅ 已上线 |
 | SQLite Checkpoint | `output/agent_checkpoints.sqlite` | ✅ 已上线 |
-| RAG 私有知识库检索 | `application/knowledge/` | ✅ 已上线 |
+| RAG 私有知识库检索 | `application/knowledge/` | 🟡 检索能力已验证，未接入对话主链路，存在已知缺口 |
 | 热榜分析节点 | `nodes/analyze_hotlist.py` | ✅ 已上线 |
 | 回答精修节点 | `graphs/refinement.py` | ✅ 已上线 |
+
+> **RAG 状态说明（2026-08-04 修订）**：原版本将 RAG 标为"✅ 已上线"过于乐观，与
+> `docs/specs/private-knowledge-rag-known-gaps.md` 记录的实际缺口不符。真实状态是：
+> 检索链路（BM25 中文分词 + 向量召回 + rerank + 上下文预算）已实现并有独立检索测试面板
+> （`/api/knowledge/test-search` + 前端面板），`conversation.py` 已接入
+> `retrieve_knowledge` 节点与 `knowledge_decision` 决策，但：
+> 1. `conversion_confidence` 字段从产出到 DB 到前端的传递链路此前完全断开（已于本次修复打通，
+>    详见 `app/infrastructure/knowledge/parsers.py` 的 `_estimate_pdf_confidence`）。
+> 2. 图片/OCR 解析主动收窄为"暂不做"，当前仅支持 PDF/Markdown/纯文本/URL。
+> 3. 检索测试面板仍独立存在，未与创作工作台主链路形成闭环。
+> 启动 Phase 2 之前必须先完成：RAG 检索真正接入对话主链路（而非仅作为测试面板），
+> 并验证 `conversion_confidence` 在真实 PDF 上产出非 NULL 且低于阈值时前端能看到警告。
 
 ### 1.3 升级目标
 
@@ -368,7 +380,12 @@ Phase 1（当前版本已完成）
 ├── RAG 私有知识库 ✅
 └── 热榜分析 ✅
 
-Phase 2（短期目标，建议 4~6 周）
+Phase 1.5（Phase 2 启动前置；务必先于 Phase 2 完成）
+├── RAG conversion_confidence 链路打通 ✅（已修复：parsers/document_service/routes/前端警告条）
+├── RAG 检索接入对话主链路并在真实 Chat 流中产出落地 Trace
+└── 真实 PDF 验证：conversion_confidence 非 NULL，低置信度时前端展示人工校对警告
+
+Phase 2（短期目标，建议 4~6 周；依赖 Phase 1.5 完成）
 ├── 功能三：反思与自我修正循环    ← 复用现有 refinement 节点，改造最小
 └── 功能四：主动感知（定时扫描）  ← 复用现有热榜工具，增加定时任务即可
 
@@ -379,6 +396,24 @@ Phase 4（长期目标，建议 10~16 周）
 ├── 功能二：长期记忆系统           ← 需要引入 pgvector + 记忆提取/检索管道
 └── 功能五：多 Agent 协作框架      ← 架构重构，需要 LangGraph 子图嵌套
 ```
+
+### 7.1 Phase 2 启动前置条件（强制）
+
+Phase 2 的反思循环（功能三）和主动感知（功能四）都隐含一个假设：Agent 已经能
+在主创作流中可信地使用 RAG 检索结果——反思维度"信息密度"和"与提问的相关性"
+本质上依赖私有资料库的证据支撑，主动感知的"用户领域匹配度"也依赖历史检索行为。
+因此启动 Phase 2 之前必须先达成以下三项（对应 Phase 1.5）：
+
+1. **`conversion_confidence` 已打通**：parsers 产出真实分数 → DocumentService 落地 DB
+   → API 透传 → 前端低于阈值展示警告。✅ 本次提交已完成。
+2. **RAG 检索真正接入对话主链路**：当前 `conversation.py` 虽已挂载 `retrieve_knowledge`
+   和 `knowledge_decision` 节点，但检索结果是否真正影响 chat 节点输出、是否落库 Trace
+   用于反思与记忆，都需要端到端验证。检索测试面板只用于调参，不构成主链路闭环。
+3. **真实 PDF 端到端验证**：上传含扫描页/复杂排版的 PDF，验证 `conversionConfidence`
+   低于 0.7 且候选稿页出现红色警告；纯文字 PDF 接近 1.0 无警告。
+
+未完成上述三项前不应启动 Phase 2 规划与实施，否则反思与记忆能力都会基于"
+RAG 已经可用"的过乐观假设而埋下返工风险。
 
 ---
 

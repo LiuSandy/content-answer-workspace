@@ -107,6 +107,9 @@ class PromptRegistry:
             return  # 跳过空文件
         schema = PromptSchema.model_validate(raw)
         if schema.id in self._prompts:
+            # 同一文件被重复加载时跳过，避免测试或多次 warmup 误报重复 ID
+            if self._sources.get(schema.id) == str(path):
+                return
             raise PromptDuplicateIdError(schema.id, self._sources[schema.id], str(path))
         self._prompts[schema.id] = schema
         self._sources[schema.id] = str(path)

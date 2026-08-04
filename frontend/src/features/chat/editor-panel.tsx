@@ -25,6 +25,7 @@ import { useChatStore } from "@/store/chat-store";
 import { useAlertDialog } from "@/hooks/use-alert-dialog";
 import { InlineRefineMenu, type InlineRefineParams } from "./inline-refine-menu";
 import { SelectionHighlight } from "./selection-highlight-extension";
+import { QualityScorePanel } from "./quality-score-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -664,6 +665,7 @@ export function EditorPanel() {
         setSelectedStyles={setSelectedStyles}
         wordCount={wordCount}
         onWordCountChange={setWordCount}
+        documentId={docState?.documentId}
       />
     </aside>
   );
@@ -680,6 +682,7 @@ function EditorTabContent({
   setSelectedStyles,
   wordCount,
   onWordCountChange,
+  documentId,
 }: {
   editor: ReturnType<typeof useEditor>;
   isGenerating: boolean;
@@ -691,6 +694,7 @@ function EditorTabContent({
   setSelectedStyles: (styles: string[]) => void;
   wordCount: number;
   onWordCountChange: (v: number) => void;
+  documentId?: string | null;
 }) {
   const hasContent = !!editor?.getText()?.trim();
 
@@ -715,6 +719,7 @@ function EditorTabContent({
       )}
 
       {/* 底部 AI 操作栏 */}
+      <QualityScorePanel documentId={documentId ?? null} />
       <div className="border-t bg-muted/30 p-4 fixed-bottom-input-area">
         <PromptInput
           value={rewriteInstruction}

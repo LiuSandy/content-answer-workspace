@@ -33,6 +33,8 @@ dependencies = [
   "pymupdf4llm>=0.0.27",
   "markdownify>=1.2",
   "tiktoken>=0.12",
+  # --- Phase 2 主动感知：定时任务基建 ---
+  "apscheduler>=3.10",
 ]
 
 [tool.uv]

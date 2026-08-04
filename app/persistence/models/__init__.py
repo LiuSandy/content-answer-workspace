@@ -10,6 +10,10 @@ from .knowledge import (
     RetrievalHitModel,
     RetrievalTraceModel,
 )
+from .quality_scores import QualityScoreModel
+from .opportunity_feeds import OpportunityFeedModel, AgentSettingsModel
+from .task_plans import TaskPlanModel, SubTaskModel
+from .user_memories import UserMemoryModel
 from .settings import AppSettings
 
 __all__ = [
@@ -26,5 +30,11 @@ __all__ = [
     "KnowledgeChunkModel",
     "RetrievalTraceModel",
     "RetrievalHitModel",
+    "QualityScoreModel",
+    "OpportunityFeedModel",
+    "AgentSettingsModel",
+    "TaskPlanModel",
+    "SubTaskModel",
+    "UserMemoryModel",
 ]
 
