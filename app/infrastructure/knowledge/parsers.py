@@ -12,6 +12,39 @@ class ParsedMarkdown:
     warnings: list[str] = field(default_factory=list)
 
 
+# 启发式 PDF 转换置信度阈值；低于此值时前端候选稿确认页应展示人工校对警告
+PDF_CONFIDENCE_DENSITY_FULL = 500  # 每页字符数达到该值视为密度满分
+PDF_CONFIDENCE_MIN_PAGES_FOR_DENSITY = 1  # 至少 1 页才计算密度
+
+
+def _estimate_pdf_confidence(md_text: str, total_pages: int) -> float:
+    """启发式估算 PDF 转 Markdown 的置信度（0~1）。
+
+    只依赖已产出的 Markdown 文本与 PDF 页数,不假设 MinerU 响应字段:
+    - 文本密度: len(md_text) / total_pages 过低意味着该页大概率是纯图片或解析失败。
+    - 替换字符 U+FFFD 及连续不可打印字符占比越高越低。
+    最终用 0.7*密度 + 0.3*纯净度加权;无页数信息时仅用纯净度。
+    """
+    if not md_text:
+        return 0.0
+
+    text_len = len(md_text)
+
+    # 纯净度: 1 - 替换字符占比
+    replacement_count = md_text.count("\ufffd")
+    replacement_ratio = replacement_count / text_len if text_len else 0.0
+    purity_score = max(0.0, 1.0 - replacement_ratio)
+
+    if total_pages and total_pages >= PDF_CONFIDENCE_MIN_PAGES_FOR_DENSITY:
+        density = text_len / total_pages
+        density_score = min(1.0, density / PDF_CONFIDENCE_DENSITY_FULL)
+        score = 0.7 * density_score + 0.3 * purity_score
+    else:
+        score = purity_score
+
+    return max(0.0, min(1.0, score))
+
+
 class MarkdownParser:
     async def parse_text(self, text: str, doc_id: str, source_type: str = "markdown") -> ParsedMarkdown:
         cleaned = text.strip()
@@ -195,6 +228,8 @@ class MinerUCloudParser:
             logger.info("MinerU batch %s poll #%d state: '%s'", batch_id, poll_idx + 1, state)
 
             if state in ("completed", "success", "done", "finished"):
+                # 完成时记录一次完整状态 JSON,以便后续确认 API 是否返回质量字段
+                logger.info("MinerU batch %s completed; status_json=%s", batch_id, status_json)
                 if md_content and isinstance(md_content, str) and len(md_content.strip()) > 0:
                     return md_content
                 if full_zip_url and isinstance(full_zip_url, str):
@@ -214,6 +249,15 @@ class MinerUCloudParser:
         raise TimeoutError("MinerU parsing timed out after 300 seconds")
 
     async def parse_pdf(self, pdf_bytes: bytes, doc_id: str, filename: str = "document.pdf") -> ParsedMarkdown:
+        # 探测总页数,供置信度启发式计算使用
+        total_pages = 0
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            total_pages = len(doc)
+            doc.close()
+        except Exception:
+            logger.warning("Could not detect PDF page count for %s; confidence falls back to purity-only", filename)
+
         pdf_chunks = self.splitter.inspect_and_split(pdf_bytes)
 
         async with httpx.AsyncClient() as client:
@@ -228,7 +272,11 @@ class MinerUCloudParser:
                 results = await asyncio.gather(*tasks)
                 md_text = "\n\n---\n\n".join(results)
 
+        confidence = _estimate_pdf_confidence(md_text, total_pages)
+        warnings = []
+        if confidence < 0.7:
+            warnings.append("PDF 识别质量较低,建议人工校对候选 Markdown 后再确认建立索引")
         now_str = datetime.now(timezone.utc).isoformat()
         front_matter = f"---\ndoc_id: {doc_id}\nsource_type: pdf\nconverted_at: {now_str}\nconverter: mineru_cloud_vlm\n---\n\n"
         final_md = front_matter + md_text.strip()
-        return ParsedMarkdown(markdown=final_md, confidence=1.0)
+        return ParsedMarkdown(markdown=final_md, confidence=confidence, warnings=warnings)

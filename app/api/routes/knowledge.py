@@ -16,7 +16,12 @@ from app.application.knowledge.indexing_service import IndexingService
 from app.application.knowledge.trace_service import TraceService
 from app.infrastructure.knowledge.storage import KnowledgeStorage
 from app.infrastructure.knowledge.ssrf import SSRFError, fetch_url_safely
-from app.infrastructure.knowledge.parsers import HtmlCleanerParser, MinerUCloudParser
+from app.infrastructure.knowledge.parsers import (
+    HtmlCleanerParser,
+    MinerUCloudParser,
+    ParsedMarkdown,
+    _estimate_pdf_confidence,
+)
 from app.core.config import get_knowledge_settings, is_truthy
 from app.persistence.session import get_db_session, get_session_factory
 
@@ -26,6 +31,9 @@ logger = logging.getLogger(__name__)
 
 # 允许上传的文件扩展名白名单；其他类型既无解析器也不该落盘
 ALLOWED_UPLOAD_EXTENSIONS = {"md", "markdown", "txt", "pdf"}
+
+# 转换置信度阈值；候选稿确认界面低于此值需展示人工校对警告（复用检索层 KNOWLEDGE_EVIDENCE_THRESHOLD 的概念）
+KNOWLEDGE_CONVERSION_CONFIDENCE_THRESHOLD = 0.7
 
 
 def _parse_pdf_locally(file_bytes: bytes, title: str) -> str:
@@ -64,6 +72,42 @@ def _decode_text_file(file_bytes: bytes) -> str:
         return file_bytes.decode("utf-8")
     except UnicodeDecodeError:
         return file_bytes.decode("gbk", errors="replace")
+
+
+def _count_pdf_pages(file_bytes: bytes) -> int:
+    """探测 PDF 总页数；失败回退 0,置信度计算退化为仅看纯净度。"""
+    try:
+        import fitz
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        n = len(doc)
+        doc.close()
+        return n
+    except Exception:
+        return 0
+
+
+async def _parse_pdf_to_markdown(file_bytes: bytes, filename: str, doc_id: str, settings) -> ParsedMarkdown:
+    """统一 PDF 解析入口:MinerU 优先,失败或未配置时降级为本地提取。
+
+    两条路径都基于已产出的 Markdown 与总页数估算置信度(而非硬编码 1.0)。
+    """
+    if settings.mineru_api_key:
+        try:
+            mineru_parser = MinerUCloudParser(
+                api_key=settings.mineru_api_key,
+                base_url=settings.mineru_api_base_url,
+                model_version=settings.mineru_model_version,
+                max_pages_per_chunk=settings.pdf_max_pages_per_chunk,
+                max_bytes_per_chunk=settings.pdf_max_bytes_per_chunk,
+            )
+            return await mineru_parser.parse_pdf(file_bytes, doc_id, filename)
+        except Exception:
+            logger.exception("MinerU 解析失败,降级为本地 PDF 解析: %s", filename)
+
+    md_text = _parse_pdf_locally(file_bytes, filename)
+    confidence = _estimate_pdf_confidence(md_text, _count_pdf_pages(file_bytes))
+    warnings = ["本地提取模式(MinerU 不可用或失败),识别质量有限"] if confidence < 0.7 else []
+    return ParsedMarkdown(markdown=md_text, confidence=confidence, warnings=warnings)
 
 def _doc_to_dict(doc) -> dict:
     return {
@@ -155,27 +199,17 @@ async def upload_document(
         return {"ok": True, "data": _doc_to_dict(doc), "deduplicated": True}
 
     parsed_markdown = ""
+    confidence: float | None = None
     if ext == "pdf":
-        if settings.mineru_api_key:
-            try:
-                mineru_parser = MinerUCloudParser(
-                    api_key=settings.mineru_api_key,
-                    base_url=settings.mineru_api_base_url,
-                    model_version=settings.mineru_model_version,
-                    max_pages_per_chunk=settings.pdf_max_pages_per_chunk,
-                    max_bytes_per_chunk=settings.pdf_max_bytes_per_chunk,
-                )
-                pm = await mineru_parser.parse_pdf(file_bytes, str(doc.id), filename)
-                parsed_markdown = pm.markdown
-            except Exception:
-                logger.exception("MinerU 解析失败，降级为本地 PDF 解析: %s", filename)
-                parsed_markdown = _parse_pdf_locally(file_bytes, filename)
-        else:
-            parsed_markdown = _parse_pdf_locally(file_bytes, filename)
+        pm = await _parse_pdf_to_markdown(file_bytes, filename, str(doc.id), settings)
+        parsed_markdown = pm.markdown
+        confidence = pm.confidence
     else:
+        # 文本类上传是确定性转换,不存在识别不确定性,置信度恒为 1.0
         parsed_markdown = _decode_text_file(file_bytes)
+        confidence = 1.0
 
-    await doc_service.save_candidate_markdown(doc.id, parsed_markdown, workspace_id)
+    await doc_service.save_candidate_markdown(doc.id, parsed_markdown, workspace_id, confidence=confidence)
 
     if final_source_type == SourceType.MARKDOWN.value or final_source_type == SourceType.MARKDOWN:
         background_tasks.add_task(_run_indexing_task, doc.id, workspace_id, owner_id)
@@ -203,10 +237,12 @@ async def import_url(
 
 
     doc = await doc_service.create_from_url(payload.url, payload.workspace_id, payload.owner_id)
-    
+
     parser = HtmlCleanerParser()
     parsed_md = await parser.parse_html(html, str(doc.id), payload.url)
-    await doc_service.save_candidate_markdown(doc.id, parsed_md.markdown, payload.workspace_id)
+    await doc_service.save_candidate_markdown(
+        doc.id, parsed_md.markdown, payload.workspace_id, confidence=parsed_md.confidence
+    )
     
     doc = await doc_service.get_document(doc.id, payload.workspace_id)
     return {"ok": True, "data": _doc_to_dict(doc)}
@@ -331,12 +367,15 @@ async def reconvert_document(
 
     ext = doc.title.split(".")[-1].lower() if "." in doc.title else ""
     if ext == "pdf":
-        parsed_markdown = _parse_pdf_locally(file_bytes, doc.title)
+        pm = await _parse_pdf_to_markdown(file_bytes, doc.title, str(doc.id), settings)
+        parsed_markdown = pm.markdown
+        confidence = pm.confidence
     else:
         parsed_markdown = _decode_text_file(file_bytes)
+        confidence = 1.0
 
     old_markdown = await doc_service.get_markdown(document_id, workspace_id, is_candidate=False) or ""
-    await doc_service.save_candidate_markdown(document_id, parsed_markdown, workspace_id)
+    await doc_service.save_candidate_markdown(document_id, parsed_markdown, workspace_id, confidence=confidence)
     
     diff = "\n".join(difflib.unified_diff(
         old_markdown.splitlines(),

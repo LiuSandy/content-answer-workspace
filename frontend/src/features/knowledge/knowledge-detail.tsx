@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { ReconvertDiffDialog } from "./reconvert-diff-dialog";
 import type { KnowledgeDocument } from "./types";
 
+// 转换置信度阈值；与后端 KNOWLEDGE_CONVERSION_CONFIDENCE_THRESHOLD 保持一致
+const KNOWLEDGE_CONVERSION_CONFIDENCE_THRESHOLD = 0.7;
+
 interface KnowledgeDetailProps {
   document: KnowledgeDocument;
   markdownContent?: string;
@@ -127,6 +130,22 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
           </div>
         </div>
       )}
+
+      {/* 2.1 低置信度人工校对警告；只有候选态且后端给出真实置信度时才显示 */}
+      {isCandidate &&
+        typeof document.conversionConfidence === "number" &&
+        document.conversionConfidence < KNOWLEDGE_CONVERSION_CONFIDENCE_THRESHOLD && (
+          <div className="mx-4 mt-2 border border-[#f0c0c0] bg-[#fef2f2] dark:bg-red-950/20 dark:border-red-800/40 rounded-[7px] p-2.5 flex gap-2.25 text-[#991b1b] dark:text-red-300 text-[10px] leading-relaxed shrink-0">
+            <span className="font-bold text-red-600">!</span>
+            <div>
+              <strong className="block text-[#7f1d1d] dark:text-red-200 mb-0.25">
+                识别质量较低（置信度 {Math.round((document.conversionConfidence ?? 0) * 100)}%）
+              </strong>
+              该 PDF 可能包含扫描页、复杂排版或无法识别的字符。请在确认前逐段人工校对候选
+              Markdown，避免低质量内容进入知识库索引。
+            </div>
+          </div>
+        )}
 
       {/* 3. 编辑器 Tabs 导航 */}
       <div className="h-[39px] mx-4 mt-2.75 border-b border-[#e5e9ef] dark:border-border flex items-end gap-4.25 shrink-0">

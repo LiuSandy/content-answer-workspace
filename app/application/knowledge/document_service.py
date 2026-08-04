@@ -76,13 +76,21 @@ class DocumentService:
         await self.session.commit()
         return doc
 
-    async def save_candidate_markdown(self, doc_id: UUID, markdown: str, workspace_id: str) -> KnowledgeDocumentModel:
+    async def save_candidate_markdown(
+        self,
+        doc_id: UUID,
+        markdown: str,
+        workspace_id: str,
+        confidence: float | None = None,
+    ) -> KnowledgeDocumentModel:
         doc = await self.get_document(doc_id, workspace_id)
         if not doc:
             raise ValueError("Document not found")
-            
+
         path = self.storage.save_candidate(doc_id, markdown)
         doc.candidate_markdown_path = str(path)
+        if confidence is not None:
+            doc.conversion_confidence = confidence
         await self.session.commit()
         return doc
 
@@ -100,18 +108,27 @@ class DocumentService:
         doc.markdown_content_hash = hashlib.sha256(candidate_md.encode('utf-8')).hexdigest()
         doc.status = KnowledgeDocumentStatus.INDEXING.value
         doc.has_manual_edits = True
+        # 候选稿阶段已记录的 conversion_confidence 原样保留,不因"确认"动作被清空或重置为 1.0
         await self.session.commit()
         return doc
 
-    async def save_active_markdown(self, doc_id: UUID, markdown: str, workspace_id: str) -> KnowledgeDocumentModel:
+    async def save_active_markdown(
+        self,
+        doc_id: UUID,
+        markdown: str,
+        workspace_id: str,
+        confidence: float | None = None,
+    ) -> KnowledgeDocumentModel:
         doc = await self.get_document(doc_id, workspace_id)
         if not doc:
             raise ValueError("Document not found")
-            
+
         path = self.storage.publish_markdown(doc_id, markdown)
         doc.markdown_path = str(path)
         doc.markdown_content_hash = hashlib.sha256(markdown.encode('utf-8')).hexdigest()
         doc.status = KnowledgeDocumentStatus.INDEXING.value
+        if confidence is not None:
+            doc.conversion_confidence = confidence
         await self.session.commit()
         return doc
 
