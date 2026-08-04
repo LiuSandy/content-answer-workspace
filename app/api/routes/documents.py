@@ -237,6 +237,48 @@ async def generate_answer_stream(
                 yield sse_named_event("document.completed", state.model_dump(mode="json", by_alias=True))
                 yield sse_named_event("run.completed", {"runId": run_id})
 
+                # 4. Phase 2 反思循环：自评 < 0.75 自动定向修正（最多 3 轮）
+                #    修正后内容落库为 inline_refinement AnswerVersion。
+                try:
+                    from ...application.workflows.reflect_refine import reflect_and_refine
+                    from sqlalchemy import select as _select
+                    from ..persistence.models.documents import AnswerDocument
+
+                    current_content = state.current_content or ""
+                    if current_content.strip():
+                        result = await reflect_and_refine(
+                            content=current_content,
+                            document_id=doc_id,
+                            version_id=None,
+                            workspace_id="default",
+                        )
+                        # 修正后的内容落库为新 AnswerVersion（inline_refinement）
+                        if result["final_content"] != current_content:
+                            async with session_factory() as s2:
+                                fresh = (await s2.execute(
+                                    _select(AnswerDocument).where(AnswerDocument.id == doc_id)
+                                )).scalar_one_or_none()
+                                if fresh:
+                                    ds = DocumentService(s2)
+                                    try:
+                                        await ds.create_version(
+                                            document_id=doc_id,
+                                            content=result["final_content"],
+                                            version_type="inline_refinement",
+                                            expected_lock_version=fresh.lock_version,
+                                            instruction=result.get("forced_message") or "反思循环自动修正",
+                                        )
+                                    except Exception as cv_err:
+                                        logger.warning("Reflection create_version failed: %s", cv_err)
+                        yield sse_named_event("reflection.completed", {
+                            "iterations": result["iterations"],
+                            "converged": result["converged"],
+                            "finalScore": result["scores"][-1].overall_score if result.get("scores") else None,
+                            "forcedMessage": result["forced_message"],
+                        })
+                except Exception as refl_err:
+                    logger.warning("Reflection loop failed (non-blocking): %s", refl_err)
+
         except Exception as e:
             logger.error("Answer generation stream failed: %s", e)
             yield _run_failed_event(e, "生成失败，请稍后重试")
@@ -314,3 +356,40 @@ async def rewrite_document_stream(
             yield _run_failed_event(e, "重写失败，请稍后重试")
 
     return make_sse_response(_event_generator())
+
+
+# ── 质量评分 API（Phase 2 反思循环） ──────────────────────────────────────────
+
+
+@router.get("/api/documents/{document_id}/quality-scores")
+async def get_quality_scores(document_id: uuid.UUID):
+    """返回某文档的全部自评记录，按 iteration 排序。"""
+    from sqlalchemy import select
+    from ...persistence.models.quality_scores import QualityScoreModel
+    from ...persistence.session import get_session_factory
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        stmt = (
+            select(QualityScoreModel)
+            .where(QualityScoreModel.document_id == document_id)
+            .order_by(QualityScoreModel.iteration)
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+
+    return {
+        "ok": True,
+        "data": [
+            {
+                "id": str(r.id),
+                "iteration": r.iteration,
+                "overallScore": r.overall_score,
+                "dimensions": r.dimensions,
+                "weaknessSummary": r.weakness_summary,
+                "refinementInstruction": r.refinement_instruction,
+                "converged": r.converged == "true",
+                "createdAt": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
