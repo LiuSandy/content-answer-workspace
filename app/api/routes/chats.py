@@ -19,6 +19,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 
+def build_langgraph_history(
+    messages: list,
+    current_user_message_id: str | None = None,
+) -> list[dict]:
+    """把 DB 历史消息转成 LangGraph 输入，排除刚保存的当前用户消息。
+
+    当 leaf_message_id 为 None 时，get_message_path 会把最新消息（即刚保存的
+    当前用户消息）当作叶子，历史路径因此包含它；这里按 id 排除，确保当前
+    用户指令在每次图运行中只出现一次（由调用方在 messages 末尾追加一次）。
+    """
+    current_id = current_user_message_id
+    history: list[dict] = []
+    for m in messages:
+        if current_id and str(m.id) == current_id:
+            continue
+        history.append({"role": m.role, "content": m.content or ""})
+    return history
+
+
 def _build_rag_payload(node_state: dict) -> dict | None:
     """从 retrieve_knowledge 节点输出构造 RAG 参考来源 payload。
 
@@ -251,10 +270,7 @@ async def send_message_stream(
             history_path = await chat_service.get_message_path(chat_id, parent_id)
 
         # 格式化历史消息提供给 LangGraph
-        langgraph_history = []
-        for m in history_path:
-            # 仅传递有文本内容的 user/assistant 消息以保持上下文紧凑
-            langgraph_history.append({"role": m.role, "content": m.content or ""})
+        langgraph_history = build_langgraph_history(history_path, str(user_msg.id))
 
         # 2. 准备 LangGraph 运行配置
         # 使用当前用户消息 ID 作为 thread_id 隔离分支

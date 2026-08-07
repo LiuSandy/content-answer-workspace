@@ -152,6 +152,8 @@ class AIOperation(Base):
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     model_parameters: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     input_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # 结构化报告（质检、选题评估等）写输出字段，不占用输入字段
+    output_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # 成功后关联生成的版本
     result_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("answer_versions.id", ondelete="SET NULL"), nullable=True

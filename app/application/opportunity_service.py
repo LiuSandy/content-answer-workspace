@@ -20,6 +20,7 @@ from ..persistence.models.opportunity_feeds import (
     OpportunityFeedModel,
 )
 from ..persistence.models.content import SourceItem
+from ..persistence.models.documents import AnswerDocument
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,15 @@ class OpportunityService:
         return new_count
 
     async def _get_created_urls(self, workspace_id: str) -> set[str]:
-        stmt = select(SourceItem.url).where(SourceItem.workspace_id == workspace_id)
+        """已创作过的 URL 集合：通过 AnswerDocument → SourceItem join 判断。
+
+        SourceItem 是跨 Chat 全局去重内容，不持有 workspace_id；“已创作 URL”
+        指已有 AnswerDocument 关联的 SourceItem。当前单用户部署不做多租户过滤。
+        """
+        stmt = (
+            select(SourceItem.url)
+            .join(AnswerDocument, AnswerDocument.source_item_id == SourceItem.id)
+        )
         rows = (await self.session.execute(stmt)).scalars().all()
         return set(rows)
 

@@ -127,13 +127,23 @@ async def update_prompt(prompt_id: str, req: UpdatePromptRequest) -> JSONRespons
                 system_msg = next((m for m in messages if m.get("role") == "system"), None)
                 if not system_msg:
                     system_msg = {"role": "system", "content": req.system_prompt}
-                    messages = [system_msg]
+                    messages = [system_msg] + [m for m in messages if m.get("role") != "system"]
                 else:
                     system_msg["content"] = req.system_prompt
-                    messages = [system_msg]
-                current_yaml["messages"] = messages
-                # 编辑器不支持变量占位，重置 variables 防止 StrictUndefined 渲染失败
-                current_yaml["variables"] = {"required": [], "optional": []}
+                # 保留既有 user message；请求携带非空 userPrompt 时更新它，否则保持不变
+                user_msg = next((m for m in messages if m.get("role") == "user"), None)
+                new_user_prompt = (req.user_prompt or "").strip() if req.user_prompt else None
+                if user_msg is not None:
+                    if new_user_prompt:
+                        user_msg["content"] = new_user_prompt
+                elif new_user_prompt:
+                    messages.append({"role": "user", "content": new_user_prompt})
+                # 按角色分组：system 在前，user 在后，其余角色保持原顺序
+                system_msgs = [m for m in messages if m.get("role") == "system"]
+                user_msgs = [m for m in messages if m.get("role") == "user"]
+                other_msgs = [m for m in messages if m.get("role") not in ("system", "user")]
+                current_yaml["messages"] = system_msgs + user_msgs + other_msgs
+                # 保留原始 variables 结构，编辑器只改消息内容，不破坏模板变量
             elif "content" in current_yaml:
                 current_yaml["content"] = req.system_prompt
             else:

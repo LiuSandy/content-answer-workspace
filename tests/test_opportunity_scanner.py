@@ -105,3 +105,51 @@ async def test_scan_and_persist_excludes_created_urls(monkeypatch):
     count = await fake_svc.scan_and_persist("default")
     assert count == 0
     assert added == []  # 排除已创作，不写入
+
+
+@pytest.mark.asyncio
+async def test_get_created_urls_uses_answer_document_join():
+    """已创作 URL 通过 AnswerDocument → SourceItem join 判断，不访问 SourceItem.workspace_id。"""
+    import sqlite3
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.compiler import compiles
+    from sqlalchemy.dialects.postgresql import JSONB, UUID
+
+    @compiles(JSONB, "sqlite")
+    def compile_jsonb_sqlite(type_, compiler, **kw):
+        return "TEXT"
+
+    from app.persistence import Base
+    from app.persistence.models.content import SourceItem
+    from app.persistence.models.documents import AnswerDocument
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with session_factory() as session:
+        si_created = SourceItem(
+            platform="zhihu", external_id="e1", url="https://zhihu.com/q/created",
+            title="已创作", content=None, metrics={}, raw_metadata={},
+        )
+        si_uncreated = SourceItem(
+            platform="zhihu", external_id="e2", url="https://zhihu.com/q/fresh",
+            title="未创作", content=None, metrics={}, raw_metadata={},
+        )
+        session.add_all([si_created, si_uncreated])
+        await session.flush()
+
+        doc = AnswerDocument(source_item_id=si_created.id, current_content="c", lock_version=1)
+        session.add(doc)
+        await session.commit()
+
+        svc = OpportunityService(session)
+        created_urls = await svc._get_created_urls("default")
+        assert "https://zhihu.com/q/created" in created_urls
+        assert "https://zhihu.com/q/fresh" not in created_urls
+
+    await engine.dispose()
