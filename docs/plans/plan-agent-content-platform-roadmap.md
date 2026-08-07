@@ -560,12 +560,12 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写数据不足拒绝、时间窗口聚合、指标缺失、异常值和结构化分析结果测试。
-- [ ] Step 2: 实现独立 PublishAnalystService；不复用 TopicAnalyst 的文件或 state。
-- [ ] Step 3: 实现手动触发分析和报告查询 API，报告记录输入指标快照和生成时间。
-- [ ] Step 4: 实现前端数据不足、运行中、失败、报告和引用内容入口。
-- [ ] Step 5: 运行 `uv run pytest tests/test_publish_analyst.py tests/test_publishing.py tests/test_topic_analyst.py -v` 和前端 typecheck/build。
-- [ ] Step 6: 提交，建议信息：`feat: analyze published content performance`。
+- [x] Step 1: 写数据不足拒绝、时间窗口聚合、指标缺失、异常值和结构化分析结果测试。
+- [x] Step 2: 实现独立 PublishAnalystService；不复用 TopicAnalyst 的文件或 state。
+- [x] Step 3: 实现手动触发分析和报告查询 API，报告记录输入指标快照和生成时间。
+- [x] Step 4: 实现前端数据不足、运行中、失败、报告和引用内容入口。
+- [x] Step 5: 运行 `uv run pytest tests/test_publish_analyst.py tests/test_publishing.py tests/test_topic_analyst.py -v` 和前端 typecheck/build。
+- [x] Step 6: 提交，建议信息：`feat: analyze published content performance`。
 
 **阶段门禁：** 没有足够指标时不生成伪结论；报告可追溯到输入快照；分析不自动修改 style rules。
 

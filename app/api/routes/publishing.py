@@ -114,3 +114,19 @@ async def delete_metrics(document_id: uuid.UUID, metric_id: uuid.UUID):
         await session.delete(m)
         await session.commit()
         return {"ok": True, "data": {"deleted": True}}
+
+
+# ── R11 发布表现分析 ─────────────────────────────────────────────────────
+
+
+@router.post("/documents/{document_id}/analyze")
+async def analyze_publish_performance(document_id: uuid.UUID):
+    from ...application.publish_analyst_service import PublishAnalystService
+
+    factory = get_session_factory()
+    async with factory() as session:
+        svc = PublishAnalystService(session)
+        result = await svc.analyze_document(document_id)
+        if result is None:
+            return {"ok": True, "data": None, "message": "至少需要 3 次指标记录才能生成分析"}
+        return {"ok": True, "data": result}
