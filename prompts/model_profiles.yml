@@ -1,10 +1,10 @@
 model_profiles:
   default:
     provider: deepseek
-    model: deepseek-chat
+    model: deepseek-v4-pro
     temperature: 0.7
     max_tokens: 4096
-    # 上下文窗口与输出预留（roadmap R4）：deepseek-chat 为 64K 上下文
+    # 上下文窗口与输出预留（roadmap R4）：deepseek-v4-pro 为 64K 上下文
     context_window: 64000
     output_reserve_tokens: 4096
     # DeepSeek 兼容端点不支持原生 json_schema 结构化输出，从 json_mode 开始
@@ -12,7 +12,7 @@ model_profiles:
 
   creative:
     provider: deepseek
-    model: deepseek-chat
+    model: deepseek-v4-pro
     temperature: 0.85
     max_tokens: 4096
     context_window: 64000
@@ -21,7 +21,7 @@ model_profiles:
 
   reasoning:
     provider: deepseek
-    model: deepseek-reasoner
+    model: deepseek-v4-pro
     temperature: 0.6
     max_tokens: 8192
     context_window: 64000
@@ -30,7 +30,7 @@ model_profiles:
 
   router:
     provider: deepseek
-    model: deepseek-chat
+    model: deepseek-v4-pro
     temperature: 0.1
     max_tokens: 512
     context_window: 64000

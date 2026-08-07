@@ -54,7 +54,7 @@ class DeepSeekLLMAdapter:
                 LLMMessage(role="system", content=system_prompt),
                 LLMMessage(role="user", content=user_prompt),
             ],
-            model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+            model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro"),
             temperature=0.1,
             max_tokens=4096,
         )

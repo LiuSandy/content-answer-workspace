@@ -105,6 +105,15 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # 释放 DB 连接池，避免 asyncpg 在 uvicorn cancel scope 下残留连接报 CancelledError
+        try:
+            from .persistence.session import get_engine, reset_engine
+            engine = get_engine()
+            await engine.dispose()
+            reset_engine()
+        except Exception:
+            pass
+
 
 app = FastAPI(lifespan=lifespan)
 GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)

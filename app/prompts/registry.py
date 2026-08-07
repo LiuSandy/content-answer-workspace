@@ -222,7 +222,7 @@ class PromptRegistry:
         profile = self._model_profiles.get(profile_key)
 
         # 基础默认值
-        model_str = "deepseek-chat"
+        model_str = "deepseek-v4-pro"
         temperature = 0.7
         max_tokens = 4096
         structured_methods: list[str] = ["json_mode", "generic_parse"]

@@ -47,7 +47,7 @@ def _fake_rendered():
     return RenderedPrompt(
         prompt_id="test",
         messages=[LLMMessage(role="system", content="system"), LLMMessage(role="user", content="user")],
-        model="deepseek-chat",
+        model="deepseek-v4-pro",
         temperature=0.7,
         max_tokens=100,
     )

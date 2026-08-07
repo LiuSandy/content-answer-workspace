@@ -66,7 +66,7 @@ def _request() -> LLMRequest:
             {"role": "system", "content": "sys"},
             {"role": "user", "content": "user"},
         ],
-        model="deepseek-chat",
+        model="deepseek-v4-pro",
         temperature=0.1,
         max_tokens=1024,
     )

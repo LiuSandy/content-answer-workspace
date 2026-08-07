@@ -88,7 +88,7 @@ messages:
         content="测试内容"
     )
     assert rendered.prompt_id == "writing.answer_generate"
-    assert rendered.model == "deepseek-chat"
+    assert rendered.model == "deepseek-v4-pro"
     assert rendered.temperature == 0.7
     assert rendered.max_tokens == 4096
     

@@ -54,36 +54,27 @@ def upgrade() -> None:
     # 旧显式记忆回填 active（server_default 已生效，这里显式更新保证语义一致）
     op.execute("UPDATE user_memories SET status = 'active' WHERE status IS NULL OR status = ''")
 
-    # ── embedding 向量化：ARRAY/JSONB → vector(1536) + HNSW（仅 PostgreSQL） ──
+    # ── embedding 向量化：ARRAY(Float) → vector(1536) + HNSW ──
     bind = op.get_bind()
     if bind.dialect.name == 'postgresql':
-        try:
-            with op.get_context().autocommit_block():
-                op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        except Exception:
-            pass
-        try:
-            op.execute(
-                "ALTER TABLE user_memories ADD COLUMN embedding_v vector(1536)"
-            )
-            # 维度合法者拷贝，非法维度置空（不阻断迁移）
-            op.execute(
-                "UPDATE user_memories SET embedding_v = embedding::vector "
-                "WHERE embedding IS NOT NULL AND json_array_length(embedding::json) = 1536"
-            )
-            op.execute("ALTER TABLE user_memories DROP COLUMN embedding")
-            op.execute("ALTER TABLE user_memories RENAME COLUMN embedding_v TO embedding")
-        except Exception:
-            # 部分数据库列可能已存在，幂等处理
-            op.execute("ALTER TABLE user_memories DROP COLUMN IF EXISTS embedding_v")
-        try:
-            with op.get_context().autocommit_block():
-                op.execute(
-                    "CREATE INDEX ix_user_memories_embedding_hnsw ON user_memories "
-                    "USING hnsw (embedding vector_cosine_ops)"
-                )
-        except Exception:
-            pass
+        # 确保 pgvector 扩展已启用（paradedb 镜像已预装）
+        connection = bind.engine.connect()
+        connection.execution_options(isolation_level="AUTOCOMMIT")
+        connection.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        connection.close()
+        # 转换：array → json → text → vector
+        op.execute(sa.text("ALTER TABLE user_memories ADD COLUMN embedding_v vector(1536)"))
+        op.execute(sa.text(
+            "UPDATE user_memories SET embedding_v = (array_to_json(embedding)::text)::vector "
+            "WHERE embedding IS NOT NULL AND array_length(embedding, 1) = 1536"
+        ))
+        op.execute(sa.text("ALTER TABLE user_memories DROP COLUMN embedding"))
+        op.execute(sa.text("ALTER TABLE user_memories RENAME COLUMN embedding_v TO embedding"))
+        # 创建 HNSW 余弦索引
+        op.execute(sa.text(
+            "CREATE INDEX IF NOT EXISTS ix_user_memories_embedding_hnsw ON user_memories "
+            "USING hnsw (embedding vector_cosine_ops)"
+        ))
 
 
 def downgrade() -> None:

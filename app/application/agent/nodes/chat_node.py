@@ -16,7 +16,7 @@ def _get_chat_llm() -> ChatOpenAI:
     llm = ChatOpenAI(
         api_key=os.getenv("DEEPSEEK_API_KEY", ""),
         base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip().rstrip("/"),
-        model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+        model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro"),
         streaming=True,
     )
     # 绑定对话中支持的工具

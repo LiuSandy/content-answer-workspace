@@ -152,9 +152,6 @@ class KnowledgeSettings:
     embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"))
     # 单次 embedding 请求的批大小；默认 20 以兼容阿里云百炼等上限较低的服务
     embedding_batch_size: int = 20
-    ocr_api_key: str = field(default_factory=lambda: os.getenv("OCR_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
-    ocr_base_url: str = field(default_factory=lambda: os.getenv("OCR_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
-    ocr_model: str = field(default_factory=lambda: os.getenv("OCR_MODEL", "gpt-4o-mini"))
     reranker_api_key: str = field(default_factory=lambda: os.getenv("RERANKER_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
     reranker_base_url: str = field(default_factory=lambda: os.getenv("RERANKER_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
     reranker_model: str = field(default_factory=lambda: os.getenv("RERANKER_MODEL", "gpt-4o-mini"))
