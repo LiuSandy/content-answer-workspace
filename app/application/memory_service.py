@@ -81,6 +81,7 @@ def _parse_extraction_json(content: str) -> list[dict[str, Any]]:
             "memory_type": mt,
             "content": content_text,
             "confidence": float(item.get("confidence", 0.8)),
+            "evidence": item.get("evidence"),
         })
     return cleaned
 
@@ -89,8 +90,13 @@ async def extract_memories(
     messages: list[dict[str, str]],
     session_id: str,
     workspace_id: str = "default",
+    idempotency_key: str | None = None,
 ) -> list[UserMemoryModel]:
-    """从本次对话中抽取可记忆信息并落库。"""
+    """从本次对话中抽取可记忆信息并落库。
+
+    R5：显式记忆初始 active，隐式/工作习惯初始 pending_confirmation；
+    evidence 记录证据来源；idempotency_key（run_id）命中时跳过重复提取。
+    """
     from ..prompts.registry import prompt_registry
 
     rendered = prompt_registry.render("memory.extract", conversation=json.dumps(messages, ensure_ascii=False))
@@ -117,14 +123,28 @@ async def extract_memories(
     factory = get_session_factory()
     saved: list[UserMemoryModel] = []
     async with factory() as session:
+        if idempotency_key:
+            existing_run = (
+                await session.execute(
+                    select(UserMemoryModel.id).where(
+                        UserMemoryModel.source == f"run:{idempotency_key}"
+                    ).limit(1)
+                )
+            ).scalar_one_or_none()
+            if existing_run is not None:
+                return saved
+
         for it, emb in zip(items, embeddings):
+            status = "active" if it["memory_type"] == "explicit" else "pending_confirmation"
             mem = UserMemoryModel(
                 workspace_id=workspace_id,
                 memory_type=it["memory_type"],
                 content=it["content"],
                 embedding=emb,
                 confidence=it["confidence"],
-                source=session_id,
+                status=status,
+                evidence=it.get("evidence"),
+                source=f"run:{idempotency_key}" if idempotency_key else session_id,
             )
             session.add(mem)
             saved.append(mem)
@@ -149,11 +169,11 @@ async def retrieve_memories(
     try:
         async def _do():
             async with factory() as session:
-                # 简版：按 workspace 过滤，按 activation_count desc + created_at desc 取 top
-                # 真正语义检索需 pgvector，此为兜底实现
+                # R5：只检索 active 记忆；pending/rejected 不注入
                 stmt = (
                     select(UserMemoryModel)
                     .where(UserMemoryModel.workspace_id == workspace_id)
+                    .where(UserMemoryModel.status == "active")
                     .order_by(
                         UserMemoryModel.activation_count.desc(),
                         UserMemoryModel.created_at.desc(),
@@ -226,3 +246,82 @@ async def clear_all_memories(workspace_id: str = "default") -> int:
         result = await session.execute(stmt)
         await session.commit()
         return result.rowcount or 0
+
+
+# ── R5 记忆生命周期管理 ──────────────────────────────────────────────────────────
+
+
+async def create_memory(
+    workspace_id: str,
+    memory_type: str,
+    content: str,
+    confidence: float = 0.8,
+    evidence: str | None = None,
+) -> UserMemoryModel:
+    """创建一条显式记忆（直接 active）。"""
+    from ..persistence.session import get_session_factory
+    factory = get_session_factory()
+    async with factory() as session:
+        mem = UserMemoryModel(
+            workspace_id=workspace_id,
+            memory_type=memory_type,
+            content=content,
+            confidence=confidence,
+            status="active",
+            evidence=evidence,
+            source="manual",
+        )
+        session.add(mem)
+        await session.commit()
+        await session.refresh(mem)
+        return mem
+
+
+async def set_memory_status(
+    memory_id: str, workspace_id: str, status: str
+) -> UserMemoryModel | None:
+    from ..persistence.session import get_session_factory
+    factory = get_session_factory()
+    async with factory() as session:
+        mem = await session.get(UserMemoryModel, uuid.UUID(memory_id))
+        if not mem or mem.workspace_id != workspace_id:
+            return None
+        mem.status = status
+        await session.commit()
+        return mem
+
+
+async def confirm_memory(memory_id: str, workspace_id: str = "default") -> UserMemoryModel | None:
+    """确认 pending 记忆 → active。"""
+    return await set_memory_status(memory_id, workspace_id, "active")
+
+
+async def reject_memory(memory_id: str, workspace_id: str = "default") -> UserMemoryModel | None:
+    """拒绝 pending 记忆 → rejected（不注入）。"""
+    return await set_memory_status(memory_id, workspace_id, "rejected")
+
+
+async def update_memory_content(
+    memory_id: str,
+    workspace_id: str,
+    content: str,
+    confidence: float | None = None,
+) -> UserMemoryModel | None:
+    """编辑记忆内容并重新向量化（失败时保留旧 embedding）。"""
+    from ..persistence.session import get_session_factory
+    factory = get_session_factory()
+    async with factory() as session:
+        mem = await session.get(UserMemoryModel, uuid.UUID(memory_id))
+        if not mem or mem.workspace_id != workspace_id:
+            return None
+        mem.content = content
+        if confidence is not None:
+            mem.confidence = confidence
+        try:
+            provider = _get_embedding_provider()
+            vecs = await provider.embed([content])
+            mem.embedding = list(vecs[0])
+        except Exception as e:  # noqa: BLE001 - 向量化失败保留旧 embedding
+            logger.warning("Re-embed on memory edit failed: %s", e)
+        await session.commit()
+        return mem

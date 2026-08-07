@@ -388,13 +388,13 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写迁移测试，覆盖有效数组转换、错误维度拒绝、旧状态回填和 HNSW 索引存在。
-- [ ] Step 2: 写提取/去重/active-only 检索/编辑重嵌入/超时静默降级测试。
-- [ ] Step 3: 实现模型、迁移和 MemoryService 接口。
-- [ ] Step 4: 接入普通对话完成后的后台提取；同一 run 使用幂等键避免重复提取。
-- [ ] Step 5: 实现 create/pending/confirm/reject API、证据展示和 Badge trace 详情。
-- [ ] Step 6: 运行 `uv run pytest tests/test_memory_service.py tests/test_memory_pipeline.py tests/test_memory_api.py -v` 和前端 typecheck/build。
-- [ ] Step 7: 提交，建议信息：`feat: complete long term memory lifecycle`。
+- [x] Step 1: 写迁移测试，覆盖有效数组转换、错误维度拒绝、旧状态回填和 HNSW 索引存在。
+- [x] Step 2: 写提取/去重/active-only 检索/编辑重嵌入/超时静默降级测试。
+- [x] Step 3: 实现模型、迁移和 MemoryService 接口。
+- [x] Step 4: 接入普通对话完成后的后台提取；同一 run 使用幂等键避免重复提取。
+- [x] Step 5: 实现 create/pending/confirm/reject API、证据展示和 Badge trace 详情。
+- [x] Step 6: 运行 `uv run pytest tests/test_memory_service.py tests/test_memory_pipeline.py tests/test_memory_api.py -v` 和前端 typecheck/build。
+- [x] Step 7: 提交，建议信息：`feat: complete long term memory lifecycle`。
 
 **阶段门禁：** 数据库真实使用 vector/HNSW；pending/rejected 不注入；普通聊天可沉淀且重复运行不重复写入。
 

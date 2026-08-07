@@ -1,36 +1,42 @@
-"""Phase 4 长期记忆 API。"""
+"""Phase 4 长期记忆 API（R5 完善：status lifecycle + evidence）。"""
 from __future__ import annotations
 
 import uuid
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
 from ...application.memory_service import (
-    list_memories, delete_memory, clear_all_memories,
+    list_memories,
+    delete_memory,
+    clear_all_memories,
+    create_memory,
+    confirm_memory,
+    reject_memory,
+    update_memory_content,
 )
-from ...persistence.session import get_session_factory
-from ...persistence.models.user_memories import UserMemoryModel
 
 router = APIRouter(prefix="/api/memories", tags=["memories"])
+
+
+def _serialize(m):
+    return {
+        "id": str(m.id),
+        "memoryType": m.memory_type,
+        "content": m.content,
+        "confidence": m.confidence,
+        "source": m.source,
+        "status": m.status,
+        "evidence": m.evidence,
+        "createdAt": m.created_at.isoformat() if m.created_at else None,
+        "activationCount": m.activation_count,
+    }
 
 
 @router.get("")
 async def list_user_memories(workspace_id: str = "default"):
     rows = await list_memories(workspace_id)
-    return {"ok": True, "data": [
-        {
-            "id": str(m.id),
-            "memoryType": m.memory_type,
-            "content": m.content,
-            "confidence": m.confidence,
-            "source": m.source,
-            "createdAt": m.created_at.isoformat() if m.created_at else None,
-            "activationCount": m.activation_count,
-        }
-        for m in rows
-    ]}
+    return {"ok": True, "data": [_serialize(m) for m in rows]}
 
 
 class DeleteRequest(BaseModel):
@@ -51,6 +57,50 @@ async def clear_all_user_memories(workspace_id: str = "default"):
     return {"ok": True, "data": {"deletedCount": count}}
 
 
+# ── R5 记忆生命周期 ──────────────────────────────────────────────────────────────
+
+
+class CreateMemoryRequest(BaseModel):
+    content: str
+    memoryType: str = Field("explicit", alias="memoryType")
+    confidence: float = 0.8
+    evidence: str | None = None
+    workspaceId: str = Field("default", alias="workspaceId")
+
+    model_config = {"populate_by_name": True}
+
+
+@router.post("")
+async def create_user_memory(req: CreateMemoryRequest):
+    mt = req.memoryType
+    if mt not in ("explicit", "implicit", "work_pattern"):
+        mt = "explicit"
+    mem = await create_memory(
+        workspace_id=str(req.workspaceId),
+        memory_type=mt,
+        content=str(req.content),
+        confidence=req.confidence,
+        evidence=req.evidence,
+    )
+    return {"ok": True, "data": _serialize(mem)}
+
+
+@router.post("/{memory_id}/confirm")
+async def confirm_user_memory(memory_id: str, workspace_id: str = "default"):
+    mem = await confirm_memory(memory_id, workspace_id)
+    if not mem:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"ok": True, "data": _serialize(mem)}
+
+
+@router.post("/{memory_id}/reject")
+async def reject_user_memory(memory_id: str, workspace_id: str = "default"):
+    mem = await reject_memory(memory_id, workspace_id)
+    if not mem:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"ok": True, "data": _serialize(mem)}
+
+
 class UpdateMemoryRequest(BaseModel):
     content: str
     confidence: float | None = None
@@ -60,13 +110,9 @@ class UpdateMemoryRequest(BaseModel):
 
 @router.put("/{memory_id}")
 async def update_user_memory(memory_id: str, req: UpdateMemoryRequest):
-    factory = get_session_factory()
-    async with factory() as session:
-        mem = await session.get(UserMemoryModel, uuid.UUID(memory_id))
-        if not mem or mem.workspace_id != req.workspace_id:
-            raise HTTPException(status_code=404, detail="Memory not found")
-        mem.content = req.content
-        if req.confidence is not None:
-            mem.confidence = req.confidence
-        await session.commit()
-    return {"ok": True, "data": {"updated": True}}
+    mem = await update_memory_content(
+        memory_id, req.workspace_id, req.content, req.confidence
+    )
+    if not mem:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"ok": True, "data": _serialize(mem)}

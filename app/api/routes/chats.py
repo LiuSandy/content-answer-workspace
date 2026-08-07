@@ -13,6 +13,7 @@ from ...application.chat_service import ChatService
 from ...application.agent.scheduling import run_agent_stream
 from ...application.context.run_inputs import branch_thread_id, compose_run_inputs
 from ...application.context.summary_updater import SummaryUpdater
+from ...application.memory_extractor import run_memory_extraction
 from ...persistence.session import get_db_session, get_session_factory
 from ..sse_utils import sse_named_event, make_sse_response
 from ...core.config import AGENT_MAX_RECURSION, AGENT_RUN_TIMEOUT
@@ -59,6 +60,21 @@ async def _update_branch_summary(session_factory, request: Request, chat_id, bra
 def _branch_root_of(history_path: list) -> uuid.UUID | None:
     """分支根 = 分支路径的最早消息（get_message_path 已按时间升序返回）。"""
     return history_path[0].id if history_path else None
+
+
+def _schedule_memory_extraction(user_message: str, assistant_text: str, run_id: str) -> None:
+    """fire-and-forget 后台沉淀长期记忆（R5），不阻断 SSE 响应流。"""
+    try:
+        conversation = [
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": assistant_text},
+        ]
+        import asyncio as _asyncio
+        _asyncio.create_task(
+            run_memory_extraction(conversation, idempotency_key=run_id)
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def build_langgraph_history(
@@ -496,6 +512,7 @@ async def send_message_stream(
 
         assistant_content_parts = []
         summary_leaf: uuid.UUID | None = None
+        assistant_text: str | None = None
         
         try:
             # 3. 运行图并捕捉事件（统一经 scheduling 封装：子图感知匹配 + 运行级超时）
@@ -585,6 +602,7 @@ async def send_message_stream(
                         run_id=run_id,
                     )
                     summary_leaf = saved.id
+                    assistant_text = full_text
 
                     # 检查大模型在此轮对话中是否运行了 zhihu_search 或 xiaohongshu_search 工具
                     # 若运行了，解析并将其持久化为 source_list 消息，从而支持前端结构化卡片与左键选中写作
@@ -681,6 +699,7 @@ async def send_message_stream(
                         run_id=run_id,
                     )
                     summary_leaf = tp_saved.id
+                    assistant_text = tp_result.get("preview") or "复合任务已完成"
                 elif intent == "multi_agent":
                     # 多 Agent 协作：从 state 取结果并落库为结构化消息
                     ma_result = values.get("multi_agent_result") or {}
@@ -693,6 +712,7 @@ async def send_message_stream(
                         run_id=run_id,
                     )
                     summary_leaf = ma_saved.id
+                    assistant_text = ma_result.get("finalContent") or "多 Agent 协作已完成"
                 elif response_payload:
                     # 字典安全兼容处理：适配反序列化降级为 dict 的情况
                     if isinstance(response_payload, dict):
@@ -713,6 +733,7 @@ async def send_message_stream(
                         run_id=run_id,
                     )
                     summary_leaf = rp_saved.id
+                    assistant_text = p_content or ""
 
                     # 发送 source_list 状态事件给前端
                     if p_msg_type == "source_list":
@@ -723,6 +744,10 @@ async def send_message_stream(
             # R4：尽力更新分支滚动摘要（下一轮注入 composer 上下文）
             if summary_leaf is not None:
                 await _update_branch_summary(session_factory, http_request, chat_id, branch_root, summary_leaf)
+
+            # R5：对话完成后后台沉淀长期记忆（幂等键=run_id，不阻断 SSE 响应）
+            if assistant_text is not None:
+                _schedule_memory_extraction(req.content, assistant_text, run_id)
 
             yield sse_named_event("run.completed", {"runId": run_id})
 
