@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from ...application.document_service import DocumentService
 from ...application.version_service import VersionService
+from ...application.outline_service import OutlineService, OutlineError
 from ...domain.dto import InlineRefineRequest, SelectionDTO
 from ...persistence.session import get_db_session, get_session_factory
 from ...persistence.models.content import SourceItem
@@ -490,3 +491,137 @@ async def get_quality_scores(document_id: uuid.UUID):
             for r in rows
         ],
     }
+
+
+# ── R6 观点采访与大纲 API ───────────────────────────────────────────────────────
+
+
+class GenerateOutlineRequest(BaseModel):
+    source_item_id: str = Field(alias="sourceItemId")
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    workspace_id: str = Field("default", alias="workspaceId")
+    model_config = {"populate_by_name": True}
+
+
+class UpdateOutlineRequest(BaseModel):
+    sections: list[dict]
+    viewpoint_answers: dict[str, str] | None = Field(None, alias="viewpointAnswers")
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    model_config = {"populate_by_name": True}
+
+
+class ConfirmOutlineRequest(BaseModel):
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    model_config = {"populate_by_name": True}
+
+
+def _outline_result(data) -> dict:
+    return {
+        "operationId": data.operation_id,
+        "status": data.status,
+        "viewpointQuestions": data.viewpoint_questions,
+        "outline": data.outline,
+    }
+
+
+@router.post("/api/documents/{document_id}/outline/generate")
+async def generate_outline(document_id: uuid.UUID, req: GenerateOutlineRequest):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        try:
+            result = await svc.generate(
+                document_id,
+                uuid.UUID(req.source_item_id),
+                req.workspace_id,
+                req.expected_lock_version,
+            )
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as e:
+            mapping = {"not_found": 404, "already_confirmed": 409}
+            return JSONResponse(
+                {"ok": False, "error": e.message},
+                status_code=mapping.get(e.code, 400),
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"},
+                status_code=409,
+            )
+
+
+@router.get("/api/documents/{document_id}/outline/current")
+async def get_current_outline(document_id: uuid.UUID):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        result = await svc.get_current(document_id)
+        if not result:
+            return JSONResponse({"ok": True, "data": None})
+        return JSONResponse({"ok": True, "data": _outline_result(result)})
+
+
+@router.put("/api/documents/{document_id}/outline/update")
+async def update_outline(document_id: uuid.UUID, req: UpdateOutlineRequest):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        try:
+            result = await svc.update(
+                document_id,
+                req.sections,
+                req.viewpoint_answers,
+                req.expected_lock_version,
+            )
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as e:
+            return JSONResponse(
+                {"ok": False, "error": e.message},
+                status_code=404 if e.code == "not_found" else 400,
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"},
+                status_code=409,
+            )
+
+
+@router.post("/api/documents/{document_id}/outline/regenerate")
+async def regenerate_outline(document_id: uuid.UUID, req: GenerateOutlineRequest):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        try:
+            result = await svc.regenerate(
+                document_id,
+                uuid.UUID(req.source_item_id),
+                req.workspace_id,
+                req.expected_lock_version,
+            )
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as e:
+            return JSONResponse(
+                {"ok": False, "error": e.message},
+                status_code=404 if e.code == "not_found" else 400,
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"},
+                status_code=409,
+            )
+
+
+@router.post("/api/documents/{document_id}/outline/confirm")
+async def confirm_outline(document_id: uuid.UUID, req: ConfirmOutlineRequest):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        try:
+            result = await svc.confirm(document_id, req.expected_lock_version)
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as e:
+            mapping = {"not_found": 404, "already_confirmed": 409}
+            return JSONResponse(
+                {"ok": False, "error": e.message},
+                status_code=mapping.get(e.code, 400),
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"},
+                status_code=409,
+            )

@@ -18,6 +18,7 @@ import {
   History,
   ExternalLink,
   ClipboardList,
+  ListTree,
 } from "lucide-react";
 
 import { apiGet, apiPut, apiPost } from "@/lib/api";
@@ -29,6 +30,7 @@ import { SelectionHighlight } from "./selection-highlight-extension";
 import { QualityScorePanel } from "./quality-score-panel";
 import { QualityReviewDialog } from "./quality-review-dialog";
 import type { QualityReviewDocumentStateDTO } from "./quality-review-api";
+import { OutlineDialog } from "./outline-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -112,6 +114,7 @@ export function EditorPanel() {
   const [wordCount, setWordCount] = useState<number>(1000);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [qualityDialogOpen, setQualityDialogOpen] = useState(false);
+  const [outlineDialogOpen, setOutlineDialogOpen] = useState(false);
 
   const STYLE_DESCRIPTIONS: Record<string, string> = {
     professional: "- 专业严谨：语言条理清晰，论证逻辑严密，多用客观事实与专业数据支撑观点。",
@@ -675,6 +678,24 @@ export function EditorPanel() {
 
             <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
 
+            {/* 大纲入口 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  onClick={() => setOutlineDialogOpen(true)}
+                >
+                  <ListTree className="h-3.5 w-3.5" />
+                  大纲
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>生成回答大纲，规划章节结构</TooltipContent>
+            </Tooltip>
+
+            <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
+
             {/* 关闭面板 */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -716,6 +737,16 @@ export function EditorPanel() {
         lockVersion={docState?.lockVersion ?? 1}
         onAdopted={handleQualityAdopted}
         onConflictRefresh={handleQualityConflictRefresh}
+      />
+
+      {/* 大纲 Dialog */}
+      <OutlineDialog
+        open={outlineDialogOpen}
+        onOpenChange={setOutlineDialogOpen}
+        documentId={docState?.documentId ?? null}
+        sourceItemId={docState?.sourceItemId ?? null}
+        lockVersion={docState?.lockVersion ?? 1}
+        onLockConflict={handleQualityConflictRefresh}
       />
     </aside>
   );

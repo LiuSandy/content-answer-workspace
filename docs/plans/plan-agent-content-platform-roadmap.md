@@ -422,12 +422,12 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写 schema 与服务失败测试，覆盖跳过采访、编辑大纲、重生成、确认后禁止直接修改和并发冲突。
-- [ ] Step 2: 实现 Prompt、OutlineService 和 AIOperation 状态读取。
-- [ ] Step 3: 写 API 测试并实现五个生命周期端点。
-- [ ] Step 4: 实现前端采访、预览、编辑、确认、恢复和错误状态。
-- [ ] Step 5: 运行 `uv run pytest tests/test_outline_service.py tests/test_outline_api.py tests/test_prompt_composer.py -v` 和前端 typecheck/build。
-- [ ] Step 6: 提交，建议信息：`feat: add viewpoint and outline workflow`。
+- [x] Step 1: 写 schema 与服务失败测试，覆盖跳过采访、编辑大纲、重生成、确认后禁止直接修改和并发冲突。
+- [x] Step 2: 实现 Prompt、OutlineService 和 AIOperation 状态读取。
+- [x] Step 3: 写 API 测试并实现五个生命周期端点。
+- [x] Step 4: 实现前端采访、预览、编辑、确认、恢复和错误状态。
+- [x] Step 5: 运行 `uv run pytest tests/test_outline_service.py tests/test_outline_api.py tests/test_prompt_composer.py -v` 和前端 typecheck/build。
+- [x] Step 6: 提交，建议信息：`feat: add viewpoint and outline workflow`。
 
 **阶段门禁：** 关闭页面后可恢复大纲；确认快照不可被旧请求覆盖；未确认大纲不能进入按段生成。
 
