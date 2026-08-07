@@ -1,6 +1,6 @@
 # [实现计划] 上下文管理与记忆系统
 
-> **文档状态**：已制定 (Drafting) - 等待用户评审确认
+> **文档状态**：已确认 (Approved)
 > **关联 Spec**：[docs/specs/feature-context-memory-system.md](../specs/feature-context-memory-system.md)
 > **跨 Spec 依赖**：`generate_structured`（outline plan）供记忆提取/摘要使用；
 > 记忆节点挂载在 agent-platform plan 重构后的 `conversation_graph` 上。

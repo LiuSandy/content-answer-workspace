@@ -1,6 +1,6 @@
 # [实现计划] 结构化输出与内容大纲
 
-> **文档状态**：已制定 (Drafting) - 等待用户评审确认
+> **文档状态**：已确认 (Approved)
 > **关联 Spec**：[docs/specs/feature-outlines-structured-generation.md](../specs/feature-outlines-structured-generation.md)
 > **跨 Spec 依赖**：本计划为其他两份 spec 的**技术底座**——`generate_structured` 被
 > agent-platform 的 reviewer/analyst 与记忆系统的 extractor/summary 共用，应最先落地。

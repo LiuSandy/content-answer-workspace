@@ -1,6 +1,6 @@
 # [实现计划] 专业 Agent 平台拆分
 
-> **文档状态**：已制定 (Drafting) - 等待用户评审确认
+> **文档状态**：已确认 (Approved)
 > **关联 Spec**：[docs/specs/feature-agent-platform-split.md](../specs/feature-agent-platform-split.md)
 > **跨 Spec 依赖**：结构化输出（`generate_structured`）供 reviewer/analyst 使用；
 > 本计划重构后的 `conversation_graph` 是记忆系统节点的挂载点。

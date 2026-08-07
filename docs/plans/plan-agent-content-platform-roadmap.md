@@ -4,7 +4,7 @@
 > or `superpowers:executing-plans` to execute one stage at a time. Do not start a later
 > stage until the preceding stage gate is satisfied.
 >
-> **文档状态：** Drafting — 等待用户评审确认
+> **文档状态：** 已确认 (Approved)
 >
 > **关联 Specs：**
 > - `docs/specs/feature-outlines-structured-generation.md`

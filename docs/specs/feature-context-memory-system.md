@@ -2,7 +2,7 @@
 
 **版本：** 2.1
 **日期：** 2026-08-05
-**状态：** 待评审
+**状态：** 已确认 (Approved)
 **作者：** 架构设计
 **关联：** `docs/specs/feature-agent-platform-split.md`、`docs/specs/content-creation-pipeline.md`、
 `docs/specs/feature-full-agent-upgrade.md`（功能二「长期记忆」已落地）
