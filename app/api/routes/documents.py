@@ -18,7 +18,7 @@ from ...workflows.answer_generation import generate_answer_workflow
 from ...workflows.inline_refinement import inline_refinement_workflow
 from ...workflows.full_rewrite import full_rewrite_workflow
 from ..sse_utils import sse_named_event, make_sse_response
-from ...errors import AppError, DocumentConflictError
+from ...errors import AppError, DocumentConflictError, LLMOutputError
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,20 @@ class CreateCheckpointRequest(BaseModel):
 class RestoreVersionRequest(BaseModel):
     expected_lock_version: int = Field(alias="expectedLockVersion")
     
+    model_config = {"populate_by_name": True}
+
+
+class QualityReviewRequest(BaseModel):
+    version_id: uuid.UUID | None = Field(None, alias="versionId")
+
+    model_config = {"populate_by_name": True}
+
+
+class QualityAdoptRequest(BaseModel):
+    report_id: str = Field(alias="reportId")
+    suggestion_id: str = Field(alias="suggestionId")
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+
     model_config = {"populate_by_name": True}
 
 
@@ -186,9 +200,92 @@ async def restore_version(
     return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
 
 
-# ── AI 流式创作与精修端点 (SSE) ──────────────────────────────────────────────────
+# ── 质检与逐条采纳（roadmap R3） ──────────────────────────────────────────────
 
-@router.post("/api/source-items/{source_item_id}/document/generate")
+
+@router.post("/api/documents/{document_id}/quality/review")
+async def review_document_quality(
+    document_id: uuid.UUID,
+    req: QualityReviewRequest,
+) -> JSONResponse:
+    """对文档当前内容执行一次质检，返回报告与 reportId。"""
+    from ...application.quality_service import QualityService, QualityReviewError
+
+    async for session in get_db_session():
+        service = QualityService(session)
+        try:
+            result = await service.review(document_id, version_id=req.version_id)
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "data": {
+                        "reportId": result.report_id,
+                        "sourceVersionId": result.source_version_id,
+                        "report": result.report.model_dump(mode="json", by_alias=True),
+                    },
+                }
+            )
+        except QualityReviewError as e:
+            return JSONResponse({"ok": False, "error": {"message": str(e)}}, status_code=400)
+        except LLMOutputError as e:
+            return JSONResponse(
+                {"ok": False, "error": {"code": e.error_code, "message": str(e)}},
+                status_code=502,
+            )
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+@router.get("/api/documents/{document_id}/quality/reviews")
+async def list_quality_reviews(document_id: uuid.UUID) -> JSONResponse:
+    """返回某文档全部已完成质检报告，供报告列表恢复查询。"""
+    from ...application.quality_service import QualityService
+
+    async for session in get_db_session():
+        service = QualityService(session)
+        rows = await service.list_quality_scores(document_id)
+        return JSONResponse({"ok": True, "data": rows})
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+@router.post("/api/documents/{document_id}/quality/adopt")
+async def adopt_quality_suggestion(
+    document_id: uuid.UUID,
+    req: QualityAdoptRequest,
+) -> JSONResponse:
+    """逐条采纳质检建议，生成 inline_refinement 新版本并回填 quality_adopt 溯源。"""
+    from ...application.quality_service import QualityService, QualityReviewError
+
+    async for session in get_db_session():
+        service = QualityService(session)
+        try:
+            await service.adopt_suggestion(
+                document_id=document_id,
+                report_id=req.report_id,
+                suggestion_id=req.suggestion_id,
+                expected_lock_version=req.expected_lock_version,
+            )
+            doc_service = DocumentService(session)
+            state = await doc_service.get_document_state(document_id)
+            return JSONResponse({"ok": True, "data": state.model_dump(mode="json", by_alias=True)})
+        except DocumentConflictError as e:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "document_conflict",
+                        "message": str(e),
+                        "expected": e.expected,
+                        "actual": e.actual,
+                    },
+                },
+                status_code=409,
+            )
+        except QualityReviewError as e:
+            return JSONResponse({"ok": False, "error": {"message": str(e)}}, status_code=400)
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+# ── AI 流式创作与精修端点 (SSE) ──────────────────────────────────────────────────@router.post("/api/source-items/{source_item_id}/document/generate")
 async def generate_answer_stream(
     source_item_id: uuid.UUID,
     req: CreateCheckpointRequest,  # 复用以获取 expected_lock_version

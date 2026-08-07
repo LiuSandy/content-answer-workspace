@@ -156,16 +156,42 @@ class IntentRoute(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class QualitySuggestion(BaseModel):
+    """单条质检建议；anchor/replacement 支撑片段级逐条采纳（roadmap R3）。"""
+
+    id: str
+    dimension: str
+    title: str
+    reason: str = ""
+    # 锚点：原文中要替换的片段（必须与原文逐字一致）；为空表示整体替换
+    anchor: str = ""
+    # 替换文本：anchor 匹配时替换该片段，否则作为全文替换文本
+    replacement: str = ""
+
+    model_config = {
+        "alias_generator": to_camel,
+        "populate_by_name": True,
+    }
+
+
 class QualityReport(BaseModel):
-    """质检报告；分数统一为 0..100 整数（roadmap R1 接口决定）。"""
+    """质检报告；分数统一为 0..100 整数（roadmap R1 接口决定）。
+
+    suggestions 为简短文字建议（R1 契约）；quality_suggestions 为可逐条采纳的
+    结构化建议（roadmap R3），含 anchor/replacement 片段级替换信息。
+    """
 
     overall_score: int = Field(ge=0, le=100)
     dimension_scores: dict[str, int] = Field(default_factory=dict)
     issues: list[dict[str, Any]] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)
+    quality_suggestions: list[QualitySuggestion] = Field(default_factory=list)
     summary: str = ""
 
-    model_config = {"populate_by_name": True}
+    model_config = {
+        "alias_generator": to_camel,
+        "populate_by_name": True,
+    }
 
 
 class TopicEvaluation(BaseModel):

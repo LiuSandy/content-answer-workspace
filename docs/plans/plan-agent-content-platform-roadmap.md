@@ -316,14 +316,14 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写失败测试，覆盖合法报告、结构化失败、报告写入 `output_metadata`、来源版本锁定、
+- [x] Step 1: 写失败测试，覆盖合法报告、结构化失败、报告写入 `output_metadata`、来源版本锁定、
   单条采纳、重复采纳幂等和乐观锁冲突。
-- [ ] Step 2: 实现 `QualityService.review()` 和 `QualityService.adopt_suggestion()`；采纳版本使用
+- [x] Step 2: 实现 `QualityService.review()` 和 `QualityService.adopt_suggestion()`；采纳版本使用
   `version_type=inline_refinement`，操作类型使用 `quality_adopt` 并回填 `result_version_id`。
-- [ ] Step 3: 增加 review/adopt API 和 Prompt。
-- [ ] Step 4: 实现前端 loading、empty、error、报告列表、已采纳状态和冲突刷新。
-- [ ] Step 5: 运行 `uv run pytest tests/test_quality_review.py tests/test_reflection_loop.py tests/test_refinement_loop_integration.py -v` 和 `bun run typecheck && bun run build`。
-- [ ] Step 6: 提交，建议信息：`feat: add quality review and adoption`。
+- [x] Step 3: 增加 review/adopt API 和 Prompt。
+- [x] Step 4: 实现前端 loading、empty、error、报告列表、已采纳状态和冲突刷新。
+- [x] Step 5: 运行 `uv run pytest tests/test_quality_review.py tests/test_reflection_loop.py tests/test_refinement_loop_integration.py -v` 和 `bun run typecheck && bun run build`。
+- [x] Step 6: 提交，建议信息：`feat: add quality review and adoption`。
 
 **阶段门禁：** 报告可恢复查询；采纳生成新版本且不覆盖并发编辑；StyleLearner 能通过 operation
 关联识别该版本为 AI 版本。

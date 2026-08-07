@@ -17,6 +17,7 @@ import {
   Save,
   History,
   ExternalLink,
+  ClipboardList,
 } from "lucide-react";
 
 import { apiGet, apiPut, apiPost } from "@/lib/api";
@@ -26,6 +27,8 @@ import { useAlertDialog } from "@/hooks/use-alert-dialog";
 import { InlineRefineMenu, type InlineRefineParams } from "./inline-refine-menu";
 import { SelectionHighlight } from "./selection-highlight-extension";
 import { QualityScorePanel } from "./quality-score-panel";
+import { QualityReviewDialog } from "./quality-review-dialog";
+import type { QualityReviewDocumentStateDTO } from "./quality-review-api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -108,6 +111,7 @@ export function EditorPanel() {
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [wordCount, setWordCount] = useState<number>(1000);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [qualityDialogOpen, setQualityDialogOpen] = useState(false);
 
   const STYLE_DESCRIPTIONS: Record<string, string> = {
     professional: "- 专业严谨：语言条理清晰，论证逻辑严密，多用客观事实与专业数据支撑观点。",
@@ -255,6 +259,24 @@ export function EditorPanel() {
   };
 
   const hasContent = !!editor?.getText()?.trim();
+
+  // 质检采纳：刷新文档/版本并同步编辑器内容到新版本
+  const handleQualityAdopted = (state: QualityReviewDocumentStateDTO) => {
+    queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
+    queryClient.invalidateQueries({ queryKey: ["versions", state.documentId] });
+    if (editor) {
+      (editor.commands as any).setContent(state.currentContent || "", {
+        contentType: "markdown",
+        emitUpdate: false,
+      });
+    }
+  };
+
+  // 乐观锁冲突：让编辑器基于最新内容操作
+  const handleQualityConflictRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
+    queryClient.invalidateQueries({ queryKey: ["versions", docState?.documentId] });
+  };
 
   // 3. 手动保存版本
   const saveCheckpointMutation = useMutation({
@@ -635,6 +657,24 @@ export function EditorPanel() {
 
             <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
 
+            {/* 质检评审入口 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  onClick={() => setQualityDialogOpen(true)}
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  评审
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>质检评审并逐条采纳建议</TooltipContent>
+            </Tooltip>
+
+            <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
+
             {/* 关闭面板 */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -666,6 +706,16 @@ export function EditorPanel() {
         wordCount={wordCount}
         onWordCountChange={setWordCount}
         documentId={docState?.documentId}
+      />
+
+      {/* 质检评审 Dialog */}
+      <QualityReviewDialog
+        open={qualityDialogOpen}
+        onOpenChange={setQualityDialogOpen}
+        documentId={docState?.documentId ?? null}
+        lockVersion={docState?.lockVersion ?? 1}
+        onAdopted={handleQualityAdopted}
+        onConflictRefresh={handleQualityConflictRefresh}
       />
     </aside>
   );
