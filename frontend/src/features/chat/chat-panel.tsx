@@ -380,6 +380,9 @@ export function ChatPanel() {
                         if (data.fallbackNotice) setRagFallback(data.fallbackNotice);
                     } else if (event === "rag.fallback") {
                         setRagFallback(data.reason || "私有资料证据不足，使用了其他知识来源");
+                    } else if (event === "agent.error") {
+                        setAgentStatus(null);
+                        setStreamingError(data.message || "生成超时已自动停止，请重试");
                     } else if (event === "run.failed") {
                         setAgentStatus(null);
                         setStreamingError(data.message || "请求处理失败");
@@ -396,40 +399,7 @@ export function ChatPanel() {
                 console.error("流式请求失败:", err);
             }
         } finally {
-            if (abortRef.current === controller) {
-                abortRef.current = null;
-            }
-            setIsStreaming(false);
-            setAgentStatus(null);
-            setStreamingText("");
-            setStreamingSourceList(null);
-            setRagSources(null);
-            setRagFallback(null);
-
-            // 被中断说明用户已切换会话：不再刷新旧会话数据、不覆盖新会话的叶子节点
-            if (!controller.signal.aborted) {
-                // 刷新对话列表，保证如果对话名在后端被自动重命名（例如第一条消息），前端能同步拉取到最新名字
-                queryClient.invalidateQueries({ queryKey: ["chats"] });
-
-                // 强制更新消息历史列表，更新 activeLeafMessageId 为最新节点
-                try {
-                    const updatedMessages = await queryClient.fetchQuery<Message[]>({
-                        queryKey: ["messages", activeChatId],
-                        queryFn: () => apiGet(`/api/chats/${activeChatId}/messages`),
-                    });
-                    if (updatedMessages.length > 0) {
-                        const lastMsg = updatedMessages[updatedMessages.length - 1];
-                        setActiveLeafMessageId(lastMsg.messageId);
-                    }
-                } catch (refreshErr) {
-                    // 拉取失败时回滚乐观插入的临时消息，避免幽灵用户消息残留
-                    console.error("刷新消息历史失败:", refreshErr);
-                    queryClient.setQueryData<Message[]>(["messages", activeChatId], (prev = []) =>
-                        prev.filter((m) => m.messageId !== "temp-user-msg"),
-                    );
-                    setStreamingError((prev) => prev ?? "消息已发送，但刷新历史失败，请手动刷新");
-                }
-            }
+            await refreshAfterStream(activeChatId, controller, true);
         }
     };
 
@@ -438,9 +408,92 @@ export function ChatPanel() {
         await handleSendMessage(undefined, content, msg.parentMessageId);
     };
 
-    // Human-in-the-loop：用户点击选择卡片选项后，把选择作为下一条用户消息发出
-    const handleSelectChoice = async (label: string) => {
-        await handleSendMessage(undefined, label, undefined);
+    // 流结束后统一清理并刷新消息历史；被中断说明用户已切换会话，不再刷新
+    const refreshAfterStream = async (chatId: string, controller: AbortController, refreshFallback?: boolean) => {
+        if (abortRef.current === controller) {
+            abortRef.current = null;
+        }
+        setIsStreaming(false);
+        setAgentStatus(null);
+        setStreamingText("");
+        setStreamingSourceList(null);
+        setRagSources(null);
+        setRagFallback(null);
+
+        if (!controller.signal.aborted) {
+            queryClient.invalidateQueries({ queryKey: ["chats"] });
+            try {
+                const updatedMessages = await queryClient.fetchQuery<Message[]>({
+                    queryKey: ["messages", chatId],
+                    queryFn: () => apiGet(`/api/chats/${chatId}/messages`),
+                });
+                if (updatedMessages.length > 0) {
+                    setActiveLeafMessageId(updatedMessages[updatedMessages.length - 1].messageId);
+                }
+            } catch (refreshErr) {
+                console.error("刷新消息历史失败:", refreshErr);
+                queryClient.setQueryData<Message[]>(["messages", chatId], (prev = []) =>
+                    prev.filter((m) => m.messageId !== "temp-user-msg"),
+                );
+                if (refreshFallback) {
+                    setStreamingError((prev) => prev ?? "消息已发送，但刷新历史失败，请手动刷新");
+                }
+            }
+        }
+    };
+
+    // Human-in-the-loop：用户点击选择卡片选项后，把选择提交到 /choices 并发起续跑（SSE 流式等待）
+    const handleSelectChoice = async (optionId: string, messageId: string) => {
+        if (isStreaming || !currentChatId) return;
+        setIsStreaming(true);
+        setStreamingText("");
+        setAgentStatus("已选择，正在继续...");
+        setStreamingError(null);
+
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        try {
+            await streamPost(`/api/chats/${currentChatId}/choices`, {
+                messageId,
+                selection: optionId,
+            }, {
+                onEvent: (event, data) => {
+                    if (event === "agent.status") {
+                        const statusMap: Record<string, string> = {
+                            routing_intent: "分析意图...",
+                            generating: "生成回复中...",
+                        };
+                        setAgentStatus(statusMap[data.status] || data.status);
+                    } else if (event === "tool.started") {
+                        const toolMap: Record<string, string> = {
+                            parse_url: "解析链接中...",
+                            collect: "采集帖子中...",
+                        };
+                        setAgentStatus(toolMap[data.tool_type] || `执行工具: ${data.tool_type}`);
+                    } else if (event === "message.delta") {
+                        setAgentStatus(null);
+                        setStreamingText((prev) => prev + data.delta);
+                    } else if (event === "agent.error") {
+                        setAgentStatus(null);
+                        setStreamingError(data.message || "生成超时已自动停止，请重试");
+                    } else if (event === "run.failed") {
+                        setAgentStatus(null);
+                        setStreamingError(data.message || "续跑失败，请重试");
+                    }
+                },
+                onError: (err) => {
+                    setStreamingError(err.message);
+                    setAgentStatus(null);
+                },
+            }, controller.signal);
+        } catch (err) {
+            if (!(err instanceof DOMException && err.name === "AbortError")) {
+                console.error("提交选择失败:", err);
+            }
+        } finally {
+            await refreshAfterStream(currentChatId, controller);
+        }
     };
 
     const handleSwitchSibling = (msg: Message, direction: "prev" | "next") => {
@@ -632,7 +685,7 @@ function MessageBubble({
                        }: {
     msg: Message;
     onSelectItem: (id: string) => void;
-    onSelectChoice: (label: string) => void;
+    onSelectChoice: (optionId: string, messageId: string) => void;
     selectedId: string | null;
     isEditing: boolean;
     onStartEdit: () => void;
@@ -777,7 +830,8 @@ function MessageBubble({
                         {msg.messageType === "choice_request" && (
                             <ChoiceRequestCard
                                 payload={msg.payload || {}}
-                                onSelect={(label) => onSelectChoice(label)}
+                                messageId={msg.messageId}
+                                onSelect={onSelectChoice}
                             />
                         )}
                         {msg.messageType === "source_card" && (
@@ -850,13 +904,15 @@ function MessageBubble({
 
 // ── Human-in-the-loop 选择卡片 ───────────────────────────────────────
 
-/** 渲染 Agent 的选择请求；用户点击选项后把选择作为下一条消息发回 */
+/** 渲染 Agent 的选择请求；用户点击选项后把选择提交到 /choices 并发起续跑 */
 function ChoiceRequestCard({
                                payload,
+                               messageId,
                                onSelect,
                            }: {
     payload: any;
-    onSelect: (label: string) => void;
+    messageId: string;
+    onSelect: (optionId: string, messageId: string) => void;
 }) {
     const options: Array<{ id: string; label: string; description?: string }> = payload?.options || [];
     if (options.length === 0) return null;
@@ -867,7 +923,7 @@ function ChoiceRequestCard({
                 {options.map((opt) => (
                     <button
                         key={opt.id}
-                        onClick={() => onSelect(opt.label)}
+                        onClick={() => onSelect(opt.id, messageId)}
                         className="text-left text-xs px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800/50 bg-white/60 dark:bg-zinc-900/40 hover:bg-amber-100/60 dark:hover:bg-amber-900/20 transition-colors"
                     >
                         <span className="font-medium text-amber-900 dark:text-amber-200">{opt.label}</span>

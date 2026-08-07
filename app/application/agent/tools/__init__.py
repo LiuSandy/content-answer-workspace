@@ -1,4 +1,8 @@
-"""Agent 工具注册入口；启动时读取 agent_reach_config.json，按平台开关动态追加工具到 ALL_TOOLS。"""
+"""Agent 工具注册入口；启动时读取 agent_reach_config.json，按平台开关动态追加工具到 ALL_TOOLS。
+
+安全边界（spec §12）：任意代码执行工具 code_interpreter 默认不注册，仅当配置
+code_interpreter.enabled=true 时才加入；未启用平台不注册。
+"""
 
 from __future__ import annotations
 
@@ -6,7 +10,6 @@ import json
 from pathlib import Path
 
 from .calculator import calculator
-from .code_interpreter import code_interpreter
 from .crawl4ai_tool import crawl4ai_fetch
 from .datetime_tool import get_current_datetime
 from .firecrawl_tool import firecrawl_scrape  # 备用：配置 FIRECRAWL_API_KEY 后加入 ALL_TOOLS
@@ -20,7 +23,6 @@ _BASE_TOOLS = [
     web_fetch,
     crawl4ai_fetch,
     news_search,
-    code_interpreter,
     calculator,
 ]
 
@@ -53,13 +55,25 @@ def _load_platform_tool_map() -> dict:
 
 
 def _build_all_tools() -> list:
-    """在进程启动时读取配置，构建完整工具列表；配置文件不存在时只用基础工具。"""
+    """在进程启动时读取配置，构建完整工具列表；配置文件不存在时只用基础工具。
+
+    code_interpreter（任意代码执行）默认关闭，仅当 agent_reach_config.json
+    显式设置 code_interpreter.enabled=true 时才注册（spec §12）。
+    """
     tools = list(_BASE_TOOLS)
     try:
         config = json.loads(_AGENT_REACH_CONFIG.read_text(encoding="utf-8"))
         enabled_platforms: list[str] = config.get("enabledPlatforms", [])
+        code_interpreter_enabled: bool = bool(
+            (config.get("code_interpreter") or {}).get("enabled")
+        )
     except (FileNotFoundError, json.JSONDecodeError):
         return tools
+
+    if code_interpreter_enabled:
+        from .code_interpreter import code_interpreter
+
+        tools.append(code_interpreter)
 
     if not enabled_platforms:
         return tools

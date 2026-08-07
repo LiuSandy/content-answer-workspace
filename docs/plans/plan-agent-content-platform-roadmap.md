@@ -285,18 +285,18 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写失败测试，覆盖 choice 消息校验、选择 ID 白名单、重复提交幂等、原 context 快照恢复、
+- [x] Step 1: 写失败测试，覆盖 choice 消息校验、选择 ID 白名单、重复提交幂等、原 context 快照恢复、
   `preprocess` 不清空续跑选择。
-- [ ] Step 2: 实现 `POST /api/chats/{chat_id}/choices`，以 choice request 为 parent 保存选择消息，
+- [x] Step 2: 实现 `POST /api/chats/{chat_id}/choices`，以 choice request 为 parent 保存选择消息，
   并用原分支 checkpoint 续跑。
-- [ ] Step 3: 写运行级 timeout/cancel/fallback 测试，确认生成不可自动重试、幂等检索最多重试一次、
+- [x] Step 3: 写运行级 timeout/cancel/fallback 测试，确认生成不可自动重试、幂等检索最多重试一次、
   已持久化部分结果不丢失。
-- [ ] Step 4: 实现调度包装和稳定 SSE 事件封装；事件不依赖单一 `langgraph_node` 字符串。
-- [ ] Step 5: 写安全测试，覆盖初始 URL、重定向 URL、环回/私网/云元数据地址、响应大小上限，
+- [x] Step 4: 实现调度包装和稳定 SSE 事件封装；事件不依赖单一 `langgraph_node` 字符串。
+- [x] Step 5: 写安全测试，覆盖初始 URL、重定向 URL、环回/私网/云元数据地址、响应大小上限，
   并断言代码解释器默认不注册。
-- [ ] Step 6: 实现安全策略与前端 HITL/`agent.error` 状态。
-- [ ] Step 7: 运行 `uv run pytest tests/test_hitl_choice_api.py tests/test_agent_timeout.py tests/test_chat_sse_events.py tests/test_agent_tool_security.py tests/test_chat_branching.py -v`，再运行前端 typecheck。
-- [ ] Step 8: 提交，建议信息：`feat: harden agent runtime and hitl`。
+- [x] Step 6: 实现安全策略与前端 HITL/`agent.error` 状态。
+- [x] Step 7: 运行 `uv run pytest tests/test_hitl_choice_api.py tests/test_agent_timeout.py tests/test_chat_sse_events.py tests/test_agent_tool_security.py tests/test_chat_branching.py -v`，再运行前端 typecheck。
+- [x] Step 8: 提交，建议信息：`feat: harden agent runtime and hitl`。
 
 **阶段门禁：** 用户选择能够真实续跑；断线和超时有稳定终态；RAG/task plan/multi-agent 事件回归通过；
 默认工具集合不包含任意代码执行。

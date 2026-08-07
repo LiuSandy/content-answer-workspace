@@ -22,6 +22,10 @@ MAX_PUSH_COUNT_LIMIT = get_settings().collect.max_push_count_limit
 # 防止 ReAct 工具环 / hitl 回环在工具反复失败时死循环（默认 10007 近乎无限）。
 AGENT_MAX_RECURSION = 20
 
+# Agent 运行级超时预算（秒）：每个 SSE 事件的最大等待时间；超时进入稳定终态
+# agent.error，防止生成挂起导致前端无限等待。
+AGENT_RUN_TIMEOUT = 60.0
+
 
 def load_env_file() -> None:
     """加载项目根目录的 .env；这样后端入口、CLI 和测试都能复用同一套环境变量来源。"""

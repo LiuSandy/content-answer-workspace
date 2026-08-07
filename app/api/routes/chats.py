@@ -7,12 +7,13 @@ from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, Request, Query, Header, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ...application.chat_service import ChatService
+from ...application.agent.scheduling import run_agent_stream
 from ...persistence.session import get_db_session, get_session_factory
 from ..sse_utils import sse_named_event, make_sse_response
-from ...core.config import AGENT_MAX_RECURSION
+from ...core.config import AGENT_MAX_RECURSION, AGENT_RUN_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,27 @@ class SendMessageRequest(BaseModel):
 
 class RenameChatRequest(BaseModel):
     title: str
+
+
+class SubmitChoiceRequest(BaseModel):
+    messageId: str
+    selection: str
+
+    @field_validator("selection")
+    @classmethod
+    def _selection_not_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("selection must not be blank")
+        return v
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
+def _get_session_factory(request: Request):
+    """优先使用 app.state 注入的 session 工厂（测试隔离用），否则用全局工厂。"""
+    return getattr(request.app.state, "session_factory", None) or get_session_factory()
 
 
 # ── REST API 端点 ────────────────────────────────────────────────────────────
@@ -227,6 +249,115 @@ async def get_messages(chat_id: uuid.UUID) -> JSONResponse:
     return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
 
 
+# ── HITL 人工选择提交 ─────────────────────────────────────────────────────────
+
+@router.post("/{chat_id}/choices")
+async def submit_choice(
+    chat_id: uuid.UUID,
+    req: SubmitChoiceRequest,
+    http_request: Request,
+) -> Any:
+    """用户提交 Human-in-the-loop 选择（spec §11.7）。
+
+    校验 messageId 确为本 chat 的 choice_request 消息 → 幂等去重 →
+    以选择消息为根发起一次续跑（输入带 hitl_selection + hitl_choice.context，
+    新 thread_id 进入既有分支），通过 SSE 实时推送续跑事件。
+
+    并发：同一 chat 同时最多 1 个续跑，被占用时返回 409。
+    """
+    chat_id_str = str(chat_id)
+    graph = http_request.app.state.conversation_graph
+    runtime = http_request.app.state.chat_runtime
+    session_factory = _get_session_factory(http_request)
+
+    async with session_factory() as session:
+        chat_service = ChatService(session)
+        if not await chat_service.get_chat(chat_id):
+            return JSONResponse({"ok": False, "error": "Chat not found"}, status_code=404)
+
+        choice_req = None
+        for m in await chat_service.get_messages(chat_id):
+            if m.message_type == "choice_request" and str(m.id) == req.messageId:
+                choice_req = m
+                break
+        if choice_req is None:
+            return JSONResponse({"ok": False, "error": "choice_request message not found"}, status_code=404)
+
+        hitl_choice = choice_req.payload or {}
+
+        # 幂等：同一 choice_request + 同一 selection 已提交过则直接成功，不重复续跑
+        existing = [
+            m
+            for m in await chat_service.get_messages(chat_id)
+            if m.message_type == "hitl_selection"
+            and m.parent_message_id == choice_req.id
+            and (m.content or "").strip() == req.selection.strip()
+        ]
+        if existing:
+            return JSONResponse({"ok": True, "data": {"ok": True, "alreadySubmitted": True}})
+
+    # 每 chat 并发锁：已被占用则拒绝
+    if not await runtime.try_acquire(chat_id_str):
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": {
+                    "code": "agent_busy",
+                    "message": "该对话正在生成中，请稍后再试",
+                },
+            },
+            status_code=409,
+        )
+
+    async with session_factory() as session:
+        chat_service = ChatService(session)
+        sel_msg = await chat_service.save_user_message(
+            chat_id, req.selection, parent_message_id=choice_req.id, message_type="hitl_selection"
+        )
+        history_path = await chat_service.get_message_path(chat_id, choice_req.id)
+
+    langgraph_history = build_langgraph_history(history_path, str(sel_msg.id))
+    run_id = str(uuid.uuid4())
+    config = {
+        "configurable": {"thread_id": f"{chat_id_str}_{sel_msg.id}"},
+        "recursion_limit": AGENT_MAX_RECURSION,
+    }
+    inputs = {
+        "chat_id": chat_id_str,
+        "user_message_id": str(sel_msg.id),
+        "user_message": req.selection,
+        "hitl_selection": req.selection,
+        "hitl_choice": hitl_choice,
+        "messages": langgraph_history + [{"role": "user", "content": req.selection}],
+    }
+
+    async def _generator() -> AsyncIterator[str]:
+        parts: list[str] = []
+        try:
+            yield sse_named_event(
+                "run.started", {"runId": run_id, "chatId": chat_id_str, "resumedFromChoice": True}
+            )
+            async for name, data in run_agent_stream(graph, inputs, config, timeout_seconds=AGENT_RUN_TIMEOUT):
+                yield sse_named_event(name, data)
+                if name == "message.delta":
+                    parts.append(data["delta"])
+            if parts:
+                async with session_factory() as session:
+                    await ChatService(session).save_assistant_message(
+                        chat_id=chat_id,
+                        message_type="text",
+                        content="".join(parts),
+                        payload=None,
+                        parent_message_id=sel_msg.id,
+                        run_id=run_id,
+                    )
+            yield sse_named_event("run.completed", {"runId": run_id})
+        finally:
+            runtime.release(chat_id_str)
+
+    return make_sse_response(_generator())
+
+
 # ── SSE 实时流式对话 ──────────────────────────────────────────────────────────
 
 @router.post("/{chat_id}/messages/stream")
@@ -288,74 +419,37 @@ async def send_message_stream(
         assistant_content_parts = []
         
         try:
-            # 3. 运行图并捕捉事件
-            # version="v2" 是 langgraph.astream_events 所需参数
+            # 3. 运行图并捕捉事件（统一经 scheduling 封装：子图感知匹配 + 运行级超时）
             rag_payload: dict | None = None
-            async for event in graph.astream_events(inputs, config, version="v2"):
-                kind = event.get("event")
-                name = event.get("name")
-
-                if kind == "on_node_start":
-                    if name == "route_intent":
-                        yield sse_named_event("agent.status", {"status": "routing_intent"})
-                    elif name == "chat":
-                        yield sse_named_event("agent.status", {"status": "generating"})
-                    elif name == "parse_url":
-                        yield sse_named_event("tool.started", {"tool_type": "parse_url"})
-                    elif name == "collect":
-                        yield sse_named_event("tool.started", {"tool_type": "collect"})
-
-                elif kind == "on_chain_end" and (event.get("metadata") or {}).get("langgraph_node") == "retrieve_knowledge":
+            timeout_occurred = False
+            async for name, data in run_agent_stream(graph, inputs, config, timeout_seconds=AGENT_RUN_TIMEOUT):
+                if name in ("agent.status", "tool.started"):
+                    yield sse_named_event(name, data)
+                elif name in ("rag.sources", "rag.fallback"):
                     # RAG 检索结束：透传命中来源给前端（受 RAG_SOURCE_DISPLAY 开关控制）
                     from app.core.config import is_rag_source_display_enabled
                     if is_rag_source_display_enabled():
-                        node_state = (event.get("data") or {}).get("output")
-                        if not isinstance(node_state, dict):
-                            node_state = {}
-                        built = _build_rag_payload(node_state)
-                        if built is not None:
-                            rag_payload = built
-                            if built["sources"]:
-                                yield sse_named_event("rag.sources", {
-                                    "sources": built["sources"],
-                                    "traceId": built["traceId"],
-                                })
-                            else:
-                                yield sse_named_event("rag.fallback", {
-                                    "reason": built["fallbackNotice"],
-                                    "traceId": built["traceId"],
-                                })
-
-                elif kind == "on_chain_end" and (event.get("metadata") or {}).get("langgraph_node") == "task_plan":
-                    # 复合任务规划执行结束：透传 plan 概要给前端展示卡片
-                    node_state = (event.get("data") or {}).get("output")
-                    if isinstance(node_state, dict) and node_state.get("task_plan_result"):
-                        tp = node_state["task_plan_result"]
-                        yield sse_named_event("task_plan.created", {
-                            "planId": tp.get("planId"),
-                            "goal": tp.get("goal"),
-                            "status": tp.get("status"),
-                            "preview": tp.get("preview"),
-                        })
-
-                elif kind == "on_chain_end" and (event.get("metadata") or {}).get("langgraph_node") == "multi_agent":
-                    # 多 Agent 协作结束：透传 5 个子 Agent 状态给前端展示
-                    node_state = (event.get("data") or {}).get("output")
-                    if isinstance(node_state, dict) and node_state.get("multi_agent_result"):
-                        ma = node_state["multi_agent_result"]
-                        yield sse_named_event("multi_agent.status", {
-                            "status": ma.get("status"),
-                            "agents": ma.get("agents", []),
-                            "finalContent": ma.get("finalContent"),
-                        })
-
-                elif kind == "on_chat_model_stream":
-                    data = event.get("data", {})
-                    chunk = data.get("chunk")
-                    if chunk and hasattr(chunk, "content") and chunk.content:
-                        delta = chunk.content
-                        assistant_content_parts.append(delta)
-                        yield sse_named_event("message.delta", {"delta": delta})
+                        if name == "rag.sources":
+                            rag_payload = {
+                                "sources": data["sources"],
+                                "fallbackNotice": None,
+                                "traceId": data["traceId"],
+                            }
+                        else:
+                            rag_payload = {
+                                "sources": [],
+                                "fallbackNotice": data["reason"],
+                                "traceId": data["traceId"],
+                            }
+                        yield sse_named_event(name, data)
+                elif name in ("task_plan.created", "multi_agent.status"):
+                    yield sse_named_event(name, data)
+                elif name == "message.delta":
+                    assistant_content_parts.append(data["delta"])
+                    yield sse_named_event("message.delta", data)
+                elif name == "agent.error":
+                    timeout_occurred = True
+                    yield sse_named_event("agent.error", data)
 
             # 4. 执行结束，获取图当前状态的快照以持久化
             state = await graph.aget_state(config)
@@ -366,6 +460,21 @@ async def send_message_stream(
 
             async with session_factory() as session:
                 chat_service = ChatService(session)
+
+                if timeout_occurred:
+                    # 运行超时：已有部分结果保留，另持久化一条稳定的错误终态消息
+                    await chat_service.save_assistant_message(
+                        chat_id=chat_id,
+                        message_type="error",
+                        content=None,
+                        payload={
+                            "error_code": "agent_timeout",
+                            "message": "生成超时已自动停止，请换个说法重试",
+                        },
+                        parent_message_id=user_msg.id,
+                        run_id=run_id,
+                    )
+                    return
 
                 hitl_choice = values.get("hitl_choice")
 

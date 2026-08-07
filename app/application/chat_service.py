@@ -72,12 +72,13 @@ class ChatService:
         content: str,
         parent_message_id: uuid.UUID | None = None,
         run_id: str | None = None,
+        message_type: str = "text",
     ) -> Message:
         msg = Message(
             id=uuid.uuid4(),
             chat_id=chat_id,
             role="user",
-            message_type="text",
+            message_type=message_type,
             content=content,
             parent_message_id=parent_message_id,
             run_id=run_id,

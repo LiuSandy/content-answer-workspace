@@ -82,6 +82,11 @@ async def lifespan(app: FastAPI):
     async with AsyncSqliteSaver.from_conn_string(str(CONVERSATION_CHECKPOINT_DB)) as checkpointer:
         checkpointer.serde = serde
         app.state.conversation_graph = build_conversation_graph(checkpointer)
+        # Agent 运行期依赖：每 chat 并发锁 + 可注入的 session 工厂（测试可替换）
+        from .application.agent.scheduling import ChatRuntime
+        from .persistence.session import get_session_factory
+        app.state.chat_runtime = ChatRuntime()
+        app.state.session_factory = get_session_factory()
 
         # 启动定时任务基建（Phase 2 主动感知）
         try:
