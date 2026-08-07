@@ -39,12 +39,14 @@ class RenderedPrompt:
         model: str,
         temperature: float,
         max_tokens: int,
+        structured_methods: list[str] | None = None,
     ):
         self.prompt_id = prompt_id
         self.messages = messages
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.structured_methods = structured_methods or ["json_mode", "generic_parse"]
 
     def to_llm_request(self) -> LLMRequest:
         return LLMRequest(
@@ -192,7 +194,7 @@ class PromptRegistry:
             messages.append(LLMMessage(role=msg.role, content=content))
 
         # 解析模型参数
-        model_str, temperature, max_tokens = self._resolve_model_params(schema)
+        model_str, temperature, max_tokens, structured_methods = self._resolve_model_params(schema)
 
         return RenderedPrompt(
             prompt_id=prompt_id,
@@ -200,6 +202,7 @@ class PromptRegistry:
             model=model_str,
             temperature=temperature,
             max_tokens=max_tokens,
+            structured_methods=structured_methods,
         )
 
     def _render_str(self, template: str, variables: dict[str, Any], prompt_id: str) -> str:
@@ -210,7 +213,7 @@ class PromptRegistry:
 
     def _resolve_model_params(
         self, schema: PromptSchema
-    ) -> tuple[str, float, int]:
+    ) -> tuple[str, float, int, list[str]]:
         profile_key = schema.model.profile if schema.model else "default"
         profile = self._model_profiles.get(profile_key)
 
@@ -218,6 +221,7 @@ class PromptRegistry:
         model_str = "deepseek-chat"
         temperature = 0.7
         max_tokens = 4096
+        structured_methods: list[str] = ["json_mode", "generic_parse"]
 
         if profile:
             model_str = profile.model
@@ -225,6 +229,8 @@ class PromptRegistry:
                 temperature = profile.temperature
             if profile.max_tokens is not None:
                 max_tokens = profile.max_tokens
+            if profile.structured_methods:
+                structured_methods = list(profile.structured_methods)
 
         # Prompt 级覆盖
         if schema.model:
@@ -233,7 +239,7 @@ class PromptRegistry:
             if schema.model.max_tokens is not None:
                 max_tokens = schema.model.max_tokens
 
-        return model_str, temperature, max_tokens
+        return model_str, temperature, max_tokens, structured_methods
 
 
 # ── 全局单例 ─────────────────────────────────────────────────────────────────

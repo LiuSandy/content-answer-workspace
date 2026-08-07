@@ -251,14 +251,14 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写 `tests/test_structured_output.py`，覆盖 profile 能力选择、Pydantic 校验、一次重试、
+- [x] Step 1: 写 `tests/test_structured_output.py`，覆盖 profile 能力选择、Pydantic 校验、一次重试、
   JSON mode 降级、通用解析降级和 `StructuredResult` 元数据。
-- [ ] Step 2: 运行测试，确认因公共类型和实现不存在而失败。
-- [ ] Step 3: 实现公共 schemas、provider capability 和结构化生成服务。
-- [ ] Step 4: 将 `route_intent` 的 LLM 分支切换到公共接口，保留规则优先、显式 strict/off 和
+- [x] Step 2: 运行测试，确认因公共类型和实现不存在而失败。
+- [x] Step 3: 实现公共 schemas、provider capability 和结构化生成服务。
+- [x] Step 4: 将 `route_intent` 的 LLM 分支切换到公共接口，保留规则优先、显式 strict/off 和
   低置信度降级。
-- [ ] Step 5: 运行 `uv run pytest tests/test_structured_output.py tests/test_route_intent_modes.py tests/test_intent_rules.py tests/test_chat_branching.py -v`。
-- [ ] Step 6: 提交，建议信息：`feat: add shared structured generation`。
+- [x] Step 5: 运行 `uv run pytest tests/test_structured_output.py tests/test_route_intent_modes.py tests/test_intent_rules.py tests/test_chat_branching.py -v`。
+- [x] Step 6: 提交，建议信息：`feat: add shared structured generation`。
 
 **阶段门禁：** 路由无手写 JSON；五类公共 schema 可导入；DeepSeek profile 不错误假定原生
 `json_schema`；降级结果可由业务调用方审计。

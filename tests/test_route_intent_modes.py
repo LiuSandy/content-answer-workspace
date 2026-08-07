@@ -15,6 +15,7 @@ from app.application.agent.nodes.route_intent import route_intent_node
 def _make_mock_deps(monkeypatch, llm_content: str):
     """mock prompt_registry 与 llm_provider_registry，让 LLM 返回指定 JSON。"""
     fake_rendered = MagicMock()
+    fake_rendered.structured_methods = ["json_mode", "generic_parse"]
     fake_rendered.to_llm_request.return_value = MagicMock()
     fake_provider = MagicMock()
     fake_provider.generate = AsyncMock(

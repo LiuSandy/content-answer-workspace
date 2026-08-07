@@ -3,7 +3,7 @@
 设计理念：
   - L0 规则层：确定性关键词/正则，命中即返回（可复现、零 LLM 成本、优先）
   - L1 LLM 层：规则未命中/模糊时调用，一次判定 intent/knowledge_mode/platform/query，
-    并输出 confidence
+    并输出 confidence；使用公共 generate_structured(IntentRoute)，无手写 JSON 解析
   - L2 校验层：Pydantic 校验 + 低置信度降级 + 规则与 LLM 冲突时规则优先
 
 用户只需自然对话，Agent 自动决定普通回答、查私有资料、单篇创作、
@@ -11,10 +11,11 @@
 """
 from __future__ import annotations
 
-import json
 import logging
 
+from ....domain.dto import IntentRoute
 from ....infrastructure.llm.registry import llm_provider_registry
+from ....infrastructure.llm.structured import generate_structured
 from ....prompts.registry import prompt_registry
 from .intent_rules import detect_intent_by_rules, extract_urls
 from ..state import ChatAgentState
@@ -67,24 +68,30 @@ async def route_intent_node(state: ChatAgentState) -> dict:
             extracted_urls=str(urls),
         )
         provider = llm_provider_registry.get("deepseek")
-        resp = await provider.generate(rendered.to_llm_request())
-        content = resp.content.strip()
-
-        data: dict = {}
-        if "{" in content:
-            json_str = content[content.index("{") : content.rindex("}") + 1]
-            data = json.loads(json_str)
+        structured = await generate_structured(
+            provider=provider,
+            request=rendered.to_llm_request(),
+            schema=IntentRoute,
+            structured_methods=getattr(rendered, "structured_methods", None),
+        )
+        route = structured.value
+        if route is None:
+            # 公共接口已降级到极限仍不可解析：保守走 chat，不抛异常
+            logger.info(
+                "Intent LLM output unparseable (%s), defaulting to chat",
+                structured.degradation_reason,
+            )
+            result = _default_result(message, existing_mode)
+            result["intent_reason"] = f"llm unparseable: {structured.method_used}"
+            return result
 
         # ── L2 校验层 ────────────────────────────────────────────────────────
-        intent = data.get("intent", "chat")
-        if intent not in _VALID_INTENTS:
-            intent = "chat"
-        knowledge_mode = data.get("knowledge_mode", "normal")
-        if knowledge_mode not in _VALID_MODES:
-            knowledge_mode = "normal"
-        confidence = data.get("confidence")
+        intent = route.intent if route.intent in _VALID_INTENTS else "chat"
+        knowledge_mode = (
+            route.knowledge_mode if route.knowledge_mode in _VALID_MODES else "normal"
+        )
         try:
-            confidence = float(confidence) if confidence is not None else 0.9
+            confidence = float(route.confidence)
         except (TypeError, ValueError):
             confidence = 0.9
         confidence = max(0.0, min(1.0, confidence))
@@ -104,9 +111,9 @@ async def route_intent_node(state: ChatAgentState) -> dict:
         if rule_result is not None:
             rule_result.update({
                 "intent_confidence": confidence,
-                "intent_reason": (data.get("reason") or "rule+llm"),
-                "intent_platform": data.get("platform") or rule_result.get("platform"),
-                "intent_query": data.get("query") or rule_result.get("query"),
+                "intent_reason": route.reason or "rule+llm",
+                "intent_platform": route.platform or rule_result.get("platform"),
+                "intent_query": route.query or rule_result.get("query"),
             })
             return rule_result
 
@@ -114,9 +121,9 @@ async def route_intent_node(state: ChatAgentState) -> dict:
             "intent": intent,
             "knowledge_mode": knowledge_mode,
             "intent_confidence": confidence,
-            "intent_reason": data.get("reason") or "llm",
-            "intent_platform": data.get("platform"),
-            "intent_query": data.get("query"),
+            "intent_reason": route.reason or "llm",
+            "intent_platform": route.platform,
+            "intent_query": route.query,
         }
     except Exception as e:
         logger.warning("Intent routing failed, defaulting to chat: %s", e)

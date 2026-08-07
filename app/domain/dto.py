@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
 import uuid
 from pydantic import BaseModel, Field
 from pydantic.alias_generators import to_camel
+
+T = TypeVar("T")
 
 
 
@@ -118,6 +120,83 @@ class LLMStreamEvent(BaseModel):
     finish_reason: str | None = None
     input_tokens: int | None = None   # 仅在最后一个事件携带
     output_tokens: int | None = None  # 仅在最后一个事件携带
+
+    model_config = {"populate_by_name": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 结构化输出公共类型（roadmap R1）
+# ─────────────────────────────────────────────────────────────────────────────
+
+class StructuredResult(BaseModel, Generic[T]):
+    """结构化输出结果；含降级元数据，底层不写 DB。
+
+    降级元数据（method_used / attempts / degradation_reason）由业务调用方
+    审计到各自 AIOperation.model_parameters。
+    """
+
+    value: T | None = None
+    method_used: Literal["json_schema", "json_mode", "generic_parse"] | None = None
+    attempts: int = 0
+    degradation_reason: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class IntentRoute(BaseModel):
+    """意图路由 LLM 判定结果；字段对齐 route_intent 节点消费（spec §4.1）。"""
+
+    intent: Literal["chat", "parse_url", "collect", "task_plan", "multi_agent"] = "chat"
+    knowledge_mode: Literal["off", "normal", "strict"] = "normal"
+    confidence: float = Field(default=0.9, ge=0.0, le=1.0)
+    platform: str | None = None
+    query: str | None = None
+    reason: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class QualityReport(BaseModel):
+    """质检报告；分数统一为 0..100 整数（roadmap R1 接口决定）。"""
+
+    overall_score: int = Field(ge=0, le=100)
+    dimension_scores: dict[str, int] = Field(default_factory=dict)
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+    model_config = {"populate_by_name": True}
+
+
+class TopicEvaluation(BaseModel):
+    """选题评估；字段固定为 worth_score/reason/competition_level/user_match/suggestion。"""
+
+    worth_score: int = Field(ge=0, le=100)
+    reason: str
+    competition_level: Literal["low", "medium", "high"]
+    user_match: int = Field(ge=0, le=100)
+    suggestion: str
+
+    model_config = {"populate_by_name": True}
+
+
+class MemoryExtraction(BaseModel):
+    """单条记忆抽取条目；memory_type 对齐 memory_service.VALID_TYPES（含 implicit）。"""
+
+    memory_type: Literal["explicit", "implicit", "work_pattern"] = "explicit"
+    content: str
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+    model_config = {"populate_by_name": True}
+
+
+class ConversationSummary(BaseModel):
+    """对话滚动摘要；唯一键为 (chat_id, branch_root_message_id)，供 R4 使用。"""
+
+    summary: str
+    covered_message_ids: list[str] = Field(default_factory=list)
+    last_covered_message_id: str | None = None
+    version: int = 1
 
     model_config = {"populate_by_name": True}
 
