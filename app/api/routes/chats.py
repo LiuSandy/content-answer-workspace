@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from ...application.chat_service import ChatService
 from ...application.agent.scheduling import run_agent_stream
+from ...application.context.run_inputs import branch_thread_id, compose_run_inputs
+from ...application.context.summary_updater import SummaryUpdater
 from ...persistence.session import get_db_session, get_session_factory
 from ..sse_utils import sse_named_event, make_sse_response
 from ...core.config import AGENT_MAX_RECURSION, AGENT_RUN_TIMEOUT
@@ -18,6 +20,45 @@ from ...core.config import AGENT_MAX_RECURSION, AGENT_RUN_TIMEOUT
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
+
+
+async def _default_summarizer(content: str) -> str:
+    """确定性本地压缩兜底：保留开头概况与末尾最新内容，避免无 LLM 配置时写入空摘要。
+
+    生产可注入更强的 LLM 摘要器（app.state.summary_generator）。
+    """
+    text = "\n".join(line for line in content.splitlines() if line.strip())
+    if len(text) <= 1400:
+        return text
+    head = text[:200].rstrip()
+    tail = text[-1000:].lstrip()
+    return f"{head}\n……（中间 {len(text) - 1200} 字符已压缩）\n{tail}"
+
+
+def _get_summarizer(request: Request):
+    return getattr(request.app.state, "summary_generator", None) or _default_summarizer
+
+
+async def _update_branch_summary(session_factory, request: Request, chat_id, branch_root, leaf_message_id) -> None:
+    """尽力更新分支滚动摘要（CAS）。任何失败只记日志，不阻断对话。"""
+    if branch_root is None:
+        return
+    try:
+        summarizer = _get_summarizer(request)
+        async with session_factory() as session:
+            chat_service = ChatService(session)
+            full_path = await chat_service.get_message_path(chat_id, leaf_message_id)
+            updater = SummaryUpdater(session, summarizer)
+            existing = await updater.get(chat_id, branch_root)
+            expected = existing.version if existing else 0
+            await updater.update_incremental(chat_id, branch_root, full_path, expected_version=expected)
+    except Exception as e:  # noqa: BLE001 - 摘要失败不阻断对话
+        logger.warning("Branch summary update failed for chat %s: %s", chat_id, e)
+
+
+def _branch_root_of(history_path: list) -> uuid.UUID | None:
+    """分支根 = 分支路径的最早消息（get_message_path 已按时间升序返回）。"""
+    return history_path[0].id if history_path else None
 
 
 def build_langgraph_history(
@@ -315,21 +356,33 @@ async def submit_choice(
             chat_id, req.selection, parent_message_id=choice_req.id, message_type="hitl_selection"
         )
         history_path = await chat_service.get_message_path(chat_id, choice_req.id)
+        branch_root = _branch_root_of(history_path) or choice_req.id
 
     langgraph_history = build_langgraph_history(history_path, str(sel_msg.id))
     run_id = str(uuid.uuid4())
-    config = {
-        "configurable": {"thread_id": f"{chat_id_str}_{sel_msg.id}"},
-        "recursion_limit": AGENT_MAX_RECURSION,
-    }
-    inputs = {
-        "chat_id": chat_id_str,
-        "user_message_id": str(sel_msg.id),
-        "user_message": req.selection,
-        "hitl_selection": req.selection,
-        "hitl_choice": hitl_choice,
-        "messages": langgraph_history + [{"role": "user", "content": req.selection}],
-    }
+
+    # R4：分支根稳定 thread_id + checkpoint 感知输入（已有 checkpoint 只传增量）
+    if hasattr(graph, "aget_state"):
+        inputs, config = await compose_run_inputs(
+            graph,
+            chat_id_str,
+            str(branch_root),
+            langgraph_history,
+            str(sel_msg.id),
+            req.selection,
+            extra={"hitl_selection": req.selection, "hitl_choice": hitl_choice},
+        )
+    else:
+        inputs = {
+            "chat_id": chat_id_str,
+            "user_message_id": str(sel_msg.id),
+            "user_message": req.selection,
+            "hitl_selection": req.selection,
+            "hitl_choice": hitl_choice,
+            "messages": langgraph_history + [{"role": "user", "content": req.selection}],
+        }
+        config = {"configurable": {"thread_id": f"{chat_id_str}_{branch_root}"}}
+    config = {**config, "recursion_limit": AGENT_MAX_RECURSION}
 
     async def _generator() -> AsyncIterator[str]:
         parts: list[str] = []
@@ -351,6 +404,7 @@ async def submit_choice(
                         parent_message_id=sel_msg.id,
                         run_id=run_id,
                     )
+                await _update_branch_summary(session_factory, http_request, chat_id, branch_root, sel_msg.id)
             yield sse_named_event("run.completed", {"runId": run_id})
         finally:
             runtime.release(chat_id_str)
@@ -399,24 +453,49 @@ async def send_message_stream(
                 chat_id, req.content, parent_message_id=parent_id, run_id=run_id
             )
             history_path = await chat_service.get_message_path(chat_id, parent_id)
+            branch_root = _branch_root_of(history_path) or user_msg.id
+            # R4：读取分支级滚动摘要（尽力而为，缺失则本轮不注入）
+            branch_summary = None
+            try:
+                updater = SummaryUpdater(session, _default_summarizer)
+                bs = await updater.get(chat_id, branch_root)
+                if bs and bs.summary:
+                    branch_summary = bs.summary
+            except Exception as e:  # noqa: BLE001
+                logger.debug("Load branch summary failed: %s", e)
 
         # 格式化历史消息提供给 LangGraph
         langgraph_history = build_langgraph_history(history_path, str(user_msg.id))
 
-        # 2. 准备 LangGraph 运行配置
-        # 使用当前用户消息 ID 作为 thread_id 隔离分支
-        config = {
-            "configurable": {"thread_id": f"{chat_id_str}_{user_msg.id}"},
-            "recursion_limit": AGENT_MAX_RECURSION,
-        }
-        inputs = {
-            "chat_id": chat_id_str,
-            "user_message_id": str(user_msg.id),
-            "user_message": req.content,
-            "messages": langgraph_history + [{"role": "user", "content": req.content}],
-        }
+        # R4：分支根稳定 thread_id + checkpoint 感知输入。
+        # 已存在 checkpoint 的分支只传本轮增量，缺失时才从 DB 分支路径重建全量历史。
+        extra: dict[str, Any] = {}
+        if branch_summary:
+            extra["branch_summary"] = branch_summary
+
+        if hasattr(graph, "aget_state"):
+            inputs, config = await compose_run_inputs(
+                graph,
+                chat_id_str,
+                str(branch_root),
+                langgraph_history,
+                str(user_msg.id),
+                req.content,
+                extra=extra,
+            )
+        else:
+            inputs = {
+                "chat_id": chat_id_str,
+                "user_message_id": str(user_msg.id),
+                "user_message": req.content,
+                **extra,
+                "messages": langgraph_history + [{"role": "user", "content": req.content}],
+            }
+            config = {"configurable": {"thread_id": f"{chat_id_str}_{branch_root}"}}
+        config = {**config, "recursion_limit": AGENT_MAX_RECURSION}
 
         assistant_content_parts = []
+        summary_leaf: uuid.UUID | None = None
         
         try:
             # 3. 运行图并捕捉事件（统一经 scheduling 封装：子图感知匹配 + 运行级超时）
@@ -497,7 +576,7 @@ async def send_message_stream(
                         msg_payload["ragSources"] = rag_payload.get("sources") or []
                         msg_payload["ragFallback"] = rag_payload.get("fallbackNotice")
                         msg_payload["traceId"] = rag_payload.get("traceId")
-                    await chat_service.save_assistant_message(
+                    saved = await chat_service.save_assistant_message(
                         chat_id=chat_id,
                         message_type="text",
                         content=full_text,
@@ -505,6 +584,7 @@ async def send_message_stream(
                         parent_message_id=user_msg.id,
                         run_id=run_id,
                     )
+                    summary_leaf = saved.id
 
                     # 检查大模型在此轮对话中是否运行了 zhihu_search 或 xiaohongshu_search 工具
                     # 若运行了，解析并将其持久化为 source_list 消息，从而支持前端结构化卡片与左键选中写作
@@ -592,7 +672,7 @@ async def send_message_stream(
                 elif intent == "task_plan":
                     # 复合任务：从 state 取结果并落库为结构化消息
                     tp_result = values.get("task_plan_result") or {}
-                    await chat_service.save_assistant_message(
+                    tp_saved = await chat_service.save_assistant_message(
                         chat_id=chat_id,
                         message_type="text",
                         content=tp_result.get("preview") or "复合任务已完成",
@@ -600,10 +680,11 @@ async def send_message_stream(
                         parent_message_id=user_msg.id,
                         run_id=run_id,
                     )
+                    summary_leaf = tp_saved.id
                 elif intent == "multi_agent":
                     # 多 Agent 协作：从 state 取结果并落库为结构化消息
                     ma_result = values.get("multi_agent_result") or {}
-                    await chat_service.save_assistant_message(
+                    ma_saved = await chat_service.save_assistant_message(
                         chat_id=chat_id,
                         message_type="text",
                         content=ma_result.get("finalContent") or "多 Agent 协作已完成",
@@ -611,6 +692,7 @@ async def send_message_stream(
                         parent_message_id=user_msg.id,
                         run_id=run_id,
                     )
+                    summary_leaf = ma_saved.id
                 elif response_payload:
                     # 字典安全兼容处理：适配反序列化降级为 dict 的情况
                     if isinstance(response_payload, dict):
@@ -622,7 +704,7 @@ async def send_message_stream(
                         p_content = getattr(response_payload, "text_content", None)
                         p_structured = getattr(response_payload, "structured", None)
 
-                    await chat_service.save_assistant_message(
+                    rp_saved = await chat_service.save_assistant_message(
                         chat_id=chat_id,
                         message_type=p_msg_type,
                         content=p_content,
@@ -630,12 +712,17 @@ async def send_message_stream(
                         parent_message_id=user_msg.id,
                         run_id=run_id,
                     )
+                    summary_leaf = rp_saved.id
 
                     # 发送 source_list 状态事件给前端
                     if p_msg_type == "source_list":
                         yield sse_named_event("source.list.completed", p_structured)
                     elif p_msg_type == "error":
                         yield sse_named_event("run.failed", p_structured)
+
+            # R4：尽力更新分支滚动摘要（下一轮注入 composer 上下文）
+            if summary_leaf is not None:
+                await _update_branch_summary(session_factory, http_request, chat_id, branch_root, summary_leaf)
 
             yield sse_named_event("run.completed", {"runId": run_id})
 

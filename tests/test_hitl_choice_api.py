@@ -30,12 +30,15 @@ def _compile_jsonb_sqlite(type_, compiler, **kw):
 
 
 class _RecordingGraph:
-    """记录每次续跑的 inputs/config；事件流为空。"""
+    """记录每次续跑的 inputs/config；事件流为空；无 checkpoint（返回空状态）。"""
 
     async def astream_events(self, inputs, config, version="v2"):
         _RECORDED_RUNS.append({"inputs": inputs, "config": config})
         if False:
             yield {}
+
+    async def aget_state(self, config):
+        return SimpleNamespace(values=None)
 
 
 async def _make_db() -> async_sessionmaker[AsyncSession]:
@@ -76,9 +79,9 @@ async def _setup_choice(db, selection_payload: dict | None = None):
 @pytest.mark.asyncio
 async def test_post_choice_restores_from_saved_choice_request():
     """提交选择后：保存 hitl_selection 消息（parent 指向 choice_request），
-    并以 hitl_selection + hitl_choice.context 恢复新 thread_id 续跑。"""
+    并在该分支根 thread 上恢复续跑（roadmap R4：thread_id 以分支根消息 id 结尾）。"""
     db, engine = await _make_db()
-    chat_id, _, choice_id = await _setup_choice(db)
+    chat_id, req_id, choice_id = await _setup_choice(db)
     _RECORDED_RUNS.clear()
 
     app = _make_app(db)
@@ -91,12 +94,12 @@ async def test_post_choice_restores_from_saved_choice_request():
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/event-stream")
 
-    # 续跑以新 thread 进入既有分支（thread_id 以选择消息 id 结尾）
+    # 续跑在既有分支根 thread 上恢复（thread_id 以分支根消息 id 结尾）
     assert len(_RECORDED_RUNS) == 1
     run = _RECORDED_RUNS[0]
     assert run["inputs"]["hitl_selection"] == "use_found"
     assert run["inputs"]["hitl_choice"]["context"] == {}
-    assert run["config"]["configurable"]["thread_id"].endswith(run["inputs"]["user_message_id"])
+    assert run["config"]["configurable"]["thread_id"] == f"{chat_id}_{req_id}"
     assert run["inputs"]["user_message"] == "use_found"
 
     # 选择消息已持久化

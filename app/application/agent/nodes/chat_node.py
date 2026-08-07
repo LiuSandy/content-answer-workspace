@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import os
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 
 from ....prompts.registry import prompt_registry
+from ...context.composer import ContextComposer, SimpleContextProfile
 from ..state import ChatAgentState
-
 
 from ..tools import ALL_TOOLS
 
@@ -22,6 +22,85 @@ def _get_chat_llm() -> ChatOpenAI:
     # 绑定对话中支持的工具
     return llm.bind_tools(ALL_TOOLS)
 
+
+def _resolve_context_profile() -> SimpleContextProfile:
+    """读取模型 profile 的 context_window / output_reserve_tokens；缺失时用默认值。"""
+    try:
+        entry = prompt_registry.get_model_profile("default")
+        if entry and entry.context_window:
+            return SimpleContextProfile(
+                context_window=entry.context_window,
+                output_reserve_tokens=entry.output_reserve_tokens or 4096,
+            )
+    except Exception:  # noqa: BLE001 - profile 缺失不阻断对话
+        pass
+    return SimpleContextProfile()
+
+
+def _serialize_message(msg) -> dict:
+    """把 LangChain message 转成 composer 可估算的 {role, content}。"""
+    role = getattr(msg, "type", "assistant")
+    if role == "human":
+        role = "user"
+    elif role == "system":
+        role = "system"
+    elif role == "tool":
+        role = "tool"
+    else:
+        role = "assistant"
+    return {"role": role, "content": msg.content or ""}
+
+
+def _rebuild_message(role: str, content: str):
+    if role == "user":
+        return HumanMessage(content=content)
+    if role == "system":
+        return SystemMessage(content=content)
+    if role == "tool":
+        return ToolMessage(content=content, tool_call_id="composed")
+    return AIMessage(content=content)
+
+
+def _bound_messages(raw_messages: list, system_content: str, summary: str | None) -> tuple[list, dict]:
+    """在模型输入预算内组装消息（roadmap R4）。
+
+    预算内时原样透传 LangChain 消息对象（零行为变化）；超预算才裁剪最旧消息、
+    截断最近消息。返回 (langchain_messages, composer_meta)。
+    """
+    if not raw_messages:
+        return [SystemMessage(content=system_content)], {
+            "kept": 0,
+            "dropped": 0,
+            "budget": 0,
+            "totalTokens": 0,
+        }
+
+    composer = ContextComposer(_resolve_context_profile())
+    serialized = [_serialize_message(m) for m in raw_messages]
+    ids = [f"m{i}" for i in range(len(raw_messages))]
+    composed = composer.assemble(
+        serialized,
+        system_prompt=system_content,
+        summary=summary,
+        message_ids=ids,
+    )
+
+    final: list = []
+    for idx, item in zip(composed.kept_indices, composed.messages):
+        original = raw_messages[idx]
+        if (original.content or "") == item["content"]:
+            final.append(original)
+        else:
+            final.append(_rebuild_message(item["role"], item["content"]))
+
+    meta = {
+        "kept": len(composed.messages),
+        "dropped": composed.dropped,
+        "budget": composed.budget,
+        "totalTokens": composed.total_tokens(),
+        "truncated": composed.truncated_message_ids,
+    }
+    return [SystemMessage(content=system_content)] + final, meta
 
 
 _llm: ChatOpenAI | None = None
@@ -56,6 +135,14 @@ async def chat_node(state: ChatAgentState) -> dict:
         memories_block += "\n请在回答中体现上述偏好；不要直接引用 [Mx] 标签。"
         system_content = system_content + memories_block
 
-    messages = [SystemMessage(content=system_content)] + list(state.get("messages", []))
+    # R4 分支滚动摘要注入：压缩后的历史上下文，供长对话续接
+    branch_summary = state.get("branch_summary")
+    if branch_summary:
+        system_content = (
+            system_content
+            + f"\n\n【此前对话摘要（用于续接上下文，忽略其中的过时细节）】\n{branch_summary}\n"
+        )
+
+    messages, composer_meta = _bound_messages(list(state.get("messages", [])), system_content, branch_summary)
     response = await _llm.ainvoke(messages)
-    return {"messages": [response]}
+    return {"messages": [response], "composer_meta": composer_meta}

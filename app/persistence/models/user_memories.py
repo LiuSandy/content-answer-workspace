@@ -43,6 +43,10 @@ class UserMemoryModel(Base):
             "embedding", nullable=True, type_=None
         )
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.8)
+    # active / pending_confirmation / rejected（roadmap R5）
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    # 显式记忆的证据来源（原始语句、链接等），供前端 trace 详情
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 来源 session_id 或 behavior event
     source: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

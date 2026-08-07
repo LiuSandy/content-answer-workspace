@@ -150,6 +150,10 @@ class PromptRegistry:
         self.load_from_dir(prompts_dir)
         self.freeze()
 
+    def get_model_profile(self, profile_key: str) -> ModelProfileEntry | None:
+        """返回模型 profile；用于 R4 ContextComposer 读取 context_window 等预算字段。"""
+        return self._model_profiles.get(profile_key)
+
     def render_fragment(self, prompt_id: str, **variables: Any) -> str:
         """渲染 content-only 共享片段并返回纯文本。
 

@@ -352,14 +352,14 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写预算测试，覆盖 40 轮、CJK、超长 RAG、超长当前指令、最近两轮保留和输出 token 预留。
-- [ ] Step 2: 实现 profile 字段和 `ContextComposer.assemble()`。
-- [ ] Step 3: 写摘要分支隔离、增量覆盖、旧任务晚完成不覆盖新版本的失败测试。
-- [ ] Step 4: 实现摘要模型、迁移和 compare-and-swap 更新。
-- [ ] Step 5: 写 checkpoint 首次重建、连续请求只传增量、分支隔离和同分支串行测试。
-- [ ] Step 6: 接入 chats 路由与图输入。
-- [ ] Step 7: 运行 `uv run pytest tests/test_context_composer.py tests/test_chat_checkpoint_resume.py tests/test_chat_branching.py tests/test_chat_rag_sources.py -v`。
-- [ ] Step 8: 提交，建议信息：`feat: add bounded conversational context`。
+- [x] Step 1: 写预算测试，覆盖 40 轮、CJK、超长 RAG、超长当前指令、最近两轮保留和输出 token 预留。
+- [x] Step 2: 实现 profile 字段和 `ContextComposer.assemble()`。
+- [x] Step 3: 写摘要分支隔离、增量覆盖、旧任务晚完成不覆盖新版本的失败测试。
+- [x] Step 4: 实现摘要模型、迁移和 compare-and-swap 更新。
+- [x] Step 5: 写 checkpoint 首次重建、连续请求只传增量、分支隔离和同分支串行测试。
+- [x] Step 6: 接入 chats 路由与图输入。
+- [x] Step 7: 运行 `uv run pytest tests/test_context_composer.py tests/test_chat_checkpoint_resume.py tests/test_chat_branching.py tests/test_chat_rag_sources.py -v`。
+- [x] Step 8: 提交，建议信息：`feat: add bounded conversational context`。
 
 **阶段门禁：** 40 轮输入不超 profile 预算；分支摘要不串扰；连续请求无消息重复；SSE 回归通过。
 

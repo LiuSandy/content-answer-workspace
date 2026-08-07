@@ -54,6 +54,12 @@ class ChatAgentState(TypedDict):
     # 用户的选择结果（下一轮由前端回传，Agent 据此继续）
     hitl_selection: str | None
 
+    # ── R4 分支上下文（roadmap R4）
+    # 分支级滚动摘要；由 chats 路由从 branch_summaries 注入，chat_node 组装进 system prompt
+    branch_summary: str | None
+    # 本轮 ContextComposer 组装元数据（预算/裁剪/截断明细，诊断与调试用）
+    composer_meta: dict | None
+
 
 class ConversationState(TypedDict):
     """LangGraph checkpoint 用的简化对话状态；仅保存消息序列，不保存业务数据。"""
