@@ -21,6 +21,7 @@ class SourceType(str, Enum):
     IMAGE = "image"
     URL = "url"
     HISTORY = "history"
+    MATERIAL = "material"
 
 
 class ChunkType(str, Enum):

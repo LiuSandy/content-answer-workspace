@@ -460,14 +460,14 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写 Writer 三 operation、锁冲突、流式事件和版本类型测试。
-- [ ] Step 2: 写 A/B/C source item 背景隔离、缓存推进和设置关闭测试。
-- [ ] Step 3: 写素材收藏、自动索引、scope 检索和 `[S1]` 引用测试。
-- [ ] Step 4: 实现 WriterService、创作 Context、material 类型和 API。
-- [ ] Step 5: 把三个旧 workflow 改为薄适配层，并让 documents 路由只依赖 WriterService。
-- [ ] Step 6: 接入前端大纲确认生成、素材收藏和现有生成/润色/重写按钮。
-- [ ] Step 7: 运行 Writer、背景、素材、现有生成/精修/重写测试以及前端 typecheck/build。
-- [ ] Step 8: 提交，建议信息：`feat: unify contextual content writing`。
+- [x] Step 1: 写 Writer 三 operation、锁冲突、流式事件和版本类型测试。
+- [x] Step 2: 写 A/B/C source item 背景隔离、缓存推进和设置关闭测试。
+- [x] Step 3: 写素材收藏、自动索引、scope 检索和 `[S1]` 引用测试。
+- [x] Step 4: 实现 WriterService、创作 Context、material 类型和 API。
+- [x] Step 5: 把三个旧 workflow 改为薄适配层，并让 documents 路由只依赖 WriterService。
+- [x] Step 6: 接入前端大纲确认生成、素材收藏和现有生成/润色/重写按钮。
+- [x] Step 7: 运行 Writer、背景、素材、现有生成/精修/重写测试以及前端 typecheck/build。
+- [x] Step 8: 提交，建议信息：`feat: unify contextual content writing`。
 
 **阶段门禁：** 三类写作操作只有一个实现；旧 API 行为兼容；文章之间上下文不串扰；素材引用可追溯。
 
