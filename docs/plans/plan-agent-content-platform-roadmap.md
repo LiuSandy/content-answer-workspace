@@ -538,11 +538,11 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写 draft→ready→published 状态转换、published 字段约束、URL 校验、重复指标时间点和删除策略测试。
-- [ ] Step 2: 实现迁移、模型、状态服务和手动指标 CRUD。
-- [ ] Step 3: 实现发布工作台的 draft/ready/published 分组、平台格式复制、URL 回填、指标录入和错误状态。
-- [ ] Step 4: 运行 `uv run pytest tests/test_publishing.py tests/test_answer_service.py -v` 和前端 typecheck/build。
-- [ ] Step 5: 提交，建议信息：`feat: add publishing workflow and metrics`。
+- [x] Step 1: 写 draft→ready→published 状态转换、published 字段约束、URL 校验、重复指标时间点和删除策略测试。
+- [x] Step 2: 实现迁移、模型、状态服务和手动指标 CRUD。
+- [x] Step 3: 实现发布工作台的 draft/ready/published 分组、平台格式复制、URL 回填、指标录入和错误状态。
+- [x] Step 4: 运行 `uv run pytest tests/test_publishing.py tests/test_answer_service.py -v` 和前端 typecheck/build。
+- [x] Step 5: 提交，建议信息：`feat: add publishing workflow and metrics`。
 
 **阶段门禁：** 不执行自动发布；每条指标保留抓取/录入时间；published 文档拥有 URL 和发布时间。
 

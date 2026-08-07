@@ -15,6 +15,8 @@ from .opportunity_feeds import OpportunityFeedModel, AgentSettingsModel
 from .task_plans import TaskPlanModel, SubTaskModel
 from .user_memories import UserMemoryModel
 from .settings import AppSettings
+from .publish_metrics import PublishMetricsModel
+from .summaries import BranchSummary
 
 __all__ = [
     "Chat",
@@ -36,5 +38,7 @@ __all__ = [
     "TaskPlanModel",
     "SubTaskModel",
     "UserMemoryModel",
+    "PublishMetricsModel",
+    "BranchSummary",
 ]
 

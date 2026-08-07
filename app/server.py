@@ -24,6 +24,7 @@ from .api.routes.opportunities import router as opportunities_router
 from .api.routes.task_plans import router as task_plans_router
 from .api.routes.memories import router as memories_router
 from .api.routes.multi_agent import router as multi_agent_router
+from .api.routes.publishing import router as publishing_router
 from .application.agent.graphs.conversation import build_conversation_graph
 from .config.loader import warmup as warmup_config
 from .core.config import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
@@ -191,6 +192,7 @@ app.include_router(opportunities_router)
 app.include_router(task_plans_router)
 app.include_router(memories_router)
 app.include_router(multi_agent_router)
+app.include_router(publishing_router)
 
 
 # ── 静态文件托管 ──────────────────────────────────────────────────────────────

@@ -44,6 +44,10 @@ class AnswerDocument(Base):
     )
     # 乐观锁版本号，从 1 开始
     lock_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # R10 发布状态：draft → ready → published
+    publish_status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    publish_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 预留多用户扩展
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
