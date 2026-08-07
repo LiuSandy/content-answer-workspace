@@ -488,12 +488,12 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写规则 Top-N、active 兴趣记忆注入、结构化结果、失败保留规则分、重评幂等和配额限制测试。
-- [ ] Step 2: 实现评估字段迁移、TopicAnalystService 和 Prompt。
-- [ ] Step 3: 接入 APScheduler 扫描后的评估任务和手动重评 API；不使用无持久语义的“队列”表述。
-- [ ] Step 4: 实现热榜和机会列表的徽章、理由、仅规则分状态和失败重试入口。
-- [ ] Step 5: 运行 `uv run pytest tests/test_opportunity_scanner.py tests/test_topic_analyst.py -v` 和前端 typecheck/build。
-- [ ] Step 6: 提交，建议信息：`feat: add memory aware topic evaluation`。
+- [x] Step 1: 写规则 Top-N、active 兴趣记忆注入、结构化结果、失败保留规则分、重评幂等和配额限制测试。
+- [x] Step 2: 实现评估字段迁移、TopicAnalystService 和 Prompt。
+- [x] Step 3: 接入 APScheduler 扫描后的评估任务和手动重评 API；不使用无持久语义的"队列"表述。
+- [x] Step 4: 实现热榜和机会列表的徽章、理由、仅规则分状态和失败重试入口。
+- [x] Step 5: 运行 `uv run pytest tests/test_opportunity_scanner.py tests/test_topic_analyst.py -v` 和前端 typecheck/build。
+- [x] Step 6: 提交，建议信息：`feat: add memory aware topic evaluation`。
 
 **阶段门禁：** 未进 Top-N 的候选不调用 LLM；失败不影响机会展示；评分 schema 与前端单位一致。
 

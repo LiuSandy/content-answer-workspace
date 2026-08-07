@@ -44,6 +44,12 @@ class OpportunityFeedModel(Base):
     )
     # 原始 hotlist 项的 metadata
     raw_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # R8 LLM 评估字段：由 TopicAnalyst 异步写入，失败时保留 null
+    llm_evaluated: Mapped[bool | None] = mapped_column(String(5), nullable=True)
+    llm_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    llm_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_match_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    llm_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("ix_opportunity_feeds_workspace_score", "workspace_id", "opportunity_score"),

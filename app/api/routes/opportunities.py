@@ -49,6 +49,10 @@ async def list_opportunities(
                 "opportunityScore": it.opportunity_score,
                 "existingAnswerCount": it.existing_answer_count,
                 "scannedAt": it.scanned_at.isoformat() if it.scanned_at else None,
+                "llmScore": it.llm_score,
+                "llmReason": it.llm_reason,
+                "userMatchReason": it.user_match_reason,
+                "llmEvaluated": it.llm_evaluated,
             }
             for it in items
         ],
@@ -180,3 +184,20 @@ async def update_agent_settings(req: AgentSettingsRequest):
         await s.commit()
 
     return {"ok": True, "data": {"updated": True}}
+
+
+# ── R8 手动重评 ──────────────────────────────────────────────────────────
+
+
+@router.post("/{opportunity_id}/re-evaluate")
+async def re_evaluate_opportunity(opportunity_id: str):
+    from ...application.topic_analyst_service import TopicAnalystService
+    from ...persistence.session import get_session_factory
+
+    factory = get_session_factory()
+    async with factory() as session:
+        svc = TopicAnalystService(session)
+        result = await svc.re_evaluate(opportunity_id)
+        if result is None:
+            return {"ok": False, "error": "Not found or evaluation failed"}
+        return {"ok": True, "data": result}
