@@ -511,14 +511,14 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 写版本分类测试，覆盖 initial/refine/rewrite/quality_adopt/outline-generated 与 manual checkpoint，
+- [x] Step 1: 写版本分类测试，覆盖 initial/refine/rewrite/quality_adopt/outline-generated 与 manual checkpoint，
   并确认所有 AI→AI 对被跳过。
-- [ ] Step 2: 写每文档每来源版本对只分析一次、证据 diff 持久化、pending 不生效、confirm 生效、reject 不生效测试。
-- [ ] Step 3: 实现 StyleLearnerService 和版本保存后的幂等任务触发。
-- [ ] Step 4: 复用 memory confirm/reject API；active implicit memory 进入 Writer 的用户级风格层，不修改共享 YAML。
-- [ ] Step 5: 实现前端证据 diff、确认、拒绝和撤销反馈。
-- [ ] Step 6: 运行 `uv run pytest tests/test_style_learner.py tests/test_memory_pipeline.py tests/test_quality_review.py tests/test_writer_service.py -v` 和前端 typecheck/build。
-- [ ] Step 7: 提交，建议信息：`feat: learn confirmed user style preferences`。
+- [x] Step 2: 写每文档每来源版本对只分析一次、证据 diff 持久化、pending 不生效、confirm 生效、reject 不生效测试。
+- [x] Step 3: 实现 StyleLearnerService 和版本保存后的幂等任务触发。
+- [x] Step 4: 复用 memory confirm/reject API；active implicit memory 进入 Writer 的用户级风格层，不修改共享 YAML。
+- [x] Step 5: 实现前端证据 diff、确认、拒绝和撤销反馈。
+- [x] Step 6: 运行 `uv run pytest tests/test_style_learner.py tests/test_memory_pipeline.py tests/test_quality_review.py tests/test_writer_service.py -v` 和前端 typecheck/build。
+- [x] Step 7: 提交，建议信息：`feat: learn confirmed user style preferences`。
 
 **阶段门禁：** AI→AI 不产出风格记忆；未确认规则不改变生成；同一版本对不会重复分析。
 
