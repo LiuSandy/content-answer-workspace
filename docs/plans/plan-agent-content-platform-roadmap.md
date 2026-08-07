@@ -211,14 +211,14 @@ R0-R11 完成后 ── R12 可选子图化与遗留清理
 
 **步骤：**
 
-- [ ] Step 1: 写失败测试，覆盖当前用户消息不重复、机会扫描能查询已创作文档、Prompt 更新保留
+- [x] Step 1: 写失败测试，覆盖当前用户消息不重复、机会扫描能查询已创作文档、Prompt 更新保留
   user message/variables、`AIOperation.output_metadata` 可 round-trip。
-- [ ] Step 2: 分别运行上述四个测试文件，确认失败原因对应现有缺口。
-- [ ] Step 3: 编写最小修复和 Alembic 迁移；迁移只增加兼容字段，不删除旧字段或入口。
-- [ ] Step 4: 运行四个测试文件，预期全部通过。
-- [ ] Step 5: 运行 `uv run pytest tests/test_zhihu_import.py tests/test_prompt_composer.py -v`，确认 CLI
+- [x] Step 2: 分别运行上述四个测试文件，确认失败原因对应现有缺口。
+- [x] Step 3: 编写最小修复和 Alembic 迁移；迁移只增加兼容字段，不删除旧字段或入口。
+- [x] Step 4: 运行四个测试文件，预期全部通过。
+- [x] Step 5: 运行 `uv run pytest tests/test_zhihu_import.py tests/test_prompt_composer.py -v`，确认 CLI
   关联能力与 Prompt 装配无回归。
-- [ ] Step 6: 提交，建议信息：`fix: stabilize agent content foundations`。
+- [x] Step 6: 提交，建议信息：`fix: stabilize agent content foundations`。
 
 **阶段门禁：** 迁移 upgrade/downgrade 测试通过；不存在重复当前消息；机会扫描不再访问不存在字段；
 Prompt 更新不破坏模板结构。
