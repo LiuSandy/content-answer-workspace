@@ -590,12 +590,12 @@ Prompt 更新不破坏模板结构。
 
 **步骤：**
 
-- [ ] Step 1: 用调用图和测试清单证明每个候选文件是否仍有路由、CLI、测试或导入引用。
-- [ ] Step 2: 为能带来独立 checkpoint、取消或事件可观测收益的领域写子图回归测试；纯 CRUD/service 不子图化。
-- [ ] Step 3: 逐个迁移并运行对话、URL、RAG、Writer、Reviewer、CLI 回归；禁止一次删除整个列表。
-- [ ] Step 4: 每删除一个兼容入口后运行 `rg` 引用扫描和对应测试，确认无活跃调用。
-- [ ] Step 5: 运行全量后端测试、前端 typecheck/build 和 `git diff --check`。
-- [ ] Step 6: 提交，建议拆分为 `refactor: extract stable agent subgraphs` 与
+- [x] Step 1: 用调用图和测试清单证明每个候选文件是否仍有路由、CLI、测试或导入引用。
+- [x] Step 2: 为能带来独立 checkpoint、取消或事件可观测收益的领域写子图回归测试；纯 CRUD/service 不子图化。
+- [x] Step 3: 逐个迁移并运行对话、URL、RAG、Writer、Reviewer、CLI 回归；禁止一次删除整个列表。
+- [x] Step 4: 每删除一个兼容入口后运行 `rg` 引用扫描和对应测试，确认无活跃调用。
+- [x] Step 5: 运行全量后端测试、前端 typecheck/build 和 `git diff --check`。
+- [x] Step 6: 提交，建议拆分为 `refactor: extract stable agent subgraphs` 与
   `chore: remove replaced legacy workflows` 两个提交。
 
 **阶段门禁：** 每个删除项均有替代入口和回归证据；子图化不改变 SSE/API 契约；CLI 要么迁移后可用，
