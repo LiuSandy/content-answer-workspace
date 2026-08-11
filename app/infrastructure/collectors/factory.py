@@ -1,18 +1,10 @@
 from __future__ import annotations
 
-import os
-
 from ...domain.ports import CollectorPort
 from .platform_config_loader import PlatformConfigLoader
 from .universal_collector import UniversalCollector
 from .xiaohongshu_collector import XiaohongshuCollector
 from .zhihu_collector import ZhihuCollector
-from .zhihu_official_collector import ZhihuOfficialCollector
-
-
-def _has_official_credentials() -> bool:
-    """检测是否配置了知乎官方 Access Secret；这样 auto 模式能自动降级而不需要调用方判断。"""
-    return bool(os.getenv("ZHIHU_ACCESS_SECRET", "").strip())
 
 
 class CollectorFactory:
@@ -20,7 +12,6 @@ class CollectorFactory:
 
     _collectors: dict[str, type[CollectorPort]] = {
         ZhihuCollector.platform: ZhihuCollector,
-        f"{ZhihuOfficialCollector.platform}:official": ZhihuOfficialCollector,
         XiaohongshuCollector.platform: XiaohongshuCollector,
     }
 
@@ -31,17 +22,10 @@ class CollectorFactory:
         normalized_source = (source or "auto").strip().lower()
 
         if normalized_source == "official":
-            official_key = f"{normalized_platform}:official"
-            collector_class = cls._collectors.get(official_key)
-            if collector_class is None:
-                raise ValueError(f"No official collector for platform: {normalized_platform}")
-            return collector_class()
+            raise ValueError(f"official source is not supported for platform: {normalized_platform}")
 
-        if normalized_source == "auto":
-            official_key = f"{normalized_platform}:official"
-            if official_key in cls._collectors and _has_official_credentials():
-                return cls._collectors[official_key]()
-            # 降级到 web 模式
+        if normalized_source not in {"auto", "web"}:
+            raise ValueError(f"Unsupported collection source: {normalized_source}")
 
         collector_class = cls._collectors.get(normalized_platform)
         if collector_class is not None:

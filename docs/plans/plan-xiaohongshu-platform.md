@@ -1023,7 +1023,7 @@ class XiaohongshuCollector(CollectorPort):
 from .xiaohongshu_collector import XiaohongshuCollector
 ```
 
-并在 `_collectors` 字典里，`f"{ZhihuOfficialCollector.platform}:official": ZhihuOfficialCollector,` 之后新增一行：
+并在 `_collectors` 字典里的 `ZhihuCollector.platform` 项之后新增一行：
 
 ```python
         XiaohongshuCollector.platform: XiaohongshuCollector,

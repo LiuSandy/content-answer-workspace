@@ -6,7 +6,6 @@ from pydantic import BaseModel
 
 from ...domain.dto import LLMMessage, LLMRequest, StructuredResult
 from ...infrastructure.llm.deepseek_client import DeepSeekAnswerGenerator
-from ...services.hotlist_service import fetch_hotlist
 
 
 class DeepSeekLLMAdapter:
@@ -65,11 +64,3 @@ class DeepSeekLLMAdapter:
             structured_methods=getattr(provider, "structured_methods", None),
             retries=retries,
         )
-
-
-class HotlistServiceAdapter:
-    """将 hotlist_service 适配为 HotlistServicePort。"""
-
-    async def fetch(self, limit: int) -> list[dict]:
-        response = await fetch_hotlist(limit=limit)
-        return [item.model_dump(by_alias=True) for item in response.items]

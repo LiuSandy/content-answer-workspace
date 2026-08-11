@@ -162,44 +162,6 @@ export type AgentChatResponse = {
   operationSummary: string;
 };
 
-export type HotlistAnalysisResult = {
-  topicDistribution: {
-    field: string;
-    count: number;
-    examples: string[];
-  }[];
-  contentOpportunities: {
-    direction: string;
-    reason: string;
-  }[];
-  audienceMood: string;
-  recommendations: {
-    topic: string;
-    reason: string;
-    keywords: string[];
-  }[];
-};
-
-export type AnalysisStatus =
-  | { type: "idle" }
-  | { type: "loading" }
-  | { type: "success"; data: HotlistAnalysisResult }
-  | { type: "error"; raw: string };
-
-export type HotlistItem = {
-  rank: number;
-  title: string;
-  url: string;
-  thumbnailUrl: string;
-  summary: string;
-  heat: string;
-};
-
-export type HotlistResponse = {
-  items: HotlistItem[];
-  fetchedAt: string;
-};
-
 export type SessionSummary = {
   sessionId: string;
   title: string;

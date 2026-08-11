@@ -1,7 +1,4 @@
-"""机会扫描与评分；spec 5.4 评分模型。
-
-复用现有热榜工具（fetch_hotlist + analyze_hotlist），结合 AgentSettings.interest_tags
-算领域匹配度，排除已创作过的 SourceItem，结果落库 opportunity_feeds。
+"""机会列表与评分；保留历史机会数据的查询和评分模型。
 
 机会得分 = hot_score × 0.4 + match_score × 0.35 + competition_score × 0.15
 + recency_score × 0.10
@@ -48,59 +45,13 @@ class OpportunityService:
         return settings
 
     async def scan_and_persist(self, workspace_id: str = "default") -> int:
-        """扫一次热榜，算机会得分，落库新机会；返回新增条数。"""
+        """官方热榜来源已移除；保留调度接口并安全返回零条结果。"""
         settings = await self._get_settings(workspace_id)
         if settings.proactive_sensing_enabled != "true":
             logger.info("Proactive sensing disabled for workspace %s, skip scan", workspace_id)
             return 0
-
-        # 复用现有热榜服务
-        try:
-            from ..services.hotlist_service import fetch_hotlist
-            response = await fetch_hotlist(limit=20)
-            hot_items = response.items
-        except Exception as e:
-            logger.warning("Hotlist fetch failed: %s", e)
-            return 0
-
-        # 已创作过的 SourceItem URL 集合（排除）
-        created_urls = await self._get_created_urls(workspace_id)
-
-        interest_tags = list(settings.interest_tags or [])
-
-        new_count = 0
-        for item in hot_items:
-            url = item.url or ""
-            if not url or url in created_urls:
-                continue
-
-            scores = _compute_scores(item, interest_tags)
-            opportunity_score = (
-                scores["hot"] * W_HOT
-                + scores["match"] * W_MATCH
-                + scores["competition"] * W_COMPETITION
-                + scores["recency"] * W_RECENCY
-            )
-
-            feed = OpportunityFeedModel(
-                workspace_id=workspace_id,
-                platform=getattr(item, "platform", "zhihu"),
-                question_title=item.title or "",
-                question_url=url,
-                hot_score=scores["hot"],
-                match_score=scores["match"],
-                competition_score=scores["competition"],
-                recency_score=scores["recency"],
-                opportunity_score=round(opportunity_score, 4),
-                existing_answer_count=getattr(item, "answer_count", 0) or 0,
-                raw_metadata=item.model_dump(by_alias=True) if hasattr(item, "model_dump") else {},
-            )
-            self.session.add(feed)
-            new_count += 1
-
-        if new_count:
-            await self.session.commit()
-        return new_count
+        logger.info("Proactive sensing has no configured source for workspace %s", workspace_id)
+        return 0
 
     async def _get_created_urls(self, workspace_id: str) -> set[str]:
         """已创作过的 URL 集合：通过 AnswerDocument → SourceItem join 判断。

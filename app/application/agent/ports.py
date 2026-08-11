@@ -25,11 +25,3 @@ class LLMClientPort(Protocol):
     async def analyze(self, system_prompt: str, user_prompt: str) -> str:
         """调用 LLM 分析，返回原始文本（通常为 JSON 字符串）。"""
         ...
-
-
-class HotlistServicePort(Protocol):
-    """Node 依赖的热榜数据接口。"""
-
-    async def fetch(self, limit: int) -> list[dict]:
-        """获取热榜，返回序列化后的 dict 列表。"""
-        ...

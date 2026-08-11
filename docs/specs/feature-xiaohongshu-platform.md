@@ -26,7 +26,7 @@
 | 文件 | 现有功能 |
 |------|---------|
 | `app/domain/ports.py` | `CollectorPort` 接口定义，保留不变 |
-| `app/infrastructure/collectors/zhihu_collector.py` / `zhihu_official_collector.py` | 知乎采集逻辑，继续作为实现，不修改 |
+| `app/infrastructure/collectors/zhihu_collector.py` | 知乎网页采集逻辑，继续作为实现，不修改 |
 | `app/infrastructure/collectors/factory.py` | `CollectorFactory`，新增 `xiaohongshu` 注册，现有逻辑不变 |
 | `app/infrastructure/collectors/universal_collector.py` | 通用采集器，本次不复用其编排逻辑，但复用其下属的 fetcher 抽象 |
 | `app/application/workflow_service.py` | `WorkflowService.collect()`，调用签名不变 |

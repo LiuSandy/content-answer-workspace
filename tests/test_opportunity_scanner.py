@@ -70,41 +70,18 @@ async def test_scan_and_persist_disabled_settings(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_scan_and_persist_excludes_created_urls(monkeypatch):
-    """已创作过的 URL 不入新机会列表。"""
+async def test_scan_and_persist_is_noop_without_hotlist_source():
+    """移除热榜来源后，开启主动感知也不会发起外部请求。"""
     fake_session = MagicMock()
     fake_svc = OpportunityService(fake_session)
 
     fake_settings = MagicMock()
     fake_settings.proactive_sensing_enabled = "true"
-    fake_settings.interest_tags = ["AI"]
     fake_svc._get_settings = AsyncMock(return_value=fake_settings)
 
-    fake_item = MagicMock()
-    fake_item.url = "https://zhihu.com/q/created"
-    fake_item.title = "AI 问题"
-    fake_item.answer_count = 10
-    fake_item.platform = "zhihu"
-    fake_item.published_at = None
-    fake_item.heat = 0
-    fake_item.model_dump = MagicMock(return_value={})
-
-    fake_response = MagicMock()
-    fake_response.items = [fake_item]
-    monkeypatch.setattr(
-        "app.services.hotlist_service.fetch_hotlist",
-        AsyncMock(return_value=fake_response),
-    )
-
-    fake_svc._get_created_urls = AsyncMock(return_value={"https://zhihu.com/q/created"})
-
-    added: list = []
-    fake_session.add = MagicMock(side_effect=lambda m: added.append(m))
-    fake_session.commit = AsyncMock()
-
     count = await fake_svc.scan_and_persist("default")
+
     assert count == 0
-    assert added == []  # 排除已创作，不写入
 
 
 @pytest.mark.asyncio

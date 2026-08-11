@@ -356,8 +356,7 @@ app/infrastructure/collectors/
 ├── question_item_mapper.py            ← dict → QuestionItem 映射
 ├── universal_collector.py             ← UniversalCollector 编排层
 ├── factory.py                         ← CollectorFactory（扩展）
-├── zhihu_collector.py                 ← 保留不变
-└── zhihu_official_collector.py        ← 保留不变
+└── zhihu_collector.py                 ← 保留不变
 ```
 
 ---
