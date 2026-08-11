@@ -27,9 +27,11 @@ import { useChatStore } from "@/store/chat-store";
 import { useAlertDialog } from "@/hooks/use-alert-dialog";
 import { InlineRefineMenu, type InlineRefineParams } from "./inline-refine-menu";
 import { SelectionHighlight } from "./selection-highlight-extension";
-import { QualityScorePanel } from "./quality-score-panel";
 import { QualityReviewDialog } from "./quality-review-dialog";
-import type { QualityReviewDocumentStateDTO } from "./quality-review-api";
+import {
+  initialCreationProgress,
+  reduceCreationProgress,
+} from "./creation-review-lifecycle";
 import { OutlineDialog } from "./outline-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -105,6 +107,7 @@ export function EditorPanel() {
 
   const [rewriteInstruction, setRewriteInstruction] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [creationProgress, setCreationProgress] = useState(initialCreationProgress);
   const isGeneratingRef = useRef(isGenerating);
   useEffect(() => {
     isGeneratingRef.current = isGenerating;
@@ -263,18 +266,6 @@ export function EditorPanel() {
 
   const hasContent = !!editor?.getText()?.trim();
 
-  // 质检采纳：刷新文档/版本并同步编辑器内容到新版本
-  const handleQualityAdopted = (state: QualityReviewDocumentStateDTO) => {
-    queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
-    queryClient.invalidateQueries({ queryKey: ["versions", state.documentId] });
-    if (editor) {
-      (editor.commands as any).setContent(state.currentContent || "", {
-        contentType: "markdown",
-        emitUpdate: false,
-      });
-    }
-  };
-
   // 乐观锁冲突：让编辑器基于最新内容操作
   const handleQualityConflictRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
@@ -328,7 +319,9 @@ export function EditorPanel() {
     if (!currentDocState || isGenerating || !editor) return;
     cancelDebouncedSave();
     setIsGenerating(true);
+    setCreationProgress(reduceCreationProgress(initialCreationProgress, "run.started", {}));
     editor.commands.setContent("");
+    let terminalEventReceived = false;
 
     try {
       await streamPost(
@@ -342,28 +335,43 @@ export function EditorPanel() {
         },
         {
           onEvent: (event, data) => {
+            if (["run.started", "review.started", "review.completed", "rewrite.started", "document.completed", "run.completed", "run.failed"].includes(event)) {
+              setCreationProgress((state) => reduceCreationProgress(state, event, data));
+            }
             if (event === "document.delta") {
               editor.commands.insertContent(data.delta);
             } else if (event === "document.completed") {
               queryClient.setQueryData(["document", selectedSourceItemId], data);
               queryClient.invalidateQueries({ queryKey: ["versions", data.documentId] });
+              queryClient.invalidateQueries({ queryKey: ["quality-reviews", data.documentId] });
               (editor.commands as any).setContent(data.currentContent || "", {
                 contentType: "markdown",
                 emitUpdate: false,
               });
+            } else if (event === "run.completed") {
+              terminalEventReceived = true;
+              setIsGenerating(false);
             } else if (event === "run.failed") {
+              terminalEventReceived = true;
+              setIsGenerating(false);
               handleRunFailed(data, notify);
               queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
             }
           },
           onError: (err) => {
+            terminalEventReceived = true;
+            setIsGenerating(false);
+            setCreationProgress((state) => reduceCreationProgress(state, "run.failed", {}));
             void notify(`生成失败: ${err.message}`);
             queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
           },
         },
       );
     } finally {
-      setIsGenerating(false);
+      if (!terminalEventReceived) {
+        setIsGenerating(false);
+        setCreationProgress((state) => reduceCreationProgress(state, "run.failed", {}));
+      }
     }
   };
 
@@ -670,10 +678,10 @@ export function EditorPanel() {
                   onClick={() => setQualityDialogOpen(true)}
                 >
                   <ClipboardList className="h-3.5 w-3.5" />
-                  评审
+                  查看评审
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>质检评审并逐条采纳建议</TooltipContent>
+              <TooltipContent>查看本次创作的自动评审结果</TooltipContent>
             </Tooltip>
 
             <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
@@ -718,6 +726,7 @@ export function EditorPanel() {
       <EditorTabContent
         editor={editor}
         isGenerating={isGenerating}
+        progressLabel={creationProgress.label}
         rewriteInstruction={rewriteInstruction}
         setRewriteInstruction={setRewriteInstruction}
         onRewrite={handleFullRewrite}
@@ -726,7 +735,6 @@ export function EditorPanel() {
         setSelectedStyles={setSelectedStyles}
         wordCount={wordCount}
         onWordCountChange={setWordCount}
-        documentId={docState?.documentId}
       />
 
       {/* 质检评审 Dialog */}
@@ -734,9 +742,6 @@ export function EditorPanel() {
         open={qualityDialogOpen}
         onOpenChange={setQualityDialogOpen}
         documentId={docState?.documentId ?? null}
-        lockVersion={docState?.lockVersion ?? 1}
-        onAdopted={handleQualityAdopted}
-        onConflictRefresh={handleQualityConflictRefresh}
       />
 
       {/* 大纲 Dialog */}
@@ -755,6 +760,7 @@ export function EditorPanel() {
 function EditorTabContent({
   editor,
   isGenerating,
+  progressLabel,
   rewriteInstruction,
   setRewriteInstruction,
   onRewrite,
@@ -763,10 +769,10 @@ function EditorTabContent({
   setSelectedStyles,
   wordCount,
   onWordCountChange,
-  documentId,
 }: {
   editor: ReturnType<typeof useEditor>;
   isGenerating: boolean;
+  progressLabel: string;
   rewriteInstruction: string;
   setRewriteInstruction: (v: string) => void;
   onRewrite: () => void;
@@ -775,7 +781,6 @@ function EditorTabContent({
   setSelectedStyles: (styles: string[]) => void;
   wordCount: number;
   onWordCountChange: (v: number) => void;
-  documentId?: string | null;
 }) {
   const hasContent = !!editor?.getText()?.trim();
 
@@ -793,14 +798,13 @@ function EditorTabContent({
           <div className="flex items-center gap-2.5 rounded-xl border border-indigo-100 dark:border-indigo-900 bg-white/95 dark:bg-zinc-900/95 px-5 py-3.5 shadow-xl">
             <Loader2 className="h-4.5 w-4.5 animate-spin text-indigo-600 dark:text-indigo-400" />
             <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 animate-pulse">
-              AI 正在为您撰写/优化中，请稍候...
+              {progressLabel || "正在生成内容"}
             </span>
           </div>
         </div>
       )}
 
       {/* 底部 AI 操作栏 */}
-      <QualityScorePanel documentId={documentId ?? null} />
       <div className="border-t bg-muted/30 p-4 fixed-bottom-input-area">
         <PromptInput
           value={rewriteInstruction}
