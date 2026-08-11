@@ -286,7 +286,9 @@ async def adopt_quality_suggestion(
     return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
 
 
-# ── AI 流式创作与精修端点 (SSE) ──────────────────────────────────────────────────@router.post("/api/source-items/{source_item_id}/document/generate")
+# ── AI 流式创作与精修端点 (SSE) ──────────────────────────────────────────────────
+
+@router.post("/api/source-items/{source_item_id}/document/generate")
 async def generate_answer_stream(
     source_item_id: uuid.UUID,
     req: CreateCheckpointRequest,  # 复用以获取 expected_lock_version
