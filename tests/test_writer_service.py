@@ -5,16 +5,22 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.application.context.writing_background import WritingBackground
-from app.application.writer_service import _version_type_for, run_writer_stream
+from app.application.writer_service import (
+    WriterRunCapture,
+    _version_type_for,
+    finalize_deferred_writer_run,
+    run_writer_stream,
+)
 from app.domain.knowledge import SourceType
 from app.persistence import Base
 from app.persistence.models.content import SourceItem
-from app.persistence.models.documents import AnswerDocument
+from app.persistence.models.documents import AIOperation, AnswerDocument, AnswerVersion
 
 from app.prompts.registry import prompt_registry, RenderedPrompt
 
@@ -66,6 +72,15 @@ def _mock_provider(monkeypatch, content="streamed text"):
         lambda _k: fake,
     )
     return fake
+
+
+async def _version_count(session: AsyncSession, document_id: uuid.UUID) -> int:
+    rows = (
+        await session.execute(
+            select(AnswerVersion).where(AnswerVersion.document_id == document_id)
+        )
+    ).scalars().all()
+    return len(rows)
 
 
 @pytest.mark.asyncio
@@ -135,6 +150,114 @@ async def test_run_writer_stream_full_rewrite(monkeypatch):
         ):
             parts.append(delta)
         assert parts == ["rewritten"]
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_deferred_writer_creates_exactly_one_final_version(monkeypatch):
+    db, engine = await _make_db()
+    doc_id, _ = await _setup_doc(db)
+    _mock_provider(monkeypatch, content="internal draft")
+    capture = WriterRunCapture()
+
+    async with db() as session:
+        parts = [part async for part in run_writer_stream(
+            session,
+            "generate",
+            doc_id,
+            _fake_rendered(),
+            1,
+            defer_version=True,
+            capture=capture,
+        )]
+
+        assert parts == ["internal draft"]
+        assert capture.content == "internal draft"
+        assert await _version_count(session, doc_id) == 0
+
+        operation = await session.get(AIOperation, capture.operation_id)
+        assert operation is not None
+        assert operation.status == "running"
+        assert operation.result_version_id is None
+
+        version = await finalize_deferred_writer_run(
+            session=session,
+            capture=capture,
+            final_content="reviewed final",
+            expected_lock_version=1,
+            output_metadata={"creationReview": {"iterations": 3}},
+        )
+
+        assert version.content == "reviewed final"
+        assert await _version_count(session, doc_id) == 1
+        await session.refresh(operation)
+        assert operation.status == "completed"
+        assert operation.result_version_id == version.id
+        assert operation.output_metadata == {"creationReview": {"iterations": 3}}
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_deferred_writer_requires_capture(monkeypatch):
+    db, engine = await _make_db()
+    doc_id, _ = await _setup_doc(db)
+    _mock_provider(monkeypatch)
+
+    async with db() as session:
+        with pytest.raises(ValueError, match="capture"):
+            _ = [part async for part in run_writer_stream(
+                session,
+                "generate",
+                doc_id,
+                _fake_rendered(),
+                1,
+                defer_version=True,
+            )]
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_finalize_deferred_writer_retries_lock_conflict_without_duplicate_version(monkeypatch):
+    db, engine = await _make_db()
+    doc_id, _ = await _setup_doc(db)
+    _mock_provider(monkeypatch, content="internal draft")
+    capture = WriterRunCapture()
+
+    async with db() as generation_session:
+        _ = [part async for part in run_writer_stream(
+            generation_session,
+            "generate",
+            doc_id,
+            _fake_rendered(),
+            1,
+            defer_version=True,
+            capture=capture,
+        )]
+
+        async with db() as competing_session:
+            from app.application.document_service import DocumentService
+
+            await DocumentService(competing_session).update_content(
+                doc_id, "concurrent edit", expected_lock_version=1
+            )
+
+        version = await finalize_deferred_writer_run(
+            session=generation_session,
+            capture=capture,
+            final_content="reviewed final",
+            expected_lock_version=1,
+            output_metadata={},
+        )
+
+        assert version.version_number == 1
+        assert await _version_count(generation_session, doc_id) == 1
+        operation = await generation_session.get(AIOperation, capture.operation_id)
+        assert operation is not None
+        assert operation.status == "completed"
+        assert operation.result_version_id == version.id
 
     await engine.dispose()
 

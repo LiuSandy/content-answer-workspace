@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..application.writer_service import run_writer_stream
+from ..application.writer_service import WriterRunCapture, run_writer_stream
 from ..infrastructure.llm.registry import llm_provider_registry
 from ..persistence.models.content import SourceItem
 from ..prompts.composer import compose_writing_prompt
@@ -24,6 +24,7 @@ async def generate_answer_workflow(
     title: str,
     content: str | None,
     expected_lock_version: int,
+    capture: WriterRunCapture,
     style_rules: str | None = None,
     word_count: int = 1000,
     instruction: str | None = None,
@@ -56,5 +57,6 @@ async def generate_answer_workflow(
     async for delta in run_writer_stream(
         session, "generate", document_id, rendered, expected_lock_version,
         platform=platform, extra_context=extra_context,
+        defer_version=True, capture=capture,
     ):
         yield delta
