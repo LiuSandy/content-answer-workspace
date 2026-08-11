@@ -5,11 +5,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 import uuid
 from pydantic import BaseModel, Field
 from pydantic.alias_generators import to_camel
+from typing_extensions import TypedDict
 
 T = TypeVar("T")
 
@@ -174,6 +175,19 @@ class QualitySuggestion(BaseModel):
     }
 
 
+QualityDimensionScore = Annotated[int, Field(strict=True, ge=0, le=100)]
+
+
+class QualityDimensionScores(TypedDict):
+    """统一质检的五个必填评分维度。"""
+
+    relevance: QualityDimensionScore
+    information_density: QualityDimensionScore
+    readability: QualityDimensionScore
+    logic_coherence: QualityDimensionScore
+    word_count_compliance: QualityDimensionScore
+
+
 class QualityReport(BaseModel):
     """质检报告；分数统一为 0..100 整数（roadmap R1 接口决定）。
 
@@ -181,11 +195,12 @@ class QualityReport(BaseModel):
     结构化建议（roadmap R3），含 anchor/replacement 片段级替换信息。
     """
 
-    overall_score: int = Field(ge=0, le=100)
-    dimension_scores: dict[str, int] = Field(default_factory=dict)
+    overall_score: int = Field(strict=True, ge=0, le=100)
+    dimension_scores: QualityDimensionScores
     issues: list[dict[str, Any]] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)
     quality_suggestions: list[QualitySuggestion] = Field(default_factory=list)
+    rewrite_instruction: str | None = None
     summary: str = ""
 
     model_config = {
@@ -336,4 +351,3 @@ class DocumentStateDTO(BaseModel):
         "alias_generator": to_camel,
         "populate_by_name": True,
     }
-

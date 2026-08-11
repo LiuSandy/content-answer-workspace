@@ -24,6 +24,16 @@ from app.domain.dto import (
 from app.infrastructure.llm.structured import generate_structured
 
 
+def _quality_dimension_scores(score: int = 80) -> dict[str, int]:
+    return {
+        "relevance": score,
+        "information_density": score,
+        "readability": score,
+        "logic_coherence": score,
+        "word_count_compliance": score,
+    }
+
+
 class _Resp:
     def __init__(self, content: str) -> None:
         self.content = content
@@ -240,7 +250,13 @@ def test_five_public_schemas_importable():
 
     report = QualityReport(
         overall_score=88,
-        dimension_scores={"relevance": 90, "readability": 85},
+        dimension_scores={
+            "relevance": 90,
+            "information_density": 88,
+            "readability": 85,
+            "logic_coherence": 87,
+            "word_count_compliance": 90,
+        },
         issues=[{"text": "开头过长", "fix": "精简引言"}],
         suggestions=["精简引言"],
         summary="整体良好",
@@ -265,12 +281,50 @@ def test_five_public_schemas_importable():
 
 def test_quality_report_score_is_0_to_100_integer():
     with pytest.raises(ValidationError):
-        QualityReport(overall_score=120)
+        QualityReport(overall_score=120, dimension_scores=_quality_dimension_scores())
     with pytest.raises(ValidationError):
-        QualityReport(overall_score=-1)
+        QualityReport(overall_score=-1, dimension_scores=_quality_dimension_scores())
     with pytest.raises(ValidationError):
-        QualityReport(overall_score=8.5)
-    assert QualityReport(overall_score=75).overall_score == 75
+        QualityReport(overall_score=8.5, dimension_scores=_quality_dimension_scores())
+    with pytest.raises(ValidationError):
+        QualityReport(overall_score="75", dimension_scores=_quality_dimension_scores())
+    with pytest.raises(ValidationError):
+        QualityReport(overall_score=True, dimension_scores=_quality_dimension_scores())
+    assert (
+        QualityReport(
+            overall_score=75,
+            dimension_scores=_quality_dimension_scores(),
+        ).overall_score
+        == 75
+    )
+
+
+def test_quality_report_requires_all_five_dimension_scores():
+    scores = {
+        "relevance": 80,
+        "information_density": 80,
+        "readability": 80,
+        "logic_coherence": 80,
+        "word_count_compliance": 80,
+    }
+    for dimension in scores:
+        incomplete = {key: value for key, value in scores.items() if key != dimension}
+        with pytest.raises(ValidationError):
+            QualityReport(overall_score=80, dimension_scores=incomplete)
+
+
+@pytest.mark.parametrize("invalid_score", [-1, 101, 80.5, "80", True])
+def test_quality_report_dimension_scores_are_bounded_strict_integers(invalid_score):
+    scores = {
+        "relevance": 80,
+        "information_density": 80,
+        "readability": 80,
+        "logic_coherence": 80,
+        "word_count_compliance": 80,
+    }
+    scores["relevance"] = invalid_score
+    with pytest.raises(ValidationError):
+        QualityReport(overall_score=80, dimension_scores=scores)
 
 
 def test_topic_evaluation_fixed_fields():

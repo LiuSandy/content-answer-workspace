@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -17,12 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..domain.dto import QualityReport
 from ..errors import LLMOutputError
+from ..persistence.models.content import SourceItem
 from ..persistence.models.documents import (
     VERSION_TYPE_INLINE_REFINEMENT,
     AIOperation,
     AnswerDocument,
     AnswerVersion,
 )
+from ..prompts.registry import prompt_registry
 from .document_service import DocumentService
 
 QUALITY_REVIEW_PROMPT = "review.quality_review"
@@ -37,6 +40,56 @@ def _get_llm():
 
 class QualityReviewError(Exception):
     """质检业务错误；message 直接面向用户。"""
+
+
+@dataclass(frozen=True)
+class ReviewContext:
+    """一次创作评审所需的完整上下文。"""
+
+    question: str
+    style_rules: str | None
+    target_word_count: int
+    iteration: int
+    previous_review: dict[str, Any] | None = None
+
+
+async def evaluate_content(
+    content: str,
+    context: ReviewContext,
+    *,
+    _audit_metadata: dict[str, Any] | None = None,
+) -> QualityReport:
+    """评审一份临时内容，不产生任何持久化副作用。"""
+    rendered = prompt_registry.render(
+        QUALITY_REVIEW_PROMPT,
+        question=context.question,
+        content=content,
+        style_rules=context.style_rules or "无额外风格要求",
+        target_word_count=context.target_word_count,
+        iteration=f"{context.iteration}/3",
+        previous_review=json.dumps(
+            context.previous_review or {}, ensure_ascii=False
+        ),
+    )
+    messages = rendered.to_llm_request().messages
+    result = await _get_llm().generate_structured(
+        schema=QualityReport,
+        system_prompt=messages[0].content,
+        user_prompt=messages[1].content,
+    )
+    if _audit_metadata is not None:
+        _audit_metadata.update(
+            {
+                "methodUsed": result.method_used,
+                "attempts": result.attempts,
+                "degradationReason": result.degradation_reason,
+            }
+        )
+    if result.value is None:
+        raise LLMOutputError(
+            result.degradation_reason or "质检结构化输出失败，请重试"
+        )
+    return result.value
 
 
 @dataclass
@@ -76,54 +129,44 @@ class QualityService:
         source_version_id = version_id if version_id is not None else doc.current_version_id
         source_version_key = str(source_version_id) if source_version_id else None
 
-        llm = _get_llm()
-        from ..prompts.registry import prompt_registry
-
-        rendered = prompt_registry.render(QUALITY_REVIEW_PROMPT, content=content)
-        messages = rendered.to_llm_request().messages
-        system_prompt = messages[0].content if messages else ""
-        user_prompt = messages[1].content if len(messages) > 1 else content
-
-        result = await llm.generate_structured(
-            schema=QualityReport,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
+        source = await self._session.get(SourceItem, doc.source_item_id)
+        context = ReviewContext(
+            question=source.title if source is not None else "",
+            style_rules=None,
+            target_word_count=1000,
+            iteration=1,
         )
-
-        if result.value is None:
+        audit_metadata: dict[str, Any] = {}
+        try:
+            report = await evaluate_content(
+                content,
+                context,
+                _audit_metadata=audit_metadata,
+            )
+        except LLMOutputError as exc:
             op = AIOperation(
                 document_id=doc.id,
                 operation_type="quality_review",
                 status="failed",
                 prompt_id=QUALITY_REVIEW_PROMPT,
-                model_parameters={
-                    "methodUsed": result.method_used,
-                    "attempts": result.attempts,
-                    "degradationReason": result.degradation_reason,
-                },
+                model_parameters=audit_metadata,
                 input_metadata={"sourceVersionId": source_version_key},
                 error_code="llm_output_error",
-                error_message=result.degradation_reason or "structured generation failed",
+                error_message=str(exc),
             )
             self._session.add(op)
             await self._session.commit()
-            raise LLMOutputError(
-                result.degradation_reason or "质检结构化输出失败，请重试"
-            )
+            raise
 
         op = AIOperation(
             document_id=doc.id,
             operation_type="quality_review",
             status="completed",
             prompt_id=QUALITY_REVIEW_PROMPT,
-            model_parameters={
-                "methodUsed": result.method_used,
-                "attempts": result.attempts,
-                "degradationReason": result.degradation_reason,
-            },
+            model_parameters=audit_metadata,
             input_metadata={"sourceVersionId": source_version_key},
             output_metadata={
-                "report": result.value.model_dump(mode="json", by_alias=True),
+                "report": report.model_dump(mode="json", by_alias=True),
             },
         )
         self._session.add(op)
@@ -132,7 +175,7 @@ class QualityService:
 
         return QualityReviewResult(
             report_id=str(op.id),
-            report=result.value,
+            report=report,
             source_version_id=source_version_key,
         )
 

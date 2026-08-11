@@ -18,7 +18,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.application.document_service import DocumentService
-from app.application.quality_service import QualityService
+from app.application.quality_service import QualityService, ReviewContext, evaluate_content
 from app.domain.dto import QualityReport, QualitySuggestion, StructuredResult
 from app.errors import DocumentConflictError, LLMOutputError
 from app.persistence import Base
@@ -76,7 +76,13 @@ class _FakeLLM:
 def _sample_report() -> QualityReport:
     return QualityReport(
         overall_score=82,
-        dimension_scores={"relevance": 90, "information_density": 65},
+        dimension_scores={
+            "relevance": 90,
+            "information_density": 65,
+            "readability": 85,
+            "logic_coherence": 80,
+            "word_count_compliance": 90,
+        },
         issues=[{"severity": "major", "description": "信息密度不足"}],
         suggestions=["信息密度需要加强"],
         quality_suggestions=[
@@ -99,6 +105,45 @@ def _sample_report() -> QualityReport:
         ],
         summary="整体尚可，信息密度需要加强",
     )
+
+
+@pytest.mark.asyncio
+async def test_evaluate_content_passes_creation_context(monkeypatch):
+    expected = _sample_report().model_copy(
+        update={"overall_score": 68, "rewrite_instruction": "补充第二段数据"}
+    )
+    fake = _FakeLLM(
+        StructuredResult(value=expected, method_used="json_schema", attempts=1)
+    )
+    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+
+    report = await evaluate_content(
+        "当前草稿",
+        ReviewContext(
+            question="原始问题",
+            style_rules="专业、简洁",
+            target_word_count=1000,
+            iteration=2,
+            previous_review={"overallScore": 68},
+        ),
+    )
+
+    assert report.overall_score == 68
+    assert report.rewrite_instruction == "补充第二段数据"
+    rendered_user = fake.calls[0][1]
+    assert "原始问题" in rendered_user
+    assert "专业、简洁" in rendered_user
+    assert "1000" in rendered_user
+    assert "2/3" in rendered_user
+    assert "68" in rendered_user
+
+
+def test_quality_report_uses_system_computed_pass_status():
+    report = _sample_report().model_copy(
+        update={"overall_score": 68, "rewrite_instruction": None}
+    )
+    assert "passed" not in report.model_dump()
+    assert report.overall_score == 68
 
 
 @pytest.mark.asyncio
@@ -125,6 +170,7 @@ async def test_review_writes_report_to_output_metadata(monkeypatch):
         assert stored["qualitySuggestions"][0]["id"] == "s1"
         assert stored["qualitySuggestions"][0]["replacement"].startswith("这是一个回答内容，2024")
         assert op.input_metadata["sourceVersionId"] == str(version_id)
+        assert "测试问题" in fake.calls[0][1]
 
     await engine.dispose()
 
