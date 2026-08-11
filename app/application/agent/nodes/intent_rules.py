@@ -115,7 +115,7 @@ def _extract_query(message: str, platform: str | None) -> str:
     # 去掉常见标点、语气词和约束词
     message = message.replace("，", " ").replace(",", " ").replace("。", " ").replace("？", " ")
     message = message.replace("?", " ").replace("!", " ").replace("！", " ")
-    for filler in ("请您", "请", "帮我", "只要", "需要", "不要", "别", "太", "就", "的", "要",
+    for filler in ("请您", "请", "帮我", "帮忙", "只要", "需要", "不要", "别", "太", "就", "的", "要",
                    "一下", "重新", "关于", "行", "多也", "最多", "不少于", "大于", "最近", "帖子", "然后"):
         message = message.replace(filler, " ")
     words = [w.strip() for w in message.split() if w.strip()]

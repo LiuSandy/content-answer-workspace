@@ -10,6 +10,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from langchain_core.messages import AIMessage
 
 from app.application.agent.scheduling import run_agent_stream
 
@@ -125,3 +126,16 @@ def test_message_delta_event():
     events = _collect([_on_chat_model_stream("你好"), _on_chat_model_stream("世界")])
     deltas = [d["delta"] for n, d in events if n == "message.delta"]
     assert deltas == ["你好", "世界"]
+
+
+def test_platform_collect_terminal_message_becomes_sse_delta():
+    events = _collect([
+        _on_chain_end(
+            "platform_collect",
+            {"messages": [AIMessage(content="已从知乎检索到 1 条结果。")]},
+        )
+    ])
+
+    assert events == [
+        ("message.delta", {"delta": "已从知乎检索到 1 条结果。"})
+    ]

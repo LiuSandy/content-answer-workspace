@@ -94,6 +94,13 @@ def _normalize_event(event: dict) -> list[tuple[str, dict]]:
             output = {}
         meta_node = metadata.get("langgraph_node")
 
+        if name == "platform_collect" or meta_node == "platform_collect":
+            messages = output.get("messages") or []
+            for message in reversed(messages):
+                if getattr(message, "type", None) == "ai" and getattr(message, "content", None):
+                    return [("message.delta", {"delta": message.content})]
+            return []
+
         if name == "retrieve_knowledge" or meta_node == "retrieve_knowledge":
             return _rag_events(output)
         if name == "task_plan" or meta_node == "task_plan":

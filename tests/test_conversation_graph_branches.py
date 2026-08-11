@@ -11,6 +11,18 @@ from langgraph.checkpoint.memory import MemorySaver
 from app.application.agent.graphs.conversation import build_chat_agent_graph
 
 
+def test_route_after_intent_selects_platform_collect_for_explicit_zhihu_search(monkeypatch):
+    from app.application.agent.graphs import conversation
+
+    monkeypatch.setattr(conversation, "has_platform_search_route", lambda state: True)
+
+    assert conversation._route_after_intent({
+        "intent": "chat",
+        "intent_platform": "zhihu",
+        "intent_query": "热门",
+    }) == "platform_collect"
+
+
 @pytest.fixture
 def graph(monkeypatch):
     """编译图；mock route_intent 的 LLM 依赖与 memory retriever，避免真实调用。"""

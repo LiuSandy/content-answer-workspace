@@ -15,6 +15,7 @@ from ..nodes.tool_nodes import (
 from ..nodes.retrieve_knowledge import retrieve_knowledge_node
 from ..nodes.knowledge_decision import make_knowledge_decision
 from ..nodes.memory_retriever import memory_retriever_node
+from ..nodes.platform_collect import has_platform_search_route, platform_collect_node
 from ..nodes.task_plan import task_plan_node
 from ..nodes.multi_agent_exec import multi_agent_node
 from ..nodes.hitl_decision import hitl_decision_node
@@ -33,6 +34,8 @@ def _route_after_intent(state: ChatAgentState) -> str:
         return "task_plan"
     if intent == "multi_agent":
         return "multi_agent"
+    if has_platform_search_route(state):
+        return "platform_collect"
     return "knowledge_decision"
 
 
@@ -93,6 +96,7 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     graph.add_node("strict_refusal", strict_refusal_node)
     graph.add_node("task_plan", task_plan_node)
     graph.add_node("multi_agent", multi_agent_node)
+    graph.add_node("platform_collect", platform_collect_node)
     graph.add_node("hitl_decision", hitl_decision_node)
     
     graph.add_node("chat", chat_node)
@@ -112,6 +116,7 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
             "parse_url": "parse_url",
             "task_plan": "task_plan",
             "multi_agent": "multi_agent",
+            "platform_collect": "platform_collect",
         },
     )
     
@@ -132,6 +137,7 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     # 复合任务 / 多 Agent 协作产出即终态
     graph.add_edge("task_plan", END)
     graph.add_edge("multi_agent", END)
+    graph.add_edge("platform_collect", END)
     
     # 将 chat 节点扩展为支持工具的 ReAct 环路
     # 工具执行后先经 hitl_decision：若工具结果带冲突，则请求用户选择（终态）；

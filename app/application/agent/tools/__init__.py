@@ -16,6 +16,7 @@ from .firecrawl_tool import firecrawl_scrape  # 备用：配置 FIRECRAWL_API_KE
 from .news_search import news_search
 from .web_fetch import web_fetch
 from .web_search import web_search
+from .zhihu_tool import zhihu_search
 
 _BASE_TOOLS = [
     get_current_datetime,
@@ -24,6 +25,7 @@ _BASE_TOOLS = [
     crawl4ai_fetch,
     news_search,
     calculator,
+    zhihu_search,
 ]
 
 _AGENT_REACH_CONFIG = Path(__file__).resolve().parent.parent.parent.parent.parent / ".data" / "agent_reach_config.json"
@@ -39,10 +41,8 @@ def _load_platform_tool_map() -> dict:
     from .v2ex_tool import v2ex_hot, v2ex_node
     from .xiaohongshu_tool import xiaohongshu_feed, xiaohongshu_note, xiaohongshu_search
     from .youtube_tool import youtube_fetch
-    from .zhihu_tool import zhihu_search
 
     return {
-        "zhihu": [zhihu_search],
         "bilibili": [bilibili_search, bilibili_hot, bilibili_video],
         "youtube": [youtube_fetch],
         "twitter": [twitter_search, twitter_feed, twitter_user_posts, twitter_read],

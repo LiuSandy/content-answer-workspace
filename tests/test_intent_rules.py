@@ -61,6 +61,14 @@ def test_rule_zhihu_search():
     assert r["platform"] == "zhihu"
 
 
+def test_zhihu_collection_removes_polite_words_from_query():
+    r = detect_intent_by_rules("帮忙检索一下知乎的热门问题")
+
+    assert r is not None
+    assert r["platform"] == "zhihu"
+    assert r["query"] == "热门"
+
+
 def test_rule_bilibili_collection():
     r = detect_intent_by_rules("采集 B站 上关于 AI 的视频")
     assert r["intent"] == "chat"
