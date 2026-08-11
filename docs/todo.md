@@ -1,0 +1,6 @@
+- [ ] 修复长期记忆 embedding provider 接线。
+- [ ] 把记忆检索升级为 pgvector cosine Top-K。
+- [ ] 补充 HNSW 索引和迁移验证。
+- [ ] 建立 Recall@K、MRR、NDCG、引用正确率和拒答准确率评测集。
+- [ ] 将 LLM reranker 替换为专门的 cross-encoder/rerank 服务，降低延迟和成本。
+- [ ] 将自定义 HITL 续跑升级为 LangGraph 原生 interrupt/Command。
