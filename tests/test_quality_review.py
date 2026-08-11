@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -438,6 +439,178 @@ async def test_list_quality_scores_marks_adopted_suggestions(monkeypatch):
         by_id = {s["id"]: s["adopted"] for s in rows[0]["suggestions"]}
         assert by_id["s1"] is True
         assert by_id["s2"] is False
+
+    await engine.dispose()
+
+
+def _creation_review_metadata(
+    report: QualityReport | None,
+    *,
+    review_status: str = "completed",
+) -> dict:
+    return {
+        "creationReview": {
+            "reviewStatus": review_status,
+            "iterations": 2 if report is not None else 1,
+            "passed": report is not None and report.overall_score >= 75,
+            "selectedIteration": 2 if report is not None else 1,
+            "finalReport": (
+                report.model_dump(mode="json", by_alias=True)
+                if report is not None
+                else None
+            ),
+            "rounds": (
+                [
+                    {"iteration": 1, "overallScore": 68, "passed": False},
+                    {
+                        "iteration": 2,
+                        "overallScore": report.overall_score,
+                        "passed": report.overall_score >= 75,
+                    },
+                ]
+                if report is not None
+                else []
+            ),
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_creation_reviews_maps_completed_generation_reports():
+    """自动报告仅来自已完成且关联正式版本的生成操作，并按时间倒序。"""
+    db, engine = await _make_db()
+    doc_id, first_version_id, lock = await _make_document(db)
+    report = _sample_report()
+    now = datetime.now(timezone.utc)
+
+    async with db() as session:
+        second_version = await DocumentService(session).create_version(
+            document_id=doc_id,
+            content="第二次生成内容",
+            version_type="initial_generation",
+            expected_lock_version=lock,
+        )
+        first_operation = AIOperation(
+            document_id=doc_id,
+            operation_type="generate",
+            status="completed",
+            result_version_id=first_version_id,
+            output_metadata=_creation_review_metadata(report),
+            created_at=now - timedelta(minutes=2),
+        )
+        current_operation = AIOperation(
+            document_id=doc_id,
+            operation_type="generate",
+            status="completed",
+            result_version_id=second_version.id,
+            output_metadata=_creation_review_metadata(report),
+            created_at=now,
+        )
+        session.add_all(
+            [
+                first_operation,
+                current_operation,
+                AIOperation(
+                    document_id=doc_id,
+                    operation_type="generate",
+                    status="completed",
+                    result_version_id=None,
+                    output_metadata=_creation_review_metadata(report),
+                    created_at=now + timedelta(minutes=1),
+                ),
+                AIOperation(
+                    document_id=doc_id,
+                    operation_type="generate",
+                    status="failed",
+                    result_version_id=second_version.id,
+                    output_metadata=_creation_review_metadata(report),
+                    created_at=now + timedelta(minutes=2),
+                ),
+            ]
+        )
+        await session.commit()
+
+        rows = await QualityService(session).list_creation_reviews(doc_id)
+
+        assert len(rows) == 2
+        assert rows[0] == {
+            "reportId": str(current_operation.id),
+            "sourceVersionId": str(second_version.id),
+            "overallScore": 82,
+            "dimensionScores": {
+                "relevance": 90,
+                "informationDensity": 65,
+                "readability": 85,
+                "logicCoherence": 80,
+                "wordCountCompliance": 90,
+            },
+            "issues": [{"severity": "major", "description": "信息密度不足"}],
+            "suggestions": ["信息密度需要加强"],
+            "summary": "整体尚可，信息密度需要加强",
+            "rewriteInstruction": None,
+            "iterations": 2,
+            "passed": True,
+            "selectedIteration": 2,
+            "reviewStatus": "completed",
+            "rounds": [
+                {"iteration": 1, "overallScore": 68, "passed": False},
+                {"iteration": 2, "overallScore": 82, "passed": True},
+            ],
+            "createdAt": current_operation.created_at.isoformat(),
+        }
+
+        await DocumentService(session).restore_version(
+            document_id=doc_id,
+            version_id=first_version_id,
+            expected_lock_version=lock + 1,
+        )
+        restored_rows = await QualityService(session).list_creation_reviews(doc_id)
+        assert restored_rows[0]["reportId"] == str(first_operation.id)
+        assert restored_rows[0]["sourceVersionId"] == str(first_version_id)
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_list_creation_reviews_does_not_invent_failed_review_scores():
+    db, engine = await _make_db()
+    doc_id, version_id, _ = await _make_document(db)
+
+    async with db() as session:
+        operation = AIOperation(
+            document_id=doc_id,
+            operation_type="generate",
+            status="completed",
+            result_version_id=version_id,
+            output_metadata=_creation_review_metadata(None, review_status="failed"),
+        )
+        session.add(operation)
+        await session.commit()
+
+        row = (await QualityService(session).list_creation_reviews(doc_id))[0]
+        assert row["reviewStatus"] == "failed"
+        assert row["overallScore"] is None
+        assert row["dimensionScores"] is None
+        assert row["rounds"] == []
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_list_creation_reviews_keeps_legacy_quality_reviews_readable(monkeypatch):
+    db, engine = await _make_db()
+    doc_id, version_id, _ = await _make_document(db)
+    fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
+    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+
+    async with db() as session:
+        result = await QualityService(session).review(doc_id, version_id=version_id)
+        rows = await QualityService(session).list_creation_reviews(doc_id)
+        assert len(rows) == 1
+        assert rows[0]["reportId"] == result.report_id
+        assert rows[0]["sourceVersionId"] == str(version_id)
+        assert rows[0]["overallScore"] == 82
+        assert rows[0]["reviewStatus"] == "completed"
 
     await engine.dispose()
 

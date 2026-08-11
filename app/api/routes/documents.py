@@ -289,12 +289,12 @@ async def review_document_quality(
 
 @router.get("/api/documents/{document_id}/quality/reviews")
 async def list_quality_reviews(document_id: uuid.UUID) -> JSONResponse:
-    """返回某文档全部已完成质检报告，供报告列表恢复查询。"""
+    """返回某文档的自动创作报告，并兼容历史手动质检报告。"""
     from ...application.quality_service import QualityService
 
     async for session in get_db_session():
         service = QualityService(session)
-        rows = await service.list_quality_scores(document_id)
+        rows = await service.list_creation_reviews(document_id)
         return JSONResponse({"ok": True, "data": rows})
     return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
 

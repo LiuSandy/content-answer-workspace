@@ -313,6 +313,58 @@ class QualityService:
 
     # ── 报告查询 ────────────────────────────────────────────────────────────
 
+    async def list_creation_reviews(
+        self,
+        document_id: uuid.UUID,
+    ) -> list[dict[str, Any]]:
+        """返回自动创作报告，并兼容读取旧的手动质检报告。
+
+        自动报告只接受已完成且已关联正式版本的 generate 操作。生成过程中
+        未落正式版本的操作不会成为可查询报告。
+        """
+        stmt = (
+            select(AIOperation)
+            .where(AIOperation.document_id == document_id)
+            .where(AIOperation.status == "completed")
+            .where(AIOperation.operation_type.in_(("generate", "quality_review")))
+            .order_by(AIOperation.created_at.desc())
+        )
+        operations = (await self._session.execute(stmt)).scalars().all()
+        document = await self._doc_service.get_document(document_id)
+        current_version_key = (
+            str(document.current_version_id)
+            if document is not None and document.current_version_id is not None
+            else None
+        )
+
+        rows: list[dict[str, Any]] = []
+        for operation in operations:
+            if operation.operation_type == "generate":
+                if operation.result_version_id is None:
+                    continue
+                creation_review = (operation.output_metadata or {}).get(
+                    "creationReview"
+                )
+                if not isinstance(creation_review, dict):
+                    continue
+                rows.append(
+                    _map_creation_review_operation(operation, creation_review)
+                )
+                continue
+
+            legacy_report = (operation.output_metadata or {}).get("report")
+            if isinstance(legacy_report, dict):
+                rows.append(_map_legacy_review_operation(operation, legacy_report))
+
+        # SQL 已按时间倒序；稳定排序仅把当前正式版本的报告提到首位，
+        # 其余历史报告仍保持原有时间顺序。
+        if current_version_key is not None:
+            rows.sort(
+                key=lambda row: row.get("sourceVersionId") == current_version_key,
+                reverse=True,
+            )
+        return rows
+
     async def list_quality_scores(self, document_id: uuid.UUID) -> list[dict[str, Any]]:
         """返回某文档全部已完成质检报告（按时间升序），供前端报告列表恢复查询。
 
@@ -362,3 +414,90 @@ class QualityService:
                 }
             )
         return rows
+
+
+_DIMENSION_ALIASES = {
+    "information_density": "informationDensity",
+    "logic_coherence": "logicCoherence",
+    "word_count_compliance": "wordCountCompliance",
+}
+
+
+def _map_dimension_scores(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {_DIMENSION_ALIASES.get(key, key): score for key, score in value.items()}
+
+
+def _review_row(
+    operation: AIOperation,
+    *,
+    source_version_id: uuid.UUID | str | None,
+    report: dict[str, Any] | None,
+    iterations: int,
+    passed: bool,
+    selected_iteration: int,
+    review_status: str,
+    rounds: list[dict[str, Any]],
+) -> dict[str, Any]:
+    report = report or {}
+    return {
+        "reportId": str(operation.id),
+        "sourceVersionId": (
+            str(source_version_id) if source_version_id is not None else None
+        ),
+        "overallScore": report.get("overallScore"),
+        "dimensionScores": _map_dimension_scores(report.get("dimensionScores")),
+        "issues": report.get("issues"),
+        "suggestions": report.get("suggestions"),
+        "summary": report.get("summary"),
+        "rewriteInstruction": report.get("rewriteInstruction"),
+        "iterations": iterations,
+        "passed": passed,
+        "selectedIteration": selected_iteration,
+        "reviewStatus": review_status,
+        "rounds": rounds,
+        "createdAt": (
+            operation.created_at.isoformat() if operation.created_at else None
+        ),
+    }
+
+
+def _map_creation_review_operation(
+    operation: AIOperation,
+    creation_review: dict[str, Any],
+) -> dict[str, Any]:
+    rounds = creation_review.get("rounds")
+    if not isinstance(rounds, list):
+        rounds = []
+    report = creation_review.get("finalReport")
+    if not isinstance(report, dict):
+        report = None
+    return _review_row(
+        operation,
+        source_version_id=operation.result_version_id,
+        report=report,
+        iterations=creation_review.get("iterations", len(rounds)),
+        passed=creation_review.get("passed", False),
+        selected_iteration=creation_review.get("selectedIteration", 0),
+        review_status=creation_review.get("reviewStatus", "completed"),
+        rounds=rounds,
+    )
+
+
+def _map_legacy_review_operation(
+    operation: AIOperation,
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    score = report.get("overallScore")
+    passed = isinstance(score, (int, float)) and score >= 75
+    return _review_row(
+        operation,
+        source_version_id=(operation.input_metadata or {}).get("sourceVersionId"),
+        report=report,
+        iterations=1,
+        passed=passed,
+        selected_iteration=1,
+        review_status="completed",
+        rounds=[{"iteration": 1, "overallScore": score, "passed": passed}],
+    )
