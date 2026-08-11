@@ -12,6 +12,7 @@ from app.application.agent.nodes.multi_agent import (
     run_multi_agent_plan,
 )
 from app.application.task_planner_service import SubTask, TaskPlan
+from app.domain.dto import QualityReport
 
 
 def _mock_plan() -> TaskPlan:
@@ -63,7 +64,7 @@ async def test_writing_agent_produces_draft(monkeypatch):
 async def test_review_agent_failure_does_not_block_final_output(monkeypatch):
     """spec 6.6 #2：单子 Agent 失败不影响其他。ReviewAgent 失败时初稿作终稿。"""
     monkeypatch.setattr(
-        "app.application.agent.nodes.multi_agent.reflect_and_refine",
+        "app.application.agent.nodes.multi_agent.evaluate_content",
         AsyncMock(side_effect=RuntimeError("review failed")),
     )
     state = MultiAgentState(plan=_mock_plan(), draft="这是初稿")
@@ -148,18 +149,24 @@ async def test_run_multi_agent_plan_end_to_end(monkeypatch):
         "app.application.task_planner_service.execute_task_plan",
         fake_exec,
     )
-    # mock 反思循环
-    async def fake_reflect(content, document_id, version_id, workspace_id="default"):
-        return {
-            "final_content": "final content",
-            "iterations": 1,
-            "converged": True,
-            "scores": [MagicMock(overall_score=0.85)],
-            "forced_message": None,
-        }
+    # mock 统一创作评审，首轮达标时不会触发重写
+    async def fake_evaluate(content, context):
+        return QualityReport(
+            overall_score=85,
+            dimension_scores={
+                "relevance": 85,
+                "information_density": 85,
+                "readability": 85,
+                "logic_coherence": 85,
+                "word_count_compliance": 85,
+            },
+            issues=[],
+            suggestions=[],
+            summary="已达标",
+        )
     monkeypatch.setattr(
-        "app.application.agent.nodes.multi_agent.reflect_and_refine",
-        fake_reflect,
+        "app.application.agent.nodes.multi_agent.evaluate_content",
+        fake_evaluate,
     )
     # mock memory
     monkeypatch.setattr(
@@ -168,8 +175,8 @@ async def test_run_multi_agent_plan_end_to_end(monkeypatch):
     )
 
     state = await run_multi_agent_plan("写一篇", workspace_id="default")
-    assert state.final_output == "final content"
-    assert state.quality_score == 0.85
+    assert state.final_output == "初稿内容"
+    assert state.quality_score == 85
     # 全部 5 个子 Agent 状态被记录
     assert set(state.sub_agent_states.keys()) == {
         "orchestrator", "research", "writing", "review", "memory"

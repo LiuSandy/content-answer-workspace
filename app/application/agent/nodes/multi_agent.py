@@ -17,7 +17,8 @@ from ...task_planner_service import (
     SubTask, TaskPlan, topological_order, generate_plan, _get_planner_llm,
     execute_task_plan,
 )
-from ...workflows.reflect_refine import reflect_and_refine
+from ...quality_service import ReviewContext, evaluate_content
+from ...workflows.creation_review import run_creation_review
 import app.application.memory_service as memory_service
 
 logger = logging.getLogger(__name__)
@@ -164,25 +165,44 @@ async def writing_agent_node(state: MultiAgentState) -> dict:
 
 
 async def review_agent_node(state: MultiAgentState) -> dict:
-    """ReviewAgent：复用反思循环做自评 + 修正；spec 6.3 协作流最后一步。"""
+    """ReviewAgent：复用统一创作评审循环；spec 6.3 协作流最后一步。"""
     sub = SubAgentState(name="review", status="running")
     state.sub_agent_states["review"] = sub
     sub.started_at = asyncio.get_event_loop().time()
 
     try:
-        import uuid
-        result = await reflect_and_refine(
-            content=state.draft or "",
-            document_id=uuid.uuid4(),  # 占位；真实集成用 plan 关联的 document
-            version_id=None,
-        )
-        state.final_output = result["final_content"]
+        async def rewrite(content: str, instruction: str) -> str:
+            return await DeepSeekLLMAdapter().refine(
+                instruction=instruction,
+                current_answer=content,
+            )
+
+        outcome = None
+        async for event in run_creation_review(
+            initial_content=state.draft or "",
+            context=ReviewContext(
+                question=state.plan.goal,
+                style_rules=None,
+                target_word_count=1000,
+                iteration=1,
+            ),
+            evaluate=evaluate_content,
+            rewrite=rewrite,
+        ):
+            if event.outcome is not None:
+                outcome = event.outcome
+
+        if outcome is None:
+            raise RuntimeError("创作评审未产生结果")
+
+        state.final_output = outcome.final_content
         state.quality_score = (
-            result["scores"][-1].overall_score if result.get("scores") else None
+            outcome.final_report.overall_score if outcome.final_report else None
         )
         sub.result = {
-            "iterations": result["iterations"],
-            "converged": result["converged"],
+            "iterations": outcome.iterations,
+            "passed": outcome.passed,
+            "review_failed": outcome.review_failed,
             "quality_score": state.quality_score,
         }
         sub.status = "done"

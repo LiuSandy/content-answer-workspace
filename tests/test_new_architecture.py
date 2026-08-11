@@ -17,6 +17,18 @@ from app.application.document_service import DocumentService
 from app.domain.dto import SelectionDTO
 
 
+def test_legacy_reflection_prompt_and_workflow_are_removed() -> None:
+    root = Path(__file__).parents[1]
+    runtime_files = list((root / "app").rglob("*.py"))
+    runtime_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in runtime_files
+    )
+
+    assert "writing.reflection" not in runtime_text
+    assert "reflect_and_refine" not in runtime_text
+    assert not (root / "prompts" / "writing" / "reflection.yml").exists()
+
+
 # ── SQLite 兼容 JSONB 编译规则 ────────────────────────────────────────────────
 @compiles(JSONB, "sqlite")
 def compile_jsonb_sqlite(type_, compiler, **kw):
