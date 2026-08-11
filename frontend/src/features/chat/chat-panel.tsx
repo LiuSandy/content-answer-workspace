@@ -22,6 +22,11 @@ import {useNavigate} from "react-router-dom";
 
 import {apiGet, apiPost} from "@/lib/api";
 import {streamPost} from "@/lib/sse";
+import {
+    abortStreamForChat,
+    reconcileTransientStreamError,
+    type ActiveChatStream,
+} from "./chat-stream-lifecycle";
 import {useChatStore} from "@/store/chat-store";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -180,11 +185,10 @@ export function ChatPanel() {
 
     // 流式请求的中断控制器：切换会话或卸载组件时必须 abort，
     // 否则旧流会继续向新会话的界面状态写入数据（串话 + 卸载后 setState）
-    const abortRef = useRef<AbortController | null>(null);
+    const abortRef = useRef<ActiveChatStream | null>(null);
     useEffect(() => {
         return () => {
-            abortRef.current?.abort();
-            abortRef.current = null;
+            abortRef.current = abortStreamForChat(abortRef.current, currentChatId);
         };
     }, [currentChatId]);
 
@@ -333,7 +337,7 @@ export function ChatPanel() {
         setActiveLeafMessageId("temp-user-msg");
 
         const controller = new AbortController();
-        abortRef.current = controller;
+        abortRef.current = { chatId: activeChatId, controller };
 
         try {
             await streamPost(`/api/chats/${activeChatId}/messages/stream`, {
@@ -410,7 +414,7 @@ export function ChatPanel() {
 
     // 流结束后统一清理并刷新消息历史；被中断说明用户已切换会话，不再刷新
     const refreshAfterStream = async (chatId: string, controller: AbortController, refreshFallback?: boolean) => {
-        if (abortRef.current === controller) {
+        if (abortRef.current?.controller === controller) {
             abortRef.current = null;
         }
         setIsStreaming(false);
@@ -427,6 +431,9 @@ export function ChatPanel() {
                     queryKey: ["messages", chatId],
                     queryFn: () => apiGet(`/api/chats/${chatId}/messages`),
                 });
+                setStreamingError((current) =>
+                    reconcileTransientStreamError(current, updatedMessages),
+                );
                 if (updatedMessages.length > 0) {
                     setActiveLeafMessageId(updatedMessages[updatedMessages.length - 1].messageId);
                 }
@@ -451,7 +458,7 @@ export function ChatPanel() {
         setStreamingError(null);
 
         const controller = new AbortController();
-        abortRef.current = controller;
+        abortRef.current = { chatId: currentChatId, controller };
 
         try {
             await streamPost(`/api/chats/${currentChatId}/choices`, {
