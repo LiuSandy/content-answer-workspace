@@ -1,7 +1,7 @@
 """QualityScore 持久化模型；对应反思循环每次自评的 5 维分数与修正指令。
 
 字段遵循 spec 4.4 评分协议：
-- overall_score：综合评分 0~1
+- overall_score：综合评分 0~100
 - dimensions JSONB：relevance/information_density/readability/logic_coherence/word_count_compliance
 - iteration：1-3，硬性上限
 - weakness_summary / refinement_instruction：LLM 输出的修正方向（可空）
@@ -40,15 +40,15 @@ class QualityScoreModel(Base):
     )
     # 迭代轮次，1=首次自评，2/3 后续轮，硬性上限 3
     iteration: Mapped[int] = mapped_column(Integer, nullable=False)
-    # 综合评分 0~1，< 0.75 触发修正
+    # 综合评分 0~100，< 75 触发修正
     overall_score: Mapped[float] = mapped_column(Float, nullable=False)
-    # 五维细分 scores：{"relevance": 0.85, "information_density": 0.60, ...}
+    # 五维细分 scores：{"relevance": 85, "information_density": 60, ...}
     dimensions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # LLM 输出的弱点总结
     weakness_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     # LLM 输出的定向修正指令，None 表示综合评分已达标无需修正
     refinement_instruction: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # 标记本轮反思是否已收敛（达到 0.75 阈值或达到 3 轮上限强制结束）
+    # 标记本轮评审是否通过（达到 75 分阈值）
     converged: Mapped[bool] = mapped_column(
         String(20), nullable=False, default="false"
     )

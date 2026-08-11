@@ -12,6 +12,19 @@ from pydantic import BaseModel, Field
 from ...application.document_service import DocumentService
 from ...application.version_service import VersionService
 from ...application.outline_service import OutlineService, OutlineError
+from ...application.quality_service import (
+    ReviewContext,
+    evaluate_content,
+    persist_creation_review,
+)
+from ...application.writer_service import (
+    WriterRunCapture,
+    finalize_deferred_writer_run,
+)
+from ...application.workflows.creation_review import (
+    CreationReviewOutcome,
+    run_creation_review,
+)
 from ...domain.dto import InlineRefineRequest, SelectionDTO
 from ...persistence.session import get_db_session, get_session_factory
 from ...persistence.models.content import SourceItem
@@ -24,6 +37,44 @@ from ...errors import AppError, DocumentConflictError, LLMOutputError
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["documents"])
+
+
+async def _rewrite_creation_draft(content: str, instruction: str) -> str:
+    """按评审指令重写内存草稿，不创建 AnswerVersion。"""
+    from ...application.agent.adapters import DeepSeekLLMAdapter
+
+    return await DeepSeekLLMAdapter().refine(
+        instruction="保留已正确内容，只修复评审指出的问题。\n" + instruction,
+        current_answer=content,
+    )
+
+
+def _creation_review_metadata(outcome: CreationReviewOutcome) -> dict[str, Any]:
+    report = outcome.final_report
+    return {
+        "creationReview": {
+            "reviewStatus": "failed" if outcome.review_failed else "completed",
+            "iterations": outcome.iterations,
+            "passed": outcome.passed,
+            "selectedIteration": outcome.selected_iteration,
+            "finalReport": (
+                report.model_dump(mode="json", by_alias=True) if report else None
+            ),
+            "rounds": [
+                {
+                    "iteration": row.iteration,
+                    "overallScore": row.report.overall_score,
+                    "passed": row.report.overall_score >= 75,
+                }
+                for row in outcome.rounds
+            ],
+            "errorMessage": outcome.error_message,
+        }
+    }
+
+
+def _final_review_summary(outcome: CreationReviewOutcome) -> dict[str, Any]:
+    return _creation_review_metadata(outcome)["creationReview"]
 
 
 def _run_failed_event(exc: Exception, fallback_message: str) -> str:
@@ -314,6 +365,7 @@ async def generate_answer_stream(
         run_id = str(uuid.uuid4())
         yield sse_named_event("run.started", {"runId": run_id, "documentId": str(doc_id)})
 
+        capture = WriterRunCapture()
         try:
             # 2. 调用 workflow
             async with session_factory() as session:
@@ -328,59 +380,84 @@ async def generate_answer_stream(
                     style_rules=req.style_rules,
                     word_count=req.word_count,
                     instruction=req.instruction,
+                    capture=capture,
                 ):
                     yield sse_named_event("document.delta", {"delta": chunk})
 
-                # 3. 结束后拉取最新状态并发送 completed 事件
-                doc_service = DocumentService(session)
-                state = await doc_service.get_document_state(doc_id)
-                yield sse_named_event("document.completed", state.model_dump(mode="json", by_alias=True))
-                yield sse_named_event("run.completed", {"runId": run_id})
+                outcome: CreationReviewOutcome | None = None
+                async for review_event in run_creation_review(
+                    initial_content=capture.content,
+                    context=ReviewContext(
+                        question=title,
+                        style_rules=req.style_rules,
+                        target_word_count=req.word_count,
+                        iteration=1,
+                    ),
+                    evaluate=evaluate_content,
+                    rewrite=_rewrite_creation_draft,
+                ):
+                    if review_event.outcome is not None:
+                        outcome = review_event.outcome
+                    else:
+                        yield sse_named_event(review_event.name, review_event.data)
 
-                # 4. Phase 2 反思循环：自评 < 0.75 自动定向修正（最多 3 轮）
-                #    修正后内容落库为 inline_refinement AnswerVersion。
+                if outcome is None:
+                    raise RuntimeError("creation review completed without an outcome")
+                if capture.operation_id is None:
+                    raise RuntimeError("deferred writer run has no operation id")
+
+                version = await finalize_deferred_writer_run(
+                    session,
+                    capture,
+                    outcome.final_content,
+                    req.expected_lock_version,
+                    output_metadata=_creation_review_metadata(outcome),
+                )
                 try:
-                    from ...application.workflows.reflect_refine import reflect_and_refine
-                    from sqlalchemy import select as _select
-                    from ..persistence.models.documents import AnswerDocument
-
-                    current_content = state.current_content or ""
-                    if current_content.strip():
-                        result = await reflect_and_refine(
-                            content=current_content,
-                            document_id=doc_id,
-                            version_id=None,
-                            workspace_id="default",
-                        )
-                        # 修正后的内容落库为新 AnswerVersion（inline_refinement）
-                        if result["final_content"] != current_content:
-                            async with session_factory() as s2:
-                                fresh = (await s2.execute(
-                                    _select(AnswerDocument).where(AnswerDocument.id == doc_id)
-                                )).scalar_one_or_none()
-                                if fresh:
-                                    ds = DocumentService(s2)
-                                    try:
-                                        await ds.create_version(
-                                            document_id=doc_id,
-                                            content=result["final_content"],
-                                            version_type="inline_refinement",
-                                            expected_lock_version=fresh.lock_version,
-                                            instruction=result.get("forced_message") or "反思循环自动修正",
-                                        )
-                                    except Exception as cv_err:
-                                        logger.warning("Reflection create_version failed: %s", cv_err)
-                        yield sse_named_event("reflection.completed", {
-                            "iterations": result["iterations"],
-                            "converged": result["converged"],
-                            "finalScore": result["scores"][-1].overall_score if result.get("scores") else None,
-                            "forcedMessage": result["forced_message"],
-                        })
-                except Exception as refl_err:
-                    logger.warning("Reflection loop failed (non-blocking): %s", refl_err)
+                    await persist_creation_review(
+                        session,
+                        document_id=doc_id,
+                        version_id=version.id,
+                        operation_id=capture.operation_id,
+                        outcome=outcome,
+                    )
+                except Exception as audit_error:
+                    # 正式版本与完整报告已由 finalize 提交。可索引分数只是
+                    # 附属审计，写入失败不能把已经成功的创作对客户端报失败。
+                    await session.rollback()
+                    logger.warning(
+                        "Creation review score persistence failed: %s",
+                        audit_error,
+                    )
+                state = await DocumentService(session).get_document_state(doc_id)
+                yield sse_named_event(
+                    "document.completed",
+                    {
+                        **state.model_dump(mode="json", by_alias=True),
+                        "creationReview": _final_review_summary(outcome),
+                    },
+                )
+                yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
             logger.error("Answer generation stream failed: %s", e)
+            if capture.operation_id is not None:
+                try:
+                    from ...persistence.models.documents import AIOperation
+
+                    async with session_factory() as failure_session:
+                        operation = await failure_session.get(
+                            AIOperation, capture.operation_id
+                        )
+                        if operation is not None and operation.status == "running":
+                            operation.status = "failed"
+                            operation.error_code = getattr(
+                                e, "error_code", "creation_review_failed"
+                            )
+                            operation.error_message = str(e)
+                            await failure_session.commit()
+                except Exception:
+                    logger.exception("Failed to persist generation failure status")
             yield _run_failed_event(e, "生成失败，请稍后重试")
 
     return make_sse_response(_event_generator())

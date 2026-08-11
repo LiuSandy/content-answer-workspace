@@ -30,7 +30,7 @@ def test_quality_score_model_fields():
     assert "created_at" in cols
     # iteration 取 1-3 的整数
     assert cols["iteration"].nullable is False
-    # overall_score 0-1 浮点
+    # overall_score 0-100 浮点
     assert cols["overall_score"].nullable is False
     # dimensions 用 JSONB
     from sqlalchemy.dialects.postgresql import JSONB
@@ -40,24 +40,24 @@ def test_quality_score_model_fields():
 def test_quality_score_dimensions_jsonb_roundtrip():
     """dimensions 五维分数可序列化为 JSONB。"""
     dimensions = {
-        "relevance": 0.85,
-        "information_density": 0.60,
-        "readability": 0.72,
-        "logic_coherence": 0.70,
-        "word_count_compliance": 0.65,
+        "relevance": 85,
+        "information_density": 60,
+        "readability": 72,
+        "logic_coherence": 70,
+        "word_count_compliance": 65,
     }
     score = QualityScoreModel(
         ai_operation_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         version_id=None,
         iteration=1,
-        overall_score=0.68,
+        overall_score=82,
         dimensions=dimensions,
         weakness_summary="信息密度不足",
         refinement_instruction="补充具体数据",
     )
-    assert score.dimensions["relevance"] == 0.85
-    assert score.overall_score == 0.68
+    assert score.dimensions["relevance"] == 85
+    assert score.overall_score == 82
     assert score.iteration == 1
     assert score.weakness_summary == "信息密度不足"
     assert score.refinement_instruction == "补充具体数据"

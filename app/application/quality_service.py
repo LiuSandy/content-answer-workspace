@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,10 +25,14 @@ from ..persistence.models.documents import (
     AnswerDocument,
     AnswerVersion,
 )
+from ..persistence.models.quality_scores import QualityScoreModel
 from ..prompts.registry import prompt_registry
 from .document_service import DocumentService
 
 QUALITY_REVIEW_PROMPT = "review.quality_review"
+
+if TYPE_CHECKING:
+    from .workflows.creation_review import CreationReviewOutcome
 
 
 def _get_llm():
@@ -90,6 +94,36 @@ async def evaluate_content(
             result.degradation_reason or "质检结构化输出失败，请重试"
         )
     return result.value
+
+
+async def persist_creation_review(
+    session: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+    version_id: uuid.UUID,
+    operation_id: uuid.UUID,
+    outcome: CreationReviewOutcome,
+) -> None:
+    """把内部评审轮次关联到同一生成操作和唯一正式版本。"""
+    for round_result in outcome.rounds:
+        session.add(
+            QualityScoreModel(
+                ai_operation_id=operation_id,
+                document_id=document_id,
+                version_id=version_id,
+                iteration=round_result.iteration,
+                overall_score=round_result.report.overall_score,
+                dimensions=round_result.report.dimension_scores,
+                weakness_summary=round_result.report.summary,
+                refinement_instruction=round_result.report.rewrite_instruction,
+                converged=(
+                    "true"
+                    if round_result.report.overall_score >= 75
+                    else "false"
+                ),
+            )
+        )
+    await session.commit()
 
 
 @dataclass
