@@ -76,13 +76,6 @@ def _route_after_chat(state: ChatAgentState) -> str:
     return "tools"
 
 
-def _route_after_hitl(state: ChatAgentState) -> str:
-    """hitl_decision 后：已请求用户选择则终态；否则回到 chat 继续生成。"""
-    if state.get("hitl_pending"):
-        return END
-    return "chat"
-
-
 def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
     """构建新的 Chat Agent 图。"""
     graph: StateGraph = StateGraph(ChatAgentState)
@@ -148,11 +141,7 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
         {"tools": "chat_tools", END: END}
     )
     graph.add_edge("chat_tools", "hitl_decision")
-    graph.add_conditional_edges(
-        "hitl_decision",
-        _route_after_hitl,
-        {"chat": "chat", END: END}
-    )
+    graph.add_edge("hitl_decision", "chat")
     
     graph.add_edge("parse_url", "normalize_and_persist")
     graph.add_edge("normalize_and_persist", "build_response")

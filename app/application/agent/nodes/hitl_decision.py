@@ -11,6 +11,8 @@ import logging
 import uuid
 
 from langchain_core.messages import AIMessage
+from langchain_core.messages import HumanMessage
+from langgraph.types import interrupt
 
 from ..state import ChatAgentState
 
@@ -87,17 +89,18 @@ def _build_choice_message(conflict: dict) -> AIMessage:
 
 
 async def hitl_decision_node(state: ChatAgentState) -> dict:
-    """检查最近的工具结果是否有冲突；有则发出选择请求并置 hitl_pending。"""
+    """检查工具冲突；有冲突时由 LangGraph checkpoint 原生暂停。"""
     messages = state.get("messages") or []
     conflict = _find_conflict(messages)
     if conflict is None:
         # 无冲突，正常结束
         return {"hitl_pending": False, "hitl_choice": None}
 
-    msg = _build_choice_message(conflict)
-    payload = json.loads(msg.content)
+    payload = json.loads(_build_choice_message(conflict).content)
+    selection = interrupt(payload)
     return {
-        "messages": [msg],
-        "hitl_pending": True,
+        "messages": [HumanMessage(content=str(selection))],
+        "hitl_pending": False,
         "hitl_choice": payload,
+        "hitl_selection": str(selection),
     }

@@ -97,10 +97,8 @@ async def test_post_choice_restores_from_saved_choice_request():
     # 续跑在既有分支根 thread 上恢复（thread_id 以分支根消息 id 结尾）
     assert len(_RECORDED_RUNS) == 1
     run = _RECORDED_RUNS[0]
-    assert run["inputs"]["hitl_selection"] == "use_found"
-    assert run["inputs"]["hitl_choice"]["context"] == {}
+    assert run["inputs"].resume == "use_found"
     assert run["config"]["configurable"]["thread_id"] == f"{chat_id}_{req_id}"
-    assert run["inputs"]["user_message"] == "use_found"
 
     # 选择消息已持久化
     async with db() as session:

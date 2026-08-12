@@ -10,6 +10,7 @@ import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from app.application.agent.graphs.conversation import build_chat_agent_graph
 
@@ -71,8 +72,7 @@ def _base_state(message: str) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_graph_hitl_pending_ends_on_conflict(graph, monkeypatch):
-    """chat LLM 调用工具返回带 conflict 的结果后，图终止并置 hitl_pending。"""
+async def test_graph_native_interrupt_resumes_without_repeating_tool(graph, monkeypatch):
     # mock chat LLM：第一轮调工具，第二轮不调工具
     calls = {"n": 0}
 
@@ -102,19 +102,27 @@ async def test_graph_hitl_pending_ends_on_conflict(graph, monkeypatch):
 
     # mock 工具底层 _run 返回 YAML list（仅 1 条，触发 requested=5 但 total=1 的冲突）
     yaml_payload = "- rank: 1\n  author: 张三\n  likes: '150'\n  title: 唯一结果\n  url: https://xhs.com/n/1\n  published_at: '2026-07-25'\n"
+    tool_calls = {"n": 0}
+    def fake_run(*_args, **_kwargs):
+        tool_calls["n"] += 1
+        return yaml_payload
     monkeypatch.setattr(
         "app.application.agent.tools.xiaohongshu_tool._run",
-        lambda _args: yaml_payload,
+        fake_run,
     )
 
     base = _base_state("搜小红书历史播客帖子，点赞大于100，只要5条")
-    final = await graph.ainvoke(base, {"configurable": {"thread_id": "hitl1"}})
-    assert final.get("hitl_pending") is True
-    assert final.get("hitl_choice") is not None
-    # 生成了 choice_request 消息
-    last_msg = final["messages"][-1]
-    assert last_msg.type == "ai"
-    assert json.loads(last_msg.content)["type"] == "choice_request"
+    config = {"configurable": {"thread_id": "hitl1"}}
+    await graph.ainvoke(base, config)
+    paused = await graph.aget_state(config)
+    assert paused.next == ("hitl_decision",)
+    assert paused.tasks[0].interrupts[0].value["type"] == "choice_request"
+    assert tool_calls["n"] == 1
+
+    final = await graph.ainvoke(Command(resume="use_found"), config)
+    assert final["messages"][-1].content == "done"
+    assert final["hitl_selection"] == "use_found"
+    assert tool_calls["n"] == 1
 
 
 @pytest.mark.asyncio

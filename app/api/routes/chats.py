@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator
 from fastapi import APIRouter, Request, Query, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
+from langgraph.types import Command
 
 from ...application.chat_service import ChatService
 from ...application.agent.scheduling import run_agent_stream
@@ -317,8 +318,8 @@ async def submit_choice(
     """用户提交 Human-in-the-loop 选择（spec §11.7）。
 
     校验 messageId 确为本 chat 的 choice_request 消息 → 幂等去重 →
-    以选择消息为根发起一次续跑（输入带 hitl_selection + hitl_choice.context，
-    新 thread_id 进入既有分支），通过 SSE 实时推送续跑事件。
+    使用暂停时的分支 thread_id 与 Command(resume=...) 从 checkpoint 原位恢复，
+    不重新执行意图识别或工具搜索。
 
     并发：同一 chat 同时最多 1 个续跑，被占用时返回 409。
     """
@@ -341,6 +342,15 @@ async def submit_choice(
             return JSONResponse({"ok": False, "error": "choice_request message not found"}, status_code=404)
 
         hitl_choice = choice_req.payload or {}
+        allowed_options = {
+            str(option.get("id"))
+            for option in (hitl_choice.get("options") or [])
+            if isinstance(option, dict) and option.get("id")
+        }
+        if allowed_options and req.selection not in allowed_options:
+            return JSONResponse(
+                {"ok": False, "error": "invalid choice selection"}, status_code=422
+            )
 
         # 幂等：同一 choice_request + 同一 selection 已提交过则直接成功，不重复续跑
         existing = [
@@ -374,30 +384,9 @@ async def submit_choice(
         history_path = await chat_service.get_message_path(chat_id, choice_req.id)
         branch_root = _branch_root_of(history_path) or choice_req.id
 
-    langgraph_history = build_langgraph_history(history_path, str(sel_msg.id))
     run_id = str(uuid.uuid4())
-
-    # R4：分支根稳定 thread_id + checkpoint 感知输入（已有 checkpoint 只传增量）
-    if hasattr(graph, "aget_state"):
-        inputs, config = await compose_run_inputs(
-            graph,
-            chat_id_str,
-            str(branch_root),
-            langgraph_history,
-            str(sel_msg.id),
-            req.selection,
-            extra={"hitl_selection": req.selection, "hitl_choice": hitl_choice},
-        )
-    else:
-        inputs = {
-            "chat_id": chat_id_str,
-            "user_message_id": str(sel_msg.id),
-            "user_message": req.selection,
-            "hitl_selection": req.selection,
-            "hitl_choice": hitl_choice,
-            "messages": langgraph_history + [{"role": "user", "content": req.selection}],
-        }
-        config = {"configurable": {"thread_id": f"{chat_id_str}_{branch_root}"}}
+    inputs = Command(resume=req.selection)
+    config = {"configurable": {"thread_id": branch_thread_id(chat_id_str, str(branch_root))}}
     config = {**config, "recursion_limit": AGENT_MAX_RECURSION}
 
     async def _generator() -> AsyncIterator[str]:
@@ -572,7 +561,12 @@ async def send_message_stream(
                     )
                     return
 
-                hitl_choice = values.get("hitl_choice")
+                interrupts = [
+                    item
+                    for task in (getattr(state, "tasks", None) or [])
+                    for item in (getattr(task, "interrupts", None) or [])
+                ]
+                hitl_choice = interrupts[0].value if interrupts else None
 
                 if hitl_choice:
                     # Human-in-the-loop：本轮需要用户选择，保存 choice_request 消息并透传事件
@@ -585,6 +579,7 @@ async def send_message_stream(
                         run_id=run_id,
                     )
                     yield sse_named_event("choice.requested", hitl_choice)
+                    return
                 elif intent == "chat" and assistant_content_parts:
                     # 普通对话，保存回复文本
                     full_text = "".join(assistant_content_parts)

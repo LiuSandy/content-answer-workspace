@@ -71,7 +71,7 @@ def test_build_choice_message_has_three_options():
 
 
 @pytest.mark.asyncio
-async def test_hitl_decision_node_sets_pending_on_conflict():
+async def test_hitl_decision_node_resumes_with_native_selection(monkeypatch):
     conflict_payload = json.dumps({
         "platform": "xiaohongshu",
         "topic": "x",
@@ -79,10 +79,14 @@ async def test_hitl_decision_node_sets_pending_on_conflict():
         "conflict": {"requested": 5, "total_found": 1, "filtered_out": 4, "topic": "x"},
     })
     state = {"messages": [_tool_msg(conflict_payload)]}
+    monkeypatch.setattr(
+        "app.application.agent.nodes.hitl_decision.interrupt",
+        lambda payload: "use_found",
+    )
     out = await hitl_decision_node(state)
-    assert out["hitl_pending"] is True
+    assert out["hitl_pending"] is False
     assert out["hitl_choice"]["type"] == "choice_request"
-    # 生成了一条 choice_request AIMessage
+    assert out["hitl_selection"] == "use_found"
     assert len(out["messages"]) == 1
 
 
