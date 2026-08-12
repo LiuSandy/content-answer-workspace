@@ -47,7 +47,7 @@ def test_prompt_registry_load_and_render(tmp_path: Path) -> None:
 model_profiles:
   default:
     provider: deepseek
-    model: deepseek-chat
+    model: deepseek-v4-pro
     temperature: 0.7
     max_tokens: 4096
 """, encoding="utf-8")

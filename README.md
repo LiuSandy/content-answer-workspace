@@ -137,3 +137,45 @@ graph TD
 
 ### 乐观并发锁机制
 前端编辑器修改数据时会自动执行 `PUT /api/documents/{id}` 保存内容，当多人同时编辑或后台 AI 异步更新内容时，会通过 `expectedLockVersion` 机制校验版本。若不一致将触发 `409 DocumentConflictError` 终止覆写，确保内容不会被相互覆盖。
+
+## 长期记忆与私有资料检索
+
+长期记忆和知识库共用 Embedding 配置，数据库向量维度固定为 1536：
+
+```bash
+EMBEDDING_API_KEY=
+EMBEDDING_BASE_URL=https://api.openai.com/v1
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
+```
+
+候选证据使用独立的批量 Cross-Encoder `/rerank` 服务，不再调用 Chat Completions：
+
+```bash
+RERANKER_API_KEY=
+RERANKER_BASE_URL=
+RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+```
+
+普通模式在 Embedding 或 Reranker 不可用时会明确标记降级；严格模式无法验证证据阈值时直接拒答。
+
+检查数据库迁移和索引：
+
+```bash
+uv run alembic upgrade head
+uv run alembic current
+docker compose exec -T postgres psql -U dev -d content_workspace \
+  -c "SELECT indexname,indexdef FROM pg_indexes WHERE tablename='user_memories';"
+```
+
+运行确定性检索质量基线：
+
+```bash
+uv run python -m app.evaluation.run_retrieval_eval \
+  --dataset docs/evaluations/private-knowledge-rag.jsonl \
+  --backend deterministic
+```
+
+设置 `RUN_MEMORY_DB_TESTS=1` 可运行真实 PostgreSQL cosine Top-K、全新数据库迁移和 HNSW 查询计划测试。
+
+聊天中的人工选择使用 LangGraph 原生 `interrupt()` 暂停。恢复必须依赖持久化 checkpointer、原分支 `thread_id` 和 `Command(resume=...)`；不得把选择作为新的用户问题重新执行工具链。

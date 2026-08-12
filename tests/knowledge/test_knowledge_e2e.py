@@ -14,4 +14,7 @@ def test_evaluations_jsonl_validity():
         assert "id" in sample
         assert "domain" in sample
         assert "question" in sample
-        assert "expected_mode" in sample
+        assert sample["expectedMode"] in {"normal", "strict"}
+        assert isinstance(sample["expectedCitationDocumentIds"], list)
+        assert isinstance(sample["relevantDocumentIds"], list)
+        assert isinstance(sample["relevanceGrades"], dict)
