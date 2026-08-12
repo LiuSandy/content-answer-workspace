@@ -47,8 +47,8 @@ def load_retrieval_dataset(path: str | Path) -> list[RetrievalEvaluationCase]:
         ):
             raise ValueError(f"invalid relevanceGrades for {case_id}")
         relevant = tuple(dict.fromkeys(item["relevantDocumentIds"]))
-        if not item["expectedRefusal"] and not relevant:
-            raise ValueError(f"non-refusal case {case_id} requires relevant documents")
+        if item["expectedMode"] == "strict" and not item["expectedRefusal"] and not relevant:
+            raise ValueError(f"strict non-refusal case {case_id} requires relevant documents")
         cases.append(RetrievalEvaluationCase(
             id=case_id,
             domain=str(item["domain"]),
