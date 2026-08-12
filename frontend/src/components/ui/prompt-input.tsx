@@ -3,6 +3,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ArrowUp, Sparkles, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { promptInputControlOrder } from "./prompt-input-layout";
 
 interface PromptInputProps {
   value: string;
@@ -18,6 +19,7 @@ interface PromptInputProps {
   onSelectedStylesChange?: (styles: string[]) => void;
   wordCount?: number;
   onWordCountChange?: (v: number) => void;
+  afterWordCountActions?: React.ReactNode;
   leftActions?: React.ReactNode;
   rightActions?: React.ReactNode;
 }
@@ -44,6 +46,7 @@ export function PromptInput({
   onSelectedStylesChange,
   wordCount,
   onWordCountChange,
+  afterWordCountActions,
   leftActions,
   rightActions,
 }: PromptInputProps) {
@@ -52,6 +55,11 @@ export function PromptInput({
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const showStyles = selectedStyles !== undefined && onSelectedStylesChange !== undefined;
+  const controlOrder = promptInputControlOrder({
+    showStyles,
+    showWordCount: showStyles && wordCount !== undefined && !!onWordCountChange,
+    hasAfterWordCountActions: !!afterWordCountActions,
+  });
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -107,13 +115,16 @@ export function PromptInput({
         className={cn(
           "w-full bg-transparent resize-none border-0 pl-3 py-2 text-sm placeholder:text-zinc-400 dark:placeholder:text-zinc-500 outline-none focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-[84px] min-h-[84px] max-h-[84px] overflow-y-auto leading-relaxed text-zinc-800 dark:text-zinc-200 shadow-none focus-visible:ring-offset-0",
           (submitLabel || rightActions) ? "pr-28" : "pr-12",
-          (showStyles || leftActions) ? "pb-10" : ""
+          (showStyles || leftActions || afterWordCountActions) ? "pb-10" : ""
         )}
       />
 
       {/* ── 底部左侧：写作风格选择器与字数要求 / leftActions ── */}
-      {(leftActions || (showStyles && selectedStyles)) && (
-        <div className="absolute left-2.5 bottom-2 flex items-center gap-2">
+      {(leftActions || (showStyles && selectedStyles) || afterWordCountActions) && (
+        <div
+          className="absolute left-2.5 bottom-2 flex items-center gap-2"
+          data-control-order={controlOrder.join(",")}
+        >
           {leftActions}
           {showStyles && selectedStyles && (
             <div ref={dropdownRef} className="relative">
@@ -195,6 +206,7 @@ export function PromptInput({
               <span className="font-medium shrink-0">字</span>
             </div>
           )}
+          {afterWordCountActions}
         </div>
       )}
 

@@ -19,6 +19,7 @@ import {
   ExternalLink,
   ClipboardList,
   ListTree,
+  Bot,
 } from "lucide-react";
 
 import { apiGet, apiPut, apiPost } from "@/lib/api";
@@ -27,7 +28,14 @@ import { useChatStore } from "@/store/chat-store";
 import { useAlertDialog } from "@/hooks/use-alert-dialog";
 import { InlineRefineMenu, type InlineRefineParams } from "./inline-refine-menu";
 import { SelectionHighlight } from "./selection-highlight-extension";
-import { QualityReviewDialog } from "./quality-review-dialog";
+import { QualityReviewDialog, ReportCard } from "./quality-review-dialog";
+import type { QualityReviewRecordDTO } from "./quality-review-api";
+import {
+  compactOutlineLabel,
+  compactReviewLabel,
+  currentVersionBadgeClass,
+  modelLabel,
+} from "./version-history";
 import {
   initialCreationProgress,
   reduceCreationProgress,
@@ -35,7 +43,6 @@ import {
 import { OutlineDialog } from "./outline-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PromptInput } from "@/components/ui/prompt-input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -47,6 +54,13 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "@/components/ui/drawer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type DocumentState = {
   documentId: string;
@@ -89,6 +103,18 @@ type VersionSummary = {
   instruction: string | null;
   provider: string | null;
   model: string | null;
+  outlineOperationId: string | null;
+  outlineVersionNumber: number | null;
+  outlineStatus: "draft" | "confirmed" | null;
+  outlineSections: Array<{
+    id?: string;
+    order?: number;
+    heading: string;
+    keyPoints: string[];
+    wordCountEstimate: number;
+  }>;
+  qualityReview: QualityReviewRecordDTO | null;
+  contentSummary: string;
   createdAt: string;
 };
 
@@ -281,6 +307,8 @@ export function EditorPanel() {
     onSuccess: (updatedState) => {
       queryClient.setQueryData(["document", selectedSourceItemId], updatedState);
       queryClient.invalidateQueries({ queryKey: ["versions", docStateRef.current?.documentId] });
+      queryClient.invalidateQueries({ queryKey: ["outline", docStateRef.current?.documentId] });
+      queryClient.invalidateQueries({ queryKey: ["outline-versions", docStateRef.current?.documentId] });
     },
   });
 
@@ -640,14 +668,16 @@ export function EditorPanel() {
                 )}
               </DrawerTrigger>
 
-              <DrawerContent className="w-[30rem]">
-                <DrawerHeader className="border-b pb-3">
-                  <DrawerTitle className="flex items-center gap-2 text-base">
-                    <History className="h-4 w-4 text-muted-foreground" />
-                    历史版本
+              <DrawerContent className="w-[31rem] max-w-[calc(100vw-0.75rem)] overflow-hidden border-l-slate-200 bg-[#fbfbf8] dark:border-slate-800 dark:bg-slate-950">
+                <DrawerHeader className="border-b border-slate-200/80 px-6 py-5 dark:border-slate-800">
+                  <DrawerTitle className="flex items-center gap-2.5 text-lg font-semibold tracking-tight text-slate-950 dark:text-slate-50">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-950">
+                      <History className="h-4 w-4" />
+                    </span>
+                    创作档案
                   </DrawerTitle>
-                  <DrawerDescription>
-                    点击「恢复此版本」可覆盖当前内容
+                  <DrawerDescription className="pl-10 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    回看每次创作使用的模型、大纲与评审结果
                   </DrawerDescription>
                 </DrawerHeader>
 
@@ -686,24 +716,6 @@ export function EditorPanel() {
 
             <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
 
-            {/* 大纲入口 */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
-                  onClick={() => setOutlineDialogOpen(true)}
-                >
-                  <ListTree className="h-3.5 w-3.5" />
-                  大纲
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>生成回答大纲，规划章节结构</TooltipContent>
-            </Tooltip>
-
-            <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
-
             {/* 关闭面板 */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -735,6 +747,7 @@ export function EditorPanel() {
         setSelectedStyles={setSelectedStyles}
         wordCount={wordCount}
         onWordCountChange={setWordCount}
+        onOpenOutline={() => setOutlineDialogOpen(true)}
       />
 
       {/* 质检评审 Dialog */}
@@ -769,6 +782,7 @@ function EditorTabContent({
   setSelectedStyles,
   wordCount,
   onWordCountChange,
+  onOpenOutline,
 }: {
   editor: ReturnType<typeof useEditor>;
   isGenerating: boolean;
@@ -781,6 +795,7 @@ function EditorTabContent({
   setSelectedStyles: (styles: string[]) => void;
   wordCount: number;
   onWordCountChange: (v: number) => void;
+  onOpenOutline: () => void;
 }) {
   const hasContent = !!editor?.getText()?.trim();
 
@@ -819,6 +834,20 @@ function EditorTabContent({
           onSelectedStylesChange={setSelectedStyles}
           wordCount={wordCount}
           onWordCountChange={onWordCountChange}
+          afterWordCountActions={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs gap-1 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              onClick={onOpenOutline}
+              disabled={isGenerating}
+              title="生成或编辑回答大纲"
+            >
+              <ListTree className="h-3.5 w-3.5" />
+              大纲
+            </Button>
+          }
         />
       </div>
     </div>
@@ -836,6 +865,9 @@ function HistoryDrawerContent({
   currentVersionId: string | null;
   onRestore: (versionId: string) => void;
 }) {
+  const [outlineDetail, setOutlineDetail] = useState<VersionSummary | null>(null);
+  const [reviewDetail, setReviewDetail] = useState<VersionSummary | null>(null);
+
   if (versions.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-xs text-muted-foreground">
@@ -845,48 +877,86 @@ function HistoryDrawerContent({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="space-y-3">
+    <>
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="relative space-y-3 before:absolute before:bottom-5 before:left-[7px] before:top-5 before:w-px before:bg-slate-200 dark:before:bg-slate-800">
         {versions.map((ver) => {
           const isCurrent = ver.id === currentVersionId;
+          const reviewPassed = ver.qualityReview?.passed;
           return (
-            <Card key={ver.id} className={isCurrent ? "border-indigo-500/50 bg-indigo-50/50 dark:bg-indigo-950/20" : undefined}>
-              <CardContent className="flex flex-col gap-3 p-4">
+            <article
+              key={ver.id}
+              className="relative pl-6"
+            >
+              <span
+                className={`absolute left-0 top-4 z-10 h-[15px] w-[15px] rounded-full border-4 border-[#fbfbf8] dark:border-slate-950 ${
+                  isCurrent ? "bg-slate-950 dark:bg-slate-100" : "bg-slate-300 dark:bg-slate-700"
+                }`}
+              />
+              <div className={`overflow-hidden rounded-xl border bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] transition-shadow hover:shadow-[0_8px_24px_rgba(15,23,42,0.065)] dark:bg-slate-900 ${
+                isCurrent ? "border-slate-900 dark:border-slate-200" : "border-slate-200 dark:border-slate-800"
+              }`}>
+                {isCurrent ? <div className="h-0.5 bg-slate-950 dark:bg-slate-100" /> : null}
+                <div className="flex flex-col gap-2.5 p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">版本 {ver.versionNumber}</span>
+                    <span className="text-sm font-semibold tracking-tight text-slate-950 dark:text-slate-50">
+                      版本 {ver.versionNumber}
+                    </span>
                     {isCurrent && (
-                      <Badge className="h-4 px-1.5 text-[10px] bg-indigo-600 hover:bg-indigo-600">
+                      <Badge className={currentVersionBadgeClass}>
                         当前版本
                       </Badge>
                     )}
                   </div>
-                  <span className="text-[10px] text-muted-foreground">
+                  <time className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
                     {new Date(ver.createdAt).toLocaleString()}
-                  </span>
+                  </time>
                 </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">类型:</span>
-                    <Badge variant="secondary" className="text-[10px] uppercase">
-                      {ver.versionType}
-                    </Badge>
+                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  <Bot className="h-3.5 w-3.5 shrink-0 text-slate-700 dark:text-slate-300" />
+                  <span className="truncate font-mono">{modelLabel(ver.provider, ver.model)}</span>
+                </div>
+
+                <div>
+                  <p className="line-clamp-3 text-xs leading-[1.65] text-slate-600 dark:text-slate-300">
+                    {ver.contentSummary || "该版本暂无内容摘要"}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
+                  <div className="flex min-w-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 rounded-md px-2 text-[11px] font-medium text-amber-800 hover:bg-amber-50 hover:text-amber-950 disabled:text-slate-400 dark:text-amber-300 dark:hover:bg-amber-950/50"
+                      disabled={!ver.outlineOperationId}
+                      onClick={() => setOutlineDetail(ver)}
+                    >
+                      <ListTree className="h-3.5 w-3.5" />
+                      {compactOutlineLabel(ver.outlineVersionNumber, ver.outlineSections.length)}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={`h-7 rounded-md px-2 text-[11px] font-medium disabled:text-slate-400 ${
+                        reviewPassed
+                          ? "text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
+                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                      }`}
+                      disabled={!ver.qualityReview}
+                      onClick={() => setReviewDetail(ver)}
+                    >
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      {compactReviewLabel(ver.qualityReview)}
+                    </Button>
                   </div>
-                  {ver.instruction && (
-                    <p className="text-xs text-muted-foreground">
-                      指令: <span className="italic">"{ver.instruction}"</span>
-                    </p>
-                  )}
-                  {(ver.provider || ver.model) && (
-                    <p className="text-[10px] text-muted-foreground">
-                      模型: {ver.provider}/{ver.model}
-                    </p>
-                  )}
-                </div>
-                <div className="flex justify-end">
                   <Button
-                    variant="outline"
+                    variant={isCurrent ? "ghost" : "outline"}
                     size="sm"
+                    className="h-7 shrink-0 rounded-md px-2.5 text-[11px]"
                     onClick={() => onRestore(ver.id)}
                     disabled={isCurrent}
                   >
@@ -894,11 +964,72 @@ function HistoryDrawerContent({
                     {isCurrent ? "当前版本" : "恢复此版本"}
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
+                </div>
+              </div>
+            </article>
           );
         })}
+        </div>
       </div>
-    </div>
+
+      <Dialog open={!!outlineDetail} onOpenChange={(open) => !open && setOutlineDetail(null)}>
+        <DialogContent className="h-[min(78vh,680px)] max-w-xl !flex min-h-0 flex-col overflow-hidden bg-[#fbfbf8] dark:bg-slate-950">
+          <DialogHeader className="shrink-0 border-b border-slate-200 pb-4 dark:border-slate-800">
+            <DialogTitle className="flex items-center gap-2 text-lg tracking-tight">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                <ListTree className="h-4 w-4" />
+              </span>
+              版本 {outlineDetail?.versionNumber} 使用的大纲
+              {outlineDetail?.outlineVersionNumber ? (
+                <Badge variant="secondary">O{outlineDetail.outlineVersionNumber}</Badge>
+              ) : null}
+            </DialogTitle>
+            <DialogDescription>历史大纲快照，仅供查看，不会修改当前大纲。</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="min-h-0 flex-1 pr-3">
+            <div className="space-y-3 py-1">
+              {(outlineDetail?.outlineSections ?? []).map((section, index) => (
+                <section key={section.id ?? index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <div className="flex items-start gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-950 text-[10px] font-semibold text-white dark:bg-slate-100 dark:text-slate-950">
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xs font-semibold">{section.heading}</h4>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">约 {section.wordCountEstimate} 字</p>
+                    </div>
+                  </div>
+                  {section.keyPoints.length > 0 ? (
+                    <ul className="mt-2 list-disc space-y-1 pl-9 text-[11px] leading-5 text-muted-foreground">
+                      {section.keyPoints.map((point, pointIndex) => <li key={pointIndex}>{point}</li>)}
+                    </ul>
+                  ) : null}
+                </section>
+              ))}
+              {outlineDetail && outlineDetail.outlineSections.length === 0 ? (
+                <p className="py-12 text-center text-xs text-muted-foreground">该版本没有大纲快照。</p>
+              ) : null}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!reviewDetail} onOpenChange={(open) => !open && setReviewDetail(null)}>
+        <DialogContent className="h-[min(78vh,680px)] max-w-2xl !flex min-h-0 flex-col overflow-hidden bg-[#fbfbf8] dark:bg-slate-950">
+          <DialogHeader className="shrink-0 border-b border-slate-200 pb-4 dark:border-slate-800">
+            <DialogTitle className="flex items-center gap-2 text-lg tracking-tight">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                <ClipboardList className="h-4 w-4" />
+              </span>
+              版本 {reviewDetail?.versionNumber} 的自动评审
+            </DialogTitle>
+            <DialogDescription>历史评审结果，仅供查看。</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="min-h-0 flex-1 pr-3">
+            {reviewDetail?.qualityReview ? <ReportCard report={reviewDetail.qualityReview} /> : null}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

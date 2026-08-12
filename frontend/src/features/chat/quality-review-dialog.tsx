@@ -144,7 +144,7 @@ export function QualityReviewDialog({ open, onOpenChange, documentId }: QualityR
   );
 }
 
-function ReportCard({ report }: { report: QualityReviewRecordDTO }) {
+export function ReportCard({ report }: { report: QualityReviewRecordDTO }) {
   const issues = report.issues ?? [];
   const suggestions = report.suggestions ?? [];
   const rounds = report.rounds ?? [];
