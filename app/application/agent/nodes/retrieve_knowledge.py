@@ -64,6 +64,8 @@ async def retrieve_knowledge_node(state: ChatAgentState) -> dict:
                     fallback_reason=result.fallback_reason,
                     rewritten_query=result.rewritten_query,
                     index_version=result.index_version,
+                    embedding_model=settings.embedding_model,
+                    reranker_model=settings.reranker_model,
                 )
                 trace_id = str(trace.id)
             except Exception as trace_err:

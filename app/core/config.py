@@ -152,9 +152,11 @@ class KnowledgeSettings:
     embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"))
     # 单次 embedding 请求的批大小；默认 20 以兼容阿里云百炼等上限较低的服务
     embedding_batch_size: int = 20
-    reranker_api_key: str = field(default_factory=lambda: os.getenv("RERANKER_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
-    reranker_base_url: str = field(default_factory=lambda: os.getenv("RERANKER_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
-    reranker_model: str = field(default_factory=lambda: os.getenv("RERANKER_MODEL", "gpt-4o-mini"))
+    reranker_api_key: str = field(default_factory=lambda: os.getenv("RERANKER_API_KEY", ""), repr=False)
+    reranker_base_url: str = field(default_factory=lambda: os.getenv("RERANKER_BASE_URL", ""))
+    reranker_model: str = field(default_factory=lambda: os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"))
+    reranker_timeout_seconds: float = 8.0
+    reranker_max_documents: int = 32
     mineru_api_key: str = field(default_factory=lambda: os.getenv("MINERU_API_KEY", ""), repr=False)
     mineru_api_base_url: str = field(default_factory=lambda: os.getenv("MINERU_API_BASE_URL", "https://mineru.net/api/v4"))
     mineru_model_version: str = field(default_factory=lambda: os.getenv("MINERU_MODEL_VERSION", "vlm"))
@@ -192,4 +194,9 @@ def get_knowledge_settings() -> KnowledgeSettings:
         context_token_budget=parse_positive_int(os.getenv("KNOWLEDGE_CONTEXT_TOKEN_BUDGET"), 6000),
         max_upload_bytes=parse_positive_int(os.getenv("KNOWLEDGE_MAX_UPLOAD_BYTES"), 50 * 1024 * 1024),
         embedding_batch_size=parse_positive_int(os.getenv("EMBEDDING_BATCH_SIZE"), 20),
+        reranker_api_key=os.getenv("RERANKER_API_KEY", ""),
+        reranker_base_url=os.getenv("RERANKER_BASE_URL", ""),
+        reranker_model=os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"),
+        reranker_timeout_seconds=float(os.getenv("RERANKER_TIMEOUT_SECONDS", "8")),
+        reranker_max_documents=parse_positive_int(os.getenv("RERANKER_MAX_DOCUMENTS"), 32),
     )

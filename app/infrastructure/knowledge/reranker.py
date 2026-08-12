@@ -1,110 +1,102 @@
-import asyncio
-import logging
-import re
-from openai import AsyncOpenAI
-from app.core.config import get_knowledge_settings
+from __future__ import annotations
 
-logger = logging.getLogger(__name__)
+import asyncio
+import math
+
+import httpx
+
+from app.core.config import get_knowledge_settings
 
 
 class RerankerNotConfiguredError(RuntimeError):
-    """未配置 reranker API key 时抛出。
-
-    单独定义此异常是为了让检索层能显式感知"rerank 不可用"并走
-    有明确标记的降级路径（RRF 排序 + fallback_reason），
-    而不是拿 Mock 伪分数冒充真实相关性。
-    """
+    pass
 
 
 class MockRerankerProvider:
-    """按名次递减的伪打分器，仅限测试代码直接实例化。
-
-    生产工厂 get_reranker_provider 永远不会返回此类——伪分数会让
-    证据阈值判定（evidence_threshold）完全失真。
-    """
+    """Deterministic test-only provider."""
 
     def __init__(self, model_name: str = "mock-reranker"):
         self.model_name = model_name
 
     async def rerank(self, query: str, documents: list[str]) -> list[float]:
-        scores = []
-        for idx, doc in enumerate(documents):
-            score = max(0.1, 0.95 - (idx * 0.1))
-            scores.append(score)
-        return scores
+        return [max(0.1, 0.95 - index * 0.1) for index, _ in enumerate(documents)]
 
 
-# 匹配独立出现的 0~1 小数（含 0/1 整数），前后不能紧跟其他数字，
-# 避免 "10 分" 被误解析成 1.0
-_SCORE_PATTERN = re.compile(r"(?<![\d.])(?:0(?:\.\d+)?|1(?:\.0+)?)(?![\d.])")
+class CrossEncoderRerankerProvider:
+    """Batch client for the common `/rerank` cross-encoder API contract."""
 
-
-class LLMRerankerProvider:
-    """用 LLM 对候选文档逐条打分的 reranker。
-
-    单独封装是为了隔离打分 prompt 与分数解析逻辑，
-    上层只依赖 rerank(query, docs) -> scores 接口。
-    """
-
-    def __init__(self):
-        settings = get_knowledge_settings()
-        self.client = AsyncOpenAI(
-            api_key=settings.reranker_api_key,
-            base_url=settings.reranker_base_url
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        model: str,
+        timeout_seconds: float = 8.0,
+        max_documents: int = 32,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self.model_name = model
+        self.max_documents = max_documents
+        self._owns_client = client is None
+        self.client = client or httpx.AsyncClient(
+            base_url=base_url.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout_seconds,
         )
-        self.model = settings.reranker_model
-
-    async def _score_document(self, query: str, doc: str) -> float:
-        prompt = (
-            "请评估文档片段与查询问题的相关程度，只输出一个 0.0 到 1.0 之间的小数，"
-            "不要输出任何其他文字。\n"
-            f"问题：{query}\n文档片段：{doc}"
-        )
-        try:
-            response = await asyncio.wait_for(
-                self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0
-                ),
-                timeout=8.0
-            )
-            content = response.choices[0].message.content.strip()
-            match = _SCORE_PATTERN.search(content)
-            if match:
-                score = float(match.group(0))
-                if 0.0 <= score <= 1.0:
-                    return score
-            logger.warning("Reranker 输出无法解析为分数: %r", content[:100])
-            return 0.5
-        except Exception as e:
-            # repr 而非 str：TimeoutError 等异常 str 为空，日志会丢失错误类型
-            logger.warning("Reranker error: %r", e)
-            return 0.5
 
     async def rerank(self, query: str, documents: list[str]) -> list[float]:
         if not documents:
             return []
+        if len(documents) > self.max_documents:
+            raise ValueError(f"reranker accepts at most {self.max_documents} documents")
+        response: httpx.Response | None = None
+        for attempt in range(3):
+            response = await self.client.post(
+                "/rerank",
+                json={"model": self.model_name, "query": query, "documents": documents},
+            )
+            if response.status_code != 429 and response.status_code < 500:
+                break
+            if attempt < 2:
+                await asyncio.sleep(0.25 * (2**attempt))
+        assert response is not None
+        response.raise_for_status()
+        payload = response.json()
+        results = payload.get("results")
+        if not isinstance(results, list) or len(results) != len(documents):
+            raise ValueError("reranker result count does not match documents")
+        scores: list[float | None] = [None] * len(documents)
+        for item in results:
+            if not isinstance(item, dict):
+                raise ValueError("reranker result must be an object")
+            index = item.get("index")
+            score = item.get("relevance_score", item.get("score"))
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(documents):
+                raise ValueError("reranker returned an invalid index")
+            if scores[index] is not None:
+                raise ValueError("reranker returned a duplicate index")
+            if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 1:
+                raise ValueError("reranker score must be finite and within [0, 1]")
+            scores[index] = float(score)
+        if any(score is None for score in scores):
+            raise ValueError("reranker omitted a document index")
+        return [score for score in scores if score is not None]
 
-        semaphore = asyncio.Semaphore(8)
-
-        async def sem_score(doc: str):
-            async with semaphore:
-                return await self._score_document(query, doc)
-
-        tasks = [sem_score(doc) for doc in documents]
-        return await asyncio.gather(*tasks)
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self.client.aclose()
 
 
-def get_reranker_provider():
-    """生产 reranker 工厂。
-
-    未配置 key 时显式抛 RerankerNotConfiguredError 而非返回 Mock：
-    伪分数会污染证据判定，属于必须禁止的占位方案。
-    """
+def get_reranker_provider() -> CrossEncoderRerankerProvider:
     settings = get_knowledge_settings()
-    if not settings.reranker_api_key:
+    if not settings.reranker_api_key or not settings.reranker_base_url:
         raise RerankerNotConfiguredError(
-            "Reranker 未配置：请设置 RERANKER_API_KEY 或 OPENAI_API_KEY 后重试"
+            "Reranker 未配置：请设置独立的 RERANKER_API_KEY 和 RERANKER_BASE_URL"
         )
-    return LLMRerankerProvider()
+    return CrossEncoderRerankerProvider(
+        api_key=settings.reranker_api_key,
+        base_url=settings.reranker_base_url,
+        model=settings.reranker_model,
+        timeout_seconds=settings.reranker_timeout_seconds,
+        max_documents=settings.reranker_max_documents,
+    )
