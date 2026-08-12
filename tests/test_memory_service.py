@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import asyncio
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,6 +11,7 @@ import pytest
 from app.application.memory_service import (
     _parse_extraction_json, extract_memories, retrieve_memories,
     delete_memory, clear_all_memories, MEMORY_RETRIEVAL_TIMEOUT_MS,
+    _memory_vector_search_sql,
 )
 
 
@@ -87,7 +90,7 @@ async def test_extract_memories_persists(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retrieve_memories_returns_under_timeout(monkeypatch):
-    """spec 3.6：单次记忆检索 ≤ 200ms。"""
+    """本地数据库召回应在 200ms 预算内完成。"""
     snippet_m = MagicMock()
     snippet_m.id = "00000000-0000-0000-0000-000000000001"
     snippet_m.memory_type = "explicit"
@@ -109,6 +112,12 @@ async def test_retrieve_memories_returns_under_timeout(monkeypatch):
     monkeypatch.setattr(
         "app.persistence.session.get_session_factory", lambda: fake_factory
     )
+    fake_embedder = MagicMock(dimensions=8)
+    fake_embedder.embed = AsyncMock(return_value=[[0.1] * 8])
+    monkeypatch.setattr(
+        "app.application.memory_service._get_embedding_provider",
+        lambda: fake_embedder,
+    )
 
     import time
     start = time.monotonic()
@@ -122,18 +131,42 @@ async def test_retrieve_memories_returns_under_timeout(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_memories_timeout_returns_empty(monkeypatch):
     """超时时返回空列表，不抛异常。"""
-    import asyncio
+    cancelled = asyncio.Event()
 
+    fake_session = MagicMock()
+
+    async def slow_execute(*_args, **_kwargs):
+        try:
+            await asyncio.sleep(0.3)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    fake_session.execute = slow_execute
+    fake_session.commit = AsyncMock()
+    fake_session.bind = MagicMock()
+    fake_session.bind.dialect.name = "sqlite"
+
+    @asynccontextmanager
     async def _slow_factory():
-        await asyncio.sleep(0.3)
-        return MagicMock()
+        yield fake_session
 
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", _slow_factory
+        "app.persistence.session.get_session_factory", lambda: _slow_factory
     )
 
     snippets = await retrieve_memories("test", "default")
     assert snippets == []
+    assert cancelled.is_set()
+
+
+def test_memory_vector_query_uses_cosine_top_k_and_scope_filters():
+    sql = str(_memory_vector_search_sql())
+    assert "embedding <=> CAST(:query_vec AS vector)" in sql
+    assert "workspace_id = :workspace_id" in sql
+    assert "status = 'active'" in sql
+    assert "embedding IS NOT NULL" in sql
+    assert "LIMIT :top_k" in sql
 
 
 @pytest.mark.asyncio

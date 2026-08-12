@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from ..errors import LLMOutputError
 from ..persistence.models.user_memories import UserMemoryModel
@@ -36,6 +36,22 @@ class MemorySnippet:
     content: str
     confidence: float
     rank_score: float = 0.0
+
+
+def _memory_vector_search_sql():
+    """生产长期记忆 cosine Top-K 查询；参数始终通过 SQLAlchemy 绑定。"""
+    return text(
+        """
+        SELECT id::text AS id, memory_type, content, confidence,
+               1 - (embedding <=> CAST(:query_vec AS vector)) AS rank_score
+        FROM user_memories
+        WHERE workspace_id = :workspace_id
+          AND status = 'active'
+          AND embedding IS NOT NULL
+        ORDER BY embedding <=> CAST(:query_vec AS vector)
+        LIMIT :top_k
+        """
+    )
 
 
 def _get_memory_llm():
@@ -156,59 +172,104 @@ async def retrieve_memories(
     workspace_id: str = "default",
     top_k: int = 5,
 ) -> list[MemorySnippet]:
-    """检索与当前查询最相关的 top_k 条记忆；超 200ms 截断。
+    """优先用 pgvector cosine Top-K 检索 active 记忆，失败时文本降级。
 
-    第一版无 HNSW 索引时退化用 content LIKE；后续配 pgvector 走 cosine。
+    200ms 预算仅约束数据库召回；远端查询向量化耗时独立于该预算。
     """
     from ..persistence.session import get_session_factory
     factory = get_session_factory()
 
-    snippets: list[MemorySnippet] = []
+    normalized_query = query.strip()
+    if not normalized_query or top_k <= 0:
+        return []
+
+    query_vector: list[float] | None = None
+    try:
+        provider = _get_embedding_provider()
+        vectors = await provider.embed([normalized_query])
+        from ..infrastructure.knowledge.embedding import validate_embeddings
+        validate_embeddings([normalized_query], vectors, provider.dimensions)
+        query_vector = list(vectors[0])
+    except Exception as error:  # noqa: BLE001 - 检索允许显式文本降级
+        logger.warning("Memory query embedding unavailable; using text fallback: %s", error)
 
     try:
-        async def _do():
+        async def _do_query():
             async with factory() as session:
-                # R5：只检索 active 记忆；pending/rejected 不注入
+                bind = session.get_bind()
+                dialect_name = getattr(getattr(bind, "dialect", None), "name", "")
+                if query_vector is not None and dialect_name == "postgresql":
+                    result = await session.execute(
+                        _memory_vector_search_sql(),
+                        {
+                            "query_vec": str(query_vector),
+                            "workspace_id": workspace_id,
+                            "top_k": top_k,
+                        },
+                    )
+                    rows = result.mappings().all()
+                    snippets = [
+                        MemorySnippet(
+                            id=row["id"],
+                            memory_type=row["memory_type"],
+                            content=row["content"],
+                            confidence=row["confidence"],
+                            rank_score=float(row["rank_score"]),
+                        )
+                        for row in rows
+                    ]
+                else:
+                    # SQLite 测试与 Provider/pgvector 不可用时的显式文本降级。
+                    # 仍强制 workspace/status 隔离，绝不跨租户扩大召回。
+                    like = f"%{normalized_query.split()[0]}%"
+                    stmt = (
+                        select(UserMemoryModel)
+                        .where(UserMemoryModel.workspace_id == workspace_id)
+                        .where(UserMemoryModel.status == "active")
+                        .where(UserMemoryModel.content.ilike(like))
+                        .order_by(
+                            UserMemoryModel.activation_count.desc(),
+                            UserMemoryModel.created_at.desc(),
+                        )
+                        .limit(top_k)
+                    )
+                    rows = (await session.execute(stmt)).scalars().all()
+                    snippets = [
+                        MemorySnippet(
+                            id=str(row.id),
+                            memory_type=row.memory_type,
+                            content=row.content,
+                            confidence=row.confidence,
+                        )
+                        for row in rows
+                    ]
+
+                if not snippets:
+                    return []
+
+                memory_ids = [uuid.UUID(snippet.id) for snippet in snippets]
                 stmt = (
                     select(UserMemoryModel)
+                    .where(UserMemoryModel.id.in_(memory_ids))
                     .where(UserMemoryModel.workspace_id == workspace_id)
                     .where(UserMemoryModel.status == "active")
-                    .order_by(
-                        UserMemoryModel.activation_count.desc(),
-                        UserMemoryModel.created_at.desc(),
-                    )
-                    .limit(top_k * 3)
                 )
-                # 关键词过滤以提高相关性
-                if query.strip():
-                    like = f"%{query.strip().split()[0]}%"
-                    stmt = stmt.where(UserMemoryModel.content.ilike(like))
-                stmt = stmt.limit(top_k)
-                rows = (await session.execute(stmt)).scalars().all()
-
-                # 更新激活计数与时间
-                for r in rows:
-                    r.activation_count = (r.activation_count or 0) + 1
-                    r.last_activated_at = datetime.now(timezone.utc)
+                activated = (await session.execute(stmt)).scalars().all()
+                for memory in activated:
+                    memory.activation_count = (memory.activation_count or 0) + 1
+                    memory.last_activated_at = datetime.now(timezone.utc)
                 await session.commit()
+                return snippets
 
-                return [
-                    MemorySnippet(
-                        id=str(r.id),
-                        memory_type=r.memory_type,
-                        content=r.content,
-                        confidence=r.confidence,
-                    )
-                    for r in rows
-                ]
-
-        snippets = await asyncio.wait_for(_do(), timeout=MEMORY_RETRIEVAL_TIMEOUT_MS / 1000)
+        return await asyncio.wait_for(
+            _do_query(), timeout=MEMORY_RETRIEVAL_TIMEOUT_MS / 1000
+        )
     except asyncio.TimeoutError:
         logger.warning("Memory retrieval timed out after %dms", MEMORY_RETRIEVAL_TIMEOUT_MS)
     except Exception as e:
         logger.warning("Memory retrieval failed: %s", e)
 
-    return snippets
+    return []
 
 
 async def list_memories(workspace_id: str = "default") -> list[UserMemoryModel]:
