@@ -14,7 +14,8 @@ from app.application.outline_service import OutlineService
 from app.errors import DocumentConflictError
 from app.persistence import Base
 from app.persistence.models.content import SourceItem
-from app.persistence.models.documents import AnswerDocument
+from app.application.document_service import DocumentService
+from app.persistence.models.documents import AIOperation, AnswerDocument
 
 
 @compiles(JSONB, "sqlite")
@@ -109,6 +110,82 @@ async def test_edit_outline_updates_sections(monkeypatch):
             {"heading": "新标题", "keyPoints": ["p1"], "wordCountEstimate": 200}
         ], viewpoint_answers={"Q": "A"}, expected_lock_version=lv)
         assert result.outline[0]["heading"] == "新标题"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_edit_outline_creates_new_version_and_keeps_original(monkeypatch):
+    db, engine = await _make_db()
+    doc_id, si_id, lv = await _setup_doc(db)
+    fake_llm = _mock_outline_llm(
+        sections=[{"heading": "原始大纲", "keyPoints": [], "wordCountEstimate": 100}]
+    )
+    monkeypatch.setattr("app.application.agent.adapters.DeepSeekLLMAdapter", lambda: fake_llm)
+
+    async with db() as session:
+        svc = OutlineService(session)
+        original = await svc.generate(doc_id, si_id, "default", lv)
+        edited = await svc.update(
+            doc_id,
+            [{"heading": "修改后的大纲", "keyPoints": [], "wordCountEstimate": 120}],
+            viewpoint_answers={},
+            expected_lock_version=lv,
+        )
+        versions = await svc.list_versions(doc_id)
+
+        assert original.operation_id != edited.operation_id
+        assert original.version_number == 1
+        assert edited.version_number == 2
+        assert [item.version_number for item in versions] == [2, 1]
+        assert versions[0].outline[0]["heading"] == "修改后的大纲"
+        assert versions[1].outline[0]["heading"] == "原始大纲"
+
+        original_op = await session.get(AIOperation, uuid.UUID(original.operation_id))
+        assert original_op.input_metadata["outline"][0]["heading"] == "原始大纲"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_restoring_answer_version_selects_its_outline(monkeypatch):
+    db, engine = await _make_db()
+    doc_id, si_id, lv = await _setup_doc(db)
+    fake_llm = _mock_outline_llm()
+    monkeypatch.setattr("app.application.agent.adapters.DeepSeekLLMAdapter", lambda: fake_llm)
+
+    async with db() as session:
+        outline_service = OutlineService(session)
+        outline_v1 = await outline_service.generate(doc_id, si_id, "default", lv)
+        document_service = DocumentService(session)
+        answer_v1 = await document_service.create_version(
+            document_id=doc_id,
+            content="文章 V1",
+            version_type="initial_generation",
+            expected_lock_version=lv,
+            outline_operation_id=uuid.UUID(outline_v1.operation_id),
+        )
+
+        doc = await document_service.get_document(doc_id)
+        outline_v2 = await outline_service.regenerate(
+            doc_id, si_id, "default", doc.lock_version
+        )
+        answer_v2 = await document_service.create_version(
+            document_id=doc_id,
+            content="文章 V2",
+            version_type="full_rewrite",
+            expected_lock_version=doc.lock_version,
+            outline_operation_id=uuid.UUID(outline_v2.operation_id),
+        )
+        assert answer_v2.outline_operation_id == uuid.UUID(outline_v2.operation_id)
+
+        doc = await document_service.get_document(doc_id)
+        await document_service.restore_version(doc_id, answer_v1.id, doc.lock_version)
+        restored_doc = await document_service.get_document(doc_id)
+        current_outline = await outline_service.get_current(doc_id)
+
+        assert restored_doc.current_outline_operation_id == uuid.UUID(outline_v1.operation_id)
+        assert current_outline.operation_id == outline_v1.operation_id
 
     await engine.dispose()
 

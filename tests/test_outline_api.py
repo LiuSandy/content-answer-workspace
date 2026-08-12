@@ -133,6 +133,82 @@ async def test_update_outline(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_updating_confirmed_outline_returns_it_to_draft(monkeypatch):
+    db, engine = await _make_db()
+    did, sid, lv = await _setup(db, monkeypatch)
+    app = _make_app(db)
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        await c.post(
+            f"/api/documents/{did}/outline/generate",
+            json={"sourceItemId": str(sid), "expectedLockVersion": lv},
+        )
+        await c.post(
+            f"/api/documents/{did}/outline/confirm",
+            json={"expectedLockVersion": lv},
+        )
+        response = await c.put(
+            f"/api/documents/{did}/outline/update",
+            json={
+                "sections": [
+                    {
+                        "heading": "用户修改后的章节",
+                        "keyPoints": ["用户要点"],
+                        "wordCountEstimate": 300,
+                    }
+                ],
+                "expectedLockVersion": lv,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "draft"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_list_and_activate_outline_versions(monkeypatch):
+    db, engine = await _make_db()
+    did, sid, lv = await _setup(db, monkeypatch)
+    app = _make_app(db)
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        generated = await c.post(
+            f"/api/documents/{did}/outline/generate",
+            json={"sourceItemId": str(sid), "expectedLockVersion": lv},
+        )
+        outline_v1 = generated.json()["data"]
+        updated = await c.put(
+            f"/api/documents/{did}/outline/update",
+            json={
+                "sections": [
+                    {"heading": "第二版", "keyPoints": [], "wordCountEstimate": 80}
+                ],
+                "expectedLockVersion": lv,
+            },
+        )
+        assert updated.json()["data"]["versionNumber"] == 2
+
+        response = await c.get(f"/api/documents/{did}/outline/versions")
+        assert response.status_code == 200
+        assert [item["versionNumber"] for item in response.json()["data"]] == [2, 1]
+
+        activated = await c.post(
+            f"/api/documents/{did}/outline/versions/{outline_v1['operationId']}/activate",
+            json={"expectedLockVersion": lv},
+        )
+        assert activated.status_code == 200
+        assert activated.json()["data"]["versionNumber"] == 1
+
+        current = await c.get(f"/api/documents/{did}/outline/current")
+        assert current.json()["data"]["operationId"] == outline_v1["operationId"]
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_confirm_outline(monkeypatch):
     db, engine = await _make_db()
     did, sid, lv = await _setup(db, monkeypatch)

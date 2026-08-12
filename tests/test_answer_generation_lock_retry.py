@@ -66,3 +66,49 @@ async def test_answer_generation_defers_version_and_populates_capture(monkeypatc
     assert parts == ["draft"]
     assert observed["defer_version"] is True
     assert observed["capture"] is capture
+
+
+@pytest.mark.asyncio
+async def test_answer_generation_passes_selected_outline_to_prompt(monkeypatch):
+    capture = WriterRunCapture()
+    rendered_variables = {}
+    outline_operation_id = uuid.uuid4()
+
+    async def fake_writer_stream(*args, **kwargs):
+        kwargs["capture"].content = "draft"
+        yield "draft"
+
+    def fake_render(prompt_id, **kwargs):
+        if prompt_id == "writing.user_generate":
+            rendered_variables.update(kwargs)
+        return MagicMock(messages=[])
+
+    monkeypatch.setattr(
+        "app.workflows.answer_generation.run_writer_stream", fake_writer_stream
+    )
+    monkeypatch.setattr(
+        "app.workflows.answer_generation.compose_writing_prompt",
+        lambda *args, **kwargs: MagicMock(messages=[]),
+    )
+    monkeypatch.setattr(
+        "app.workflows.answer_generation.prompt_registry.render", fake_render
+    )
+
+    session = AsyncMock()
+    session.get.return_value = None
+    _ = [part async for part in generate_answer_workflow(
+        session=session,
+        source_item_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        platform="zhihu",
+        title="question",
+        content=None,
+        expected_lock_version=1,
+        capture=capture,
+        outline=[{"heading": "核心章节", "keyPoints": ["关键论据"], "wordCountEstimate": 300}],
+        outline_operation_id=outline_operation_id,
+    )]
+
+    assert "核心章节" in rendered_variables["outline"]
+    assert "关键论据" in rendered_variables["outline"]
+    assert capture.outline_operation_id == outline_operation_id

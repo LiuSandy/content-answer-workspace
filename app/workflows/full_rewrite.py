@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import uuid
 from collections.abc import AsyncIterator
 
@@ -10,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..application.document_service import DocumentService
+from ..application.outline_service import OutlineService
 from ..application.writer_service import run_writer_stream
 from ..persistence.models.documents import AnswerDocument
 from ..prompts.composer import compose_writing_prompt
@@ -46,6 +48,7 @@ async def full_rewrite_workflow(
         content_mode = doc.source_item.raw_metadata.get("content_mode") or "answer"
 
     try:
+        current_outline = await OutlineService(session).get_current(document_id)
         rendered = compose_writing_prompt(
             "writing.answer_generate",
             platform=platform,
@@ -53,11 +56,15 @@ async def full_rewrite_workflow(
             word_count=word_count,
         )
         user_rendered = prompt_registry.render(
-            "writing.user_generate",
+            "writing.user_rewrite",
             title=title,
-            content=doc.source_item.content if doc.source_item else "",
+            current_answer=doc.current_content or "",
             instruction=instruction,
             content_mode=content_mode,
+            outline=json.dumps(
+                current_outline.outline if current_outline else [],
+                ensure_ascii=False,
+            ),
         )
         rendered.messages.extend(user_rendered.messages)
     except Exception as e:
@@ -72,6 +79,14 @@ async def full_rewrite_workflow(
         expected_lock_version,
         platform=platform,
         extra_context=extra_context,
-        version_extra={"instruction": instruction},
+        version_extra={
+            "instruction": instruction,
+            "outline_operation_id": (
+                uuid.UUID(current_outline.operation_id) if current_outline else None
+            ),
+        },
+        outline_operation_id=(
+            uuid.UUID(current_outline.operation_id) if current_outline else None
+        ),
     ):
         yield delta

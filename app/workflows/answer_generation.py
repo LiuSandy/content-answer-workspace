@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import uuid
 from collections.abc import AsyncIterator
 
@@ -29,7 +30,10 @@ async def generate_answer_workflow(
     word_count: int = 1000,
     instruction: str | None = None,
     extra_context: str | None = None,
+    outline: list[dict] | None = None,
+    outline_operation_id: uuid.UUID | None = None,
 ) -> AsyncIterator[str]:
+    capture.outline_operation_id = outline_operation_id
     source_item = await session.get(SourceItem, source_item_id)
     content_mode = "answer"
     if source_item and source_item.raw_metadata:
@@ -48,6 +52,7 @@ async def generate_answer_workflow(
             content=content or "",
             content_mode=content_mode,
             instruction=instruction,
+            outline=json.dumps(outline or [], ensure_ascii=False),
         )
         rendered.messages.extend(user_rendered.messages)
     except Exception as e:
@@ -58,5 +63,6 @@ async def generate_answer_workflow(
         session, "generate", document_id, rendered, expected_lock_version,
         platform=platform, extra_context=extra_context,
         defer_version=True, capture=capture,
+        outline_operation_id=outline_operation_id,
     ):
         yield delta

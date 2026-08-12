@@ -313,6 +313,12 @@ class VersionSummaryDTO(BaseModel):
     instruction: str | None = None
     provider: str | None = None
     model: str | None = None
+    outline_operation_id: str | None = None
+    content_summary: str
+    outline_version_number: int | None = None
+    outline_status: str | None = None
+    outline_sections: list[dict[str, Any]] = Field(default_factory=list)
+    quality_review: dict[str, Any] | None = None
     created_at: datetime
 
     model_config = {

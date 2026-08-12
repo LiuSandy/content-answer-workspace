@@ -361,6 +361,11 @@ async def generate_answer_stream(
             platform = source_item.platform
             title = source_item.title
             content = source_item.content
+            current_outline = await OutlineService(session).get_current(doc_id)
+            outline_sections = current_outline.outline if current_outline else None
+            outline_operation_id = (
+                uuid.UUID(current_outline.operation_id) if current_outline else None
+            )
 
         run_id = str(uuid.uuid4())
         yield sse_named_event("run.started", {"runId": run_id, "documentId": str(doc_id)})
@@ -381,6 +386,8 @@ async def generate_answer_stream(
                     word_count=req.word_count,
                     instruction=req.instruction,
                     capture=capture,
+                    outline=outline_sections,
+                    outline_operation_id=outline_operation_id,
                 ):
                     yield sse_named_event("document.delta", {"delta": chunk})
 
@@ -597,6 +604,8 @@ class ConfirmOutlineRequest(BaseModel):
 def _outline_result(data) -> dict:
     return {
         "operationId": data.operation_id,
+        "versionNumber": data.version_number,
+        "basedOnOperationId": data.based_on_operation_id,
         "status": data.status,
         "viewpointQuestions": data.viewpoint_questions,
         "outline": data.outline,
@@ -636,6 +645,39 @@ async def get_current_outline(document_id: uuid.UUID):
         if not result:
             return JSONResponse({"ok": True, "data": None})
         return JSONResponse({"ok": True, "data": _outline_result(result)})
+
+
+@router.get("/api/documents/{document_id}/outline/versions")
+async def list_outline_versions(document_id: uuid.UUID):
+    async for session in get_db_session():
+        results = await OutlineService(session).list_versions(document_id)
+        return JSONResponse(
+            {"ok": True, "data": [_outline_result(result) for result in results]}
+        )
+
+
+@router.post(
+    "/api/documents/{document_id}/outline/versions/{operation_id}/activate"
+)
+async def activate_outline_version(
+    document_id: uuid.UUID,
+    operation_id: uuid.UUID,
+    req: ConfirmOutlineRequest,
+):
+    async for session in get_db_session():
+        try:
+            result = await OutlineService(session).activate(
+                document_id, operation_id, req.expected_lock_version
+            )
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as error:
+            return JSONResponse(
+                {"ok": False, "error": error.message}, status_code=404
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"}, status_code=409
+            )
 
 
 @router.put("/api/documents/{document_id}/outline/update")

@@ -5,6 +5,7 @@ Document Service：管理 AnswerDocument 和乐观锁。
 from __future__ import annotations
 
 import uuid
+import re
 from datetime import datetime
 from typing import Sequence
 
@@ -12,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import DocumentConflictError
-from ..persistence.models.documents import AnswerDocument, AnswerVersion
+from ..persistence.models.documents import AIOperation, AnswerDocument, AnswerVersion
 from ..persistence.models.content import SourceItem
 from ..domain.dto import DocumentStateDTO, VersionSummaryDTO, SourceItemInfoDTO
 
@@ -69,6 +70,7 @@ class DocumentService:
         prompt_version: str | None = None,
         provider: str | None = None,
         model: str | None = None,
+        outline_operation_id: uuid.UUID | None = None,
     ) -> AnswerVersion:
         """正式保存（AI 生成/润色/手动保存/恢复等）：更新 Document，并创建完整版本快照。"""
         doc = await self._get_doc_or_raise(document_id)
@@ -97,6 +99,7 @@ class DocumentService:
             prompt_version=prompt_version,
             provider=provider,
             model=model,
+            outline_operation_id=outline_operation_id or doc.current_outline_operation_id,
         )
         self._session.add(version)
         await self._session.flush()
@@ -111,13 +114,106 @@ class DocumentService:
         return version
 
     async def list_versions(self, document_id: uuid.UUID) -> list[VersionSummaryDTO]:
-        """获取所有历史版本列表（按版本号降序），仅包含版本摘要不含大字段内容。"""
+        """获取历史版本卡片所需的只读摘要、大纲快照与评审报告。"""
         result = await self._session.execute(
             select(AnswerVersion)
             .where(AnswerVersion.document_id == document_id)
             .order_by(AnswerVersion.version_number.desc())
         )
         versions = result.scalars().all()
+
+        document = await self._session.get(AnswerDocument, document_id)
+        all_outline_operations = list(
+            (
+                await self._session.execute(
+                    select(AIOperation)
+                    .where(AIOperation.document_id == document_id)
+                    .where(AIOperation.operation_type == "outline")
+                    .where(AIOperation.status == "completed")
+                    .order_by(AIOperation.created_at.asc(), AIOperation.id.asc())
+                )
+            ).scalars().all()
+        )
+        outline_version_numbers: dict[uuid.UUID, int] = {}
+        used_outline_numbers: set[int] = set()
+        for index, operation in enumerate(all_outline_operations, 1):
+            stored_number = (operation.input_metadata or {}).get("outlineVersion")
+            number = stored_number if isinstance(stored_number, int) and stored_number > 0 else index
+            while number in used_outline_numbers:
+                number += 1
+            outline_version_numbers[operation.id] = number
+            used_outline_numbers.add(number)
+
+        fallback_outline_id = (
+            document.current_outline_operation_id if document is not None else None
+        )
+        if fallback_outline_id is None:
+            latest_outline = all_outline_operations[-1] if all_outline_operations else None
+            fallback_outline_id = latest_outline.id if latest_outline else None
+
+        effective_outline_ids = {
+            version.id: (
+                version.outline_operation_id
+                or (
+                    fallback_outline_id
+                    if document is not None
+                    and version.id == document.current_version_id
+                    else None
+                )
+            )
+            for version in versions
+        }
+        outline_ids = {value for value in effective_outline_ids.values() if value}
+        outlines: dict[uuid.UUID, AIOperation] = {}
+        if outline_ids:
+            outline_rows = (
+                await self._session.execute(
+                    select(AIOperation).where(AIOperation.id.in_(outline_ids))
+                )
+            ).scalars().all()
+            outlines = {row.id: row for row in outline_rows}
+
+        from .quality_service import (
+            _map_creation_review_operation,
+            _map_legacy_review_operation,
+        )
+
+        review_operations = (
+            await self._session.execute(
+                select(AIOperation)
+                .where(AIOperation.document_id == document_id)
+                .where(AIOperation.status == "completed")
+                .where(AIOperation.operation_type.in_(("generate", "quality_review")))
+                .order_by(AIOperation.created_at.desc())
+            )
+        ).scalars().all()
+        reviews_by_version: dict[str, dict] = {}
+        for operation in review_operations:
+            if operation.operation_type == "generate":
+                creation_review = (operation.output_metadata or {}).get(
+                    "creationReview"
+                )
+                if operation.result_version_id and isinstance(creation_review, dict):
+                    reviews_by_version.setdefault(
+                        str(operation.result_version_id),
+                        _map_creation_review_operation(operation, creation_review),
+                    )
+                continue
+            report = (operation.output_metadata or {}).get("report")
+            source_version_id = (operation.input_metadata or {}).get(
+                "sourceVersionId"
+            )
+            if source_version_id and isinstance(report, dict):
+                reviews_by_version.setdefault(
+                    str(source_version_id),
+                    _map_legacy_review_operation(operation, report),
+                )
+
+        def summarize(content: str) -> str:
+            plain = re.sub(r"<[^>]+>", " ", content)
+            plain = re.sub(r"\s+", " ", plain).strip()
+            return plain[:180]
+
         return [
             VersionSummaryDTO(
                 id=str(v.id),
@@ -126,6 +222,33 @@ class DocumentService:
                 instruction=v.instruction,
                 provider=v.provider,
                 model=v.model,
+                outline_operation_id=(
+                    str(effective_outline_ids[v.id])
+                    if effective_outline_ids[v.id]
+                    else None
+                ),
+                content_summary=summarize(v.content),
+                outline_version_number=(
+                    outline_version_numbers.get(effective_outline_ids[v.id])
+                    if effective_outline_ids[v.id] in outlines
+                    else None
+                ),
+                outline_status=(
+                    (outlines[effective_outline_ids[v.id]].input_metadata or {}).get(
+                        "outlineStatus"
+                    )
+                    if effective_outline_ids[v.id] in outlines
+                    else None
+                ),
+                outline_sections=(
+                    (outlines[effective_outline_ids[v.id]].input_metadata or {}).get(
+                        "outline"
+                    )
+                    or []
+                    if effective_outline_ids[v.id] in outlines
+                    else []
+                ),
+                quality_review=reviews_by_version.get(str(v.id)),
                 created_at=v.created_at,
             )
             for v in versions
@@ -149,6 +272,8 @@ class DocumentService:
 
         doc.current_content = source_version.content
         doc.current_version_id = source_version.id
+        if source_version.outline_operation_id is not None:
+            doc.current_outline_operation_id = source_version.outline_operation_id
         doc.lock_version += 1
 
         await self._session.commit()

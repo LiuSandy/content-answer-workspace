@@ -11,6 +11,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.application.context.writing_background import WritingBackground
+from app.application.document_service import DocumentService
 from app.application.writer_service import (
     WriterRunCapture,
     _version_type_for,
@@ -195,6 +196,147 @@ async def test_deferred_writer_creates_exactly_one_final_version(monkeypatch):
         assert operation.status == "completed"
         assert operation.result_version_id == version.id
         assert operation.output_metadata == {"creationReview": {"iterations": 3}}
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_deferred_writer_links_final_version_to_selected_outline(monkeypatch):
+    db, engine = await _make_db()
+    doc_id, _ = await _setup_doc(db)
+    outline_operation_id = uuid.uuid4()
+    capture = WriterRunCapture(
+        operation_id=uuid.uuid4(),
+        document_id=doc_id,
+        content="draft",
+        outline_operation_id=outline_operation_id,
+    )
+
+    async with db() as session:
+        session.add(AIOperation(
+            id=capture.operation_id,
+            document_id=doc_id,
+            operation_type="generate",
+            status="running",
+        ))
+        await session.commit()
+        version = await finalize_deferred_writer_run(
+            session=session,
+            capture=capture,
+            final_content="final",
+            expected_lock_version=1,
+            output_metadata={},
+        )
+        assert version.outline_operation_id == outline_operation_id
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_version_summary_includes_content_outline_and_review(monkeypatch):
+    db, engine = await _make_db()
+    doc_id, _ = await _setup_doc(db)
+    outline_id = uuid.uuid4()
+
+    async with db() as session:
+        session.add(AIOperation(
+            id=outline_id,
+            document_id=doc_id,
+            operation_type="outline",
+            status="completed",
+            input_metadata={
+                "outlineVersion": 3,
+                "outlineStatus": "confirmed",
+                "outline": [
+                    {"heading": "核心结构", "keyPoints": ["论据"], "wordCountEstimate": 300}
+                ],
+            },
+        ))
+        await session.commit()
+        version = await DocumentService(session).create_version(
+            document_id=doc_id,
+            content="第一段内容。\n\n第二段内容，用于验证历史版本摘要。",
+            version_type="initial_generation",
+            expected_lock_version=1,
+            provider="deepseek",
+            model="deepseek-v4-pro",
+            outline_operation_id=outline_id,
+        )
+        session.add(AIOperation(
+            document_id=doc_id,
+            operation_type="generate",
+            status="completed",
+            result_version_id=version.id,
+            output_metadata={
+                "creationReview": {
+                    "iterations": 2,
+                    "passed": True,
+                    "selectedIteration": 2,
+                    "reviewStatus": "completed",
+                    "rounds": [
+                        {"iteration": 1, "overallScore": 70, "passed": False},
+                        {"iteration": 2, "overallScore": 86, "passed": True},
+                    ],
+                    "finalReport": {
+                        "overallScore": 86,
+                        "dimensionScores": {
+                            "relevance": 90,
+                            "information_density": 84,
+                            "readability": 86,
+                            "logic_coherence": 85,
+                            "word_count_compliance": 88,
+                        },
+                        "issues": [],
+                        "suggestions": ["保持当前结构"],
+                        "summary": "整体质量良好",
+                    },
+                }
+            },
+        ))
+        await session.commit()
+
+        summary = (await DocumentService(session).list_versions(doc_id))[0]
+        assert summary.content_summary == "第一段内容。 第二段内容，用于验证历史版本摘要。"
+        assert summary.outline_version_number == 3
+        assert summary.outline_status == "confirmed"
+        assert summary.outline_sections[0]["heading"] == "核心结构"
+        assert summary.quality_review["overallScore"] == 86
+        assert summary.quality_review["summary"] == "整体质量良好"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_current_legacy_version_falls_back_to_latest_document_outline(monkeypatch):
+    db, engine = await _make_db()
+    doc_id, _ = await _setup_doc(db)
+
+    async with db() as session:
+        version = await DocumentService(session).create_version(
+            document_id=doc_id,
+            content="旧版本正文",
+            version_type="initial_generation",
+            expected_lock_version=1,
+        )
+        outline = AIOperation(
+            document_id=doc_id,
+            operation_type="outline",
+            status="completed",
+            input_metadata={
+                "outlineStatus": "draft",
+                "outline": [
+                    {"heading": "后补的大纲", "keyPoints": ["要点"], "wordCountEstimate": 200}
+                ],
+            },
+        )
+        session.add(outline)
+        await session.commit()
+
+        summaries = await DocumentService(session).list_versions(doc_id)
+        assert summaries[0].id == str(version.id)
+        assert summaries[0].outline_operation_id == str(outline.id)
+        assert summaries[0].outline_version_number == 1
+        assert summaries[0].outline_sections[0]["heading"] == "后补的大纲"
 
     await engine.dispose()
 

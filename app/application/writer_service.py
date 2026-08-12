@@ -41,6 +41,7 @@ class WriterRunCapture:
     input_tokens: int = 0
     output_tokens: int = 0
     latency_ms: int = 0
+    outline_operation_id: uuid.UUID | None = None
 
 
 def _version_type_for(operation: str) -> str:
@@ -65,6 +66,7 @@ async def run_writer_stream(
     version_extra: dict | None = None,
     defer_version: bool = False,
     capture: WriterRunCapture | None = None,
+    outline_operation_id: uuid.UUID | None = None,
 ) -> AsyncIterator[str]:
     """统一的 LLM 执行引擎。
 
@@ -117,6 +119,11 @@ async def run_writer_stream(
             "temperature": rendered.temperature,
             "max_tokens": rendered.max_tokens,
         },
+        input_metadata={
+            "outlineOperationId": (
+                str(outline_operation_id) if outline_operation_id else None
+            )
+        },
     )
     session.add(ai_op)
     await session.commit()
@@ -151,6 +158,7 @@ async def run_writer_stream(
             capture.input_tokens = input_tokens
             capture.output_tokens = output_tokens or len(full_text) // 2
             capture.latency_ms = latency_ms
+            capture.outline_operation_id = outline_operation_id
             return
 
         doc_service = DocumentService(session)
@@ -241,6 +249,7 @@ async def finalize_deferred_writer_run(
         "prompt_version": capture.prompt_version,
         "provider": capture.provider,
         "model": capture.model,
+        "outline_operation_id": capture.outline_operation_id,
     }
     try:
         version = await doc_service.create_version(
