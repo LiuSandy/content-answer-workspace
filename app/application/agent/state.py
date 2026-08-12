@@ -23,6 +23,8 @@ class ChatAgentState(TypedDict):
     intent_reason: str | None
     intent_platform: str | None
     intent_query: str | None
+    intent_limit: int | None
+    intent_sort: Literal["relevance", "hot", "latest"] | None
     extracted_urls: list[str]
     collection_request: CollectionRequest | None
     tool_result: ToolResult | None

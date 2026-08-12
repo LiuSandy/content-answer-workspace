@@ -152,6 +152,8 @@ class IntentRoute(BaseModel):
     confidence: float = Field(default=0.9, ge=0.0, le=1.0)
     platform: str | None = None
     query: str | None = None
+    limit: int = Field(default=10, ge=1, le=20)
+    sort: Literal["relevance", "hot", "latest"] = "relevance"
     reason: str | None = None
 
     model_config = {"populate_by_name": True}

@@ -50,7 +50,7 @@ _COLLECT_VERBS = (
     "搜一下", "搜搜", "搜索", "检索", "采集", "帮我找", "找找", "看看有没有",
     "查一下", "查询", "爬取", "搜集", "看看", "找一些", "找点", "帮我搜",
     "有哪些", "有什么", "推荐一些", "整理一下", "热门讨论", "热门帖子",
-    "有没有", "有没有好用的", "search", "find", "collect", "fetch",
+    "有没有", "有没有好用的", "找", "search", "find", "collect", "fetch",
 )
 
 # 帖子类目标名词（与动词配合：搜…帖子/笔记/回答/话题）
@@ -76,6 +76,28 @@ _MULTI_AGENT_MARKERS = (
 
 _URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
+_CHINESE_DIGITS = {
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+_COUNT_PATTERN = re.compile(
+    r"(?:(?:不要|别|不用)\s*太多\s*[，,、;；]?\s*)?"
+    r"(?:(?:只要|最多|至多|不超过|返回|给我|来|要|找)\s*)?"
+    r"(?P<count>\d{1,3}|[一二两三四五六七八九十]{1,3})\s*"
+    r"(?:个|条|篇)(?:问题|回答|帖子|结果|内容|视频|笔记)?"
+    r"(?:就行|即可|左右|以内)?"
+)
+_HOT_MARKERS = ("回答最多", "讨论最多", "最热门", "热门", "热榜", "高赞", "最热")
+_LATEST_MARKERS = ("最近发布", "最新发布", "最新", "近期", "刚发布")
+
 
 def extract_urls(message: str) -> list[str]:
     """提取消息中的 URL。"""
@@ -100,26 +122,72 @@ def _detect_platform(message: str) -> str | None:
     return None
 
 
-def _extract_query(message: str, platform: str | None) -> str:
+def _parse_requested_count(value: str) -> int | None:
+    if value.isdigit():
+        return int(value)
+    if value == "十":
+        return 10
+    if "十" in value:
+        tens_text, ones_text = value.split("十", 1)
+        tens = _CHINESE_DIGITS.get(tens_text, 1) if tens_text else 1
+        ones = _CHINESE_DIGITS.get(ones_text, 0) if ones_text else 0
+        return tens * 10 + ones
+    if len(value) == 1:
+        return _CHINESE_DIGITS.get(value)
+    return None
+
+
+def _extract_search_constraints(message: str) -> tuple[int, str, bool, bool]:
+    """Extract result count and ordering without mixing them into the query."""
+
+    match = _COUNT_PATTERN.search(message)
+    requested = _parse_requested_count(match.group("count")) if match else None
+    limit = max(1, min(20, requested or 10))
+    has_hot_sort = any(marker in message for marker in _HOT_MARKERS)
+    has_latest_sort = any(marker in message for marker in _LATEST_MARKERS)
+    if has_hot_sort:
+        sort = "hot"
+    elif has_latest_sort:
+        sort = "latest"
+    else:
+        sort = "relevance"
+    return limit, sort, match is not None, has_hot_sort or has_latest_sort
+
+
+def _extract_query(message: str, platform: str | None, sort: str = "relevance") -> str:
     """从采集消息中粗提取搜索词：去掉平台名与常见动作/目标词后取剩余。
 
     规则层只做粗提取，精修由 LLM 层完成。失败返回空串。
     """
+    message = _COUNT_PATTERN.sub(" ", message)
+    message = re.sub(r"(?:不要|别|不用)\s*太多", " ", message)
     if platform:
         for alias in _PLATFORM_ALIASES.get(platform, ()):
-            message = message.replace(alias, " ")
-    for verb in _COLLECT_VERBS:
+            message = re.sub(re.escape(alias), " ", message, flags=re.IGNORECASE)
+    for prefix in ("请您", "帮我", "帮忙", "麻烦", "请"):
+        message = message.replace(prefix, " ")
+    for verb in sorted(_COLLECT_VERBS, key=len, reverse=True):
         message = message.replace(verb, " ")
-    for noun in _COLLECT_NOUNS:
+    for noun in sorted(_COLLECT_NOUNS, key=len, reverse=True):
         message = message.replace(noun, " ")
-    # 去掉常见标点、语气词和约束词
-    message = message.replace("，", " ").replace(",", " ").replace("。", " ").replace("？", " ")
-    message = message.replace("?", " ").replace("!", " ").replace("！", " ")
-    for filler in ("请您", "请", "帮我", "帮忙", "只要", "需要", "不要", "别", "太", "就", "的", "要",
-                   "一下", "重新", "关于", "行", "多也", "最多", "不少于", "大于", "最近", "帖子", "然后"):
+    for marker in (*_HOT_MARKERS, *_LATEST_MARKERS):
+        message = message.replace(marker, " ")
+    message = re.sub(r"[，,。？?！!；;：:、]", " ", message)
+    for filler in (
+        "请您", "帮我", "帮忙", "麻烦", "请", "一下", "重新", "关于",
+        "只要", "需要", "然后", "就行", "即可",
+    ):
         message = message.replace(filler, " ")
-    words = [w.strip() for w in message.split() if w.strip()]
-    return " ".join(words)
+    message = re.sub(r"^\s*(?:在|上|里|中的|的)+", "", message)
+    message = re.sub(r"(?:相关|中的|里的|上面的|的)+\s*$", "", message)
+    query = " ".join(part for part in message.split() if part)
+    if query:
+        return query
+    if sort == "hot":
+        return "热门"
+    if sort == "latest":
+        return "最新"
+    return ""
 
 
 def detect_intent_by_rules(message: str) -> dict[str, Any] | None:
@@ -182,23 +250,33 @@ def detect_intent_by_rules(message: str) -> dict[str, Any] | None:
     # 6. 平台采集
     platform = _detect_platform(message)
     if platform and any(v in message for v in _COLLECT_VERBS):
-        query = _extract_query(message, platform)
+        limit, sort, limit_explicit, sort_explicit = _extract_search_constraints(message)
+        query = _extract_query(message, platform, sort)
         return {
             "intent": "chat",
             "knowledge_mode": knowledge_mode,
             "platform": platform,
             "query": query or None,
+            "limit": limit,
+            "sort": sort,
+            "_limit_explicit": limit_explicit,
+            "_sort_explicit": sort_explicit,
             "reason": "rule: platform collection",
             "confidence": 1.0,
         }
 
     # 7. 有采集动作但没有平台名（默认当作普通对话，交给 LLM 决定平台）
     if any(v in message for v in _COLLECT_VERBS):
+        limit, sort, limit_explicit, sort_explicit = _extract_search_constraints(message)
         return {
             "intent": "chat",
             "knowledge_mode": knowledge_mode,
             "platform": None,
-            "query": _extract_query(message, None) or None,
+            "query": _extract_query(message, None, sort) or None,
+            "limit": limit,
+            "sort": sort,
+            "_limit_explicit": limit_explicit,
+            "_sort_explicit": sort_explicit,
             "reason": "rule: generic collection",
             "confidence": 0.8,
         }

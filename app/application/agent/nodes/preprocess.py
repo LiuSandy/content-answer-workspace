@@ -15,6 +15,8 @@ async def preprocess_node(state: ChatAgentState) -> dict:
         "intent_reason": None,
         "intent_platform": None,
         "intent_query": None,
+        "intent_limit": None,
+        "intent_sort": None,
         "tool_result": None,
         "error": None,
         "response_payload": None,

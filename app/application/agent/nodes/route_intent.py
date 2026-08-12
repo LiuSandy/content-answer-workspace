@@ -38,6 +38,8 @@ def _default_result(message: str, existing_mode: str | None) -> dict:
         "intent_reason": "fallback: default chat",
         "intent_platform": None,
         "intent_query": None,
+        "intent_limit": None,
+        "intent_sort": None,
     }
 
 
@@ -50,10 +52,14 @@ async def route_intent_node(state: ChatAgentState) -> dict:
     # ── L0 规则层 ──────────────────────────────────────────────────────────
     rule_result = detect_intent_by_rules(message)
     if rule_result is not None and rule_result.get("confidence", 1.0) >= 1.0:
+        rule_result.pop("_limit_explicit", None)
+        rule_result.pop("_sort_explicit", None)
         rule_result.setdefault("intent_confidence", 1.0)
         rule_result.setdefault("intent_reason", "rule")
         rule_result.setdefault("intent_platform", rule_result.get("platform"))
         rule_result.setdefault("intent_query", rule_result.get("query"))
+        rule_result.setdefault("intent_limit", rule_result.get("limit", 10))
+        rule_result.setdefault("intent_sort", rule_result.get("sort", "relevance"))
         # 显式 strict/off 优先保留（测试/内部直连兼容）
         if existing_mode in ("strict", "off"):
             rule_result["knowledge_mode"] = existing_mode
@@ -109,11 +115,15 @@ async def route_intent_node(state: ChatAgentState) -> dict:
 
         # 规则层已有低置信结果（如 generic collection）：用 LLM 精修其 platform/query
         if rule_result is not None:
+            limit_explicit = bool(rule_result.pop("_limit_explicit", False))
+            sort_explicit = bool(rule_result.pop("_sort_explicit", False))
             rule_result.update({
                 "intent_confidence": confidence,
                 "intent_reason": route.reason or "rule+llm",
                 "intent_platform": route.platform or rule_result.get("platform"),
                 "intent_query": route.query or rule_result.get("query"),
+                "intent_limit": rule_result.get("limit", 10) if limit_explicit else route.limit,
+                "intent_sort": rule_result.get("sort", "relevance") if sort_explicit else route.sort,
             })
             return rule_result
 
@@ -124,6 +134,8 @@ async def route_intent_node(state: ChatAgentState) -> dict:
             "intent_reason": route.reason or "llm",
             "intent_platform": route.platform,
             "intent_query": route.query,
+            "intent_limit": route.limit,
+            "intent_sort": route.sort,
         }
     except Exception as e:
         logger.warning("Intent routing failed, defaulting to chat: %s", e)

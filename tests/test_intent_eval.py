@@ -117,15 +117,18 @@ async def test_route_invalid_intent_normalized(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_route_llm_platform_query_captured(monkeypatch):
-    """LLM 层返回的 platform/query 被捕获到 state。"""
+    """LLM 层返回的平台搜索结构被完整捕获到 state。"""
     _make_llm_mock(
         monkeypatch,
         '{"intent": "chat", "knowledge_mode": "normal", "platform": "zhihu", '
-        '"query": "AI 副业", "confidence": 0.9, "reason": "search"}',
+        '"query": "AI 副业", "limit": 5, "sort": "hot", '
+        '"confidence": 0.9, "reason": "search"}',
     )
     out = await route_intent_node(_state("帮我找找 AI 副业的东西"))
     assert out["intent_platform"] == "zhihu"
     assert out["intent_query"] == "AI 副业"
+    assert out["intent_limit"] == 5
+    assert out["intent_sort"] == "hot"
 
 
 @pytest.mark.asyncio

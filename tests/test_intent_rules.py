@@ -59,6 +59,8 @@ def test_rule_zhihu_search():
     r = detect_intent_by_rules("帮我搜搜知乎上关于副业的热门讨论")
     assert r["intent"] == "chat"
     assert r["platform"] == "zhihu"
+    assert r["query"] == "副业"
+    assert r["sort"] == "hot"
 
 
 def test_zhihu_collection_removes_polite_words_from_query():
@@ -67,6 +69,44 @@ def test_zhihu_collection_removes_polite_words_from_query():
     assert r is not None
     assert r["platform"] == "zhihu"
     assert r["query"] == "热门"
+
+
+def test_zhihu_collection_separates_topic_limit_and_hot_sort():
+    r = detect_intent_by_rules(
+        "帮忙检索一下知乎的关于个人网站的热门问题，不要太多，五个就行"
+    )
+
+    assert r is not None
+    assert r["platform"] == "zhihu"
+    assert r["query"] == "个人网站"
+    assert r["limit"] == 5
+    assert r["sort"] == "hot"
+
+
+def test_platform_collection_parses_arabic_limit_and_latest_sort():
+    r = detect_intent_by_rules("请在知乎搜索 AI 编程最新的问题，最多3条")
+
+    assert r is not None
+    assert r["query"] == "AI 编程"
+    assert r["limit"] == 3
+    assert r["sort"] == "latest"
+
+
+def test_platform_collection_clamps_requested_limit():
+    r = detect_intent_by_rules("知乎搜索个人网站问题，返回100条")
+
+    assert r is not None
+    assert r["query"] == "个人网站"
+    assert r["limit"] == 20
+
+
+def test_platform_collection_understands_bare_find_with_count():
+    r = detect_intent_by_rules("B站找10个AI视频")
+
+    assert r is not None
+    assert r["platform"] == "bilibili"
+    assert r["query"] == "AI"
+    assert r["limit"] == 10
 
 
 def test_rule_bilibili_collection():
