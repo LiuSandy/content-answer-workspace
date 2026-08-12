@@ -59,4 +59,5 @@ class UserMemoryModel(Base):
 
     __table_args__ = (
         Index("ix_user_memories_workspace_type", "workspace_id", "memory_type"),
+        Index("ix_user_memories_workspace_status", "workspace_id", "status"),
     )

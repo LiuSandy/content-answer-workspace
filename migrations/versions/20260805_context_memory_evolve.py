@@ -58,10 +58,10 @@ def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == 'postgresql':
         # 确保 pgvector 扩展已启用（paradedb 镜像已预装）
-        connection = bind.engine.connect()
-        connection.execution_options(isolation_level="AUTOCOMMIT")
-        connection.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
-        connection.close()
+        # autocommit_block 同时支持在线迁移与 `alembic --sql` 离线渲染；
+        # 不能在迁移中另开 bind.engine 连接，否则离线模式会在这里提前终止。
+        with op.get_context().autocommit_block():
+            op.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
         # 转换：array → json → text → vector
         op.execute(sa.text("ALTER TABLE user_memories ADD COLUMN embedding_v vector(1536)"))
         op.execute(sa.text(

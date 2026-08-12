@@ -42,6 +42,10 @@ package = false
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+  "slow: tests that generate migrations or perform other slow local work",
+  "postgres: tests that require a live PostgreSQL/pgvector database",
+]
 
 [dependency-groups]
 dev = [

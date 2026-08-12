@@ -63,8 +63,9 @@ def _offline_sql() -> str:
 def test_migration_sql_contains_vector_conversion():
     sql = _offline_sql()
     assert "vector(1536)" in sql
-    assert "embedding::vector" in sql
-    assert "json_array_length(" in sql
+    assert "array_to_json(embedding)" in sql
+    assert "::vector" in sql
+    assert "array_length(embedding, 1) = 1536" in sql
     assert "1536" in sql
 
 
@@ -73,6 +74,14 @@ def test_migration_sql_contains_hnsw_index():
     sql = _offline_sql()
     assert "ix_user_memories_embedding_hnsw" in sql
     assert "USING hnsw" in sql  # uppercase in offline SQL
+    assert "vector_cosine_ops" in sql
+
+
+@pytest.mark.slow
+def test_migration_sql_contains_memory_scope_filter_index_and_dimension_audit():
+    sql = _offline_sql()
+    assert "vector_dims(embedding) <> 1536" in sql
+    assert "ix_user_memories_workspace_status" in sql
 
 
 @pytest.mark.slow
