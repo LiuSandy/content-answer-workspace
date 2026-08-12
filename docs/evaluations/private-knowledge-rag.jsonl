@@ -1,3 +1,3 @@
-{"id": "eval_1", "domain": "algorithm", "question": "请解释红黑树的五大性质", "expected_mode": "normal", "expected_citations": ["[S1]"]}
-{"id": "eval_2", "domain": "website_building", "question": "如何使用 Docker 部署 Next.js 全栈应用？", "expected_mode": "normal", "expected_citations": ["[S1]", "[S2]"]}
-{"id": "eval_3", "domain": "algorithm_strict", "question": "仅依据私有资料回答跳表的时间复杂度", "expected_mode": "strict", "expected_citations": ["[S1]"]}
+{"id":"eval_1","domain":"algorithm","question":"请解释红黑树的五大性质","relevantDocumentIds":["doc-red-black-tree"],"relevanceGrades":{"doc-red-black-tree":3,"doc-bst":1},"expectedMode":"normal","expectedRefusal":false,"expectedCitationDocumentIds":["doc-red-black-tree"]}
+{"id":"eval_2","domain":"website_building","question":"如何使用 Docker 部署 Next.js 全栈应用？","relevantDocumentIds":["doc-nextjs-docker","doc-reverse-proxy"],"relevanceGrades":{"doc-nextjs-docker":3,"doc-reverse-proxy":2},"expectedMode":"normal","expectedRefusal":false,"expectedCitationDocumentIds":["doc-nextjs-docker","doc-reverse-proxy"]}
+{"id":"eval_3","domain":"algorithm_strict","question":"仅依据私有资料回答跳表的时间复杂度","relevantDocumentIds":["doc-skip-list"],"relevanceGrades":{"doc-skip-list":3},"expectedMode":"strict","expectedRefusal":false,"expectedCitationDocumentIds":["doc-skip-list"]}
