@@ -104,6 +104,7 @@ class _FakeLLM:
 
 class _FakeEmbedder:
     def __init__(self):
+        self.dimensions = 8
         self.embed = AsyncMock(return_value=[[0.1] * 8, [0.2] * 8])
 
 

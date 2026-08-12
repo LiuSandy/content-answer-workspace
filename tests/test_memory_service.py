@@ -48,6 +48,7 @@ async def test_extract_memories_persists(monkeypatch):
     monkeypatch.setattr("app.application.memory_service._get_memory_llm", lambda: fake_llm)
 
     fake_provider = MagicMock()
+    fake_provider.dimensions = 8
     fake_provider.embed = AsyncMock(return_value=[[0.1] * 8])
     monkeypatch.setattr(
         "app.application.memory_service._get_embedding_provider",

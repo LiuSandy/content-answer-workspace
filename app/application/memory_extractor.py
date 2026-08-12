@@ -59,6 +59,8 @@ async def _extract_once(
     if contents:
         try:
             vecs = await embedding_provider.embed(contents)
+            from ..infrastructure.knowledge.embedding import validate_embeddings
+            validate_embeddings(contents, vecs, embedding_provider.dimensions)
             embeddings = [list(v) for v in vecs]
         except Exception as e:  # noqa: BLE001 - 向量化失败静默降级，仅存文本
             logger.warning("Memory embedding failed, persist without vectors: %s", e)

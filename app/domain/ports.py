@@ -157,11 +157,11 @@ class DocumentParserPort(Protocol):
 
 class EmbeddingProviderPort(Protocol):
     """Embedding 向量计算端口。"""
+    dimensions: int
     async def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
 class RerankerProviderPort(Protocol):
     """Reranker 重排序端口。"""
     async def rerank(self, query: str, documents: list[str]) -> list[float]: ...
-
 

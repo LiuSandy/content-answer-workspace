@@ -182,6 +182,9 @@ def get_knowledge_settings() -> KnowledgeSettings:
         sources_dir=sources_dir,
         documents_dir=documents_dir,
         embedding_dimensions=embedding_dims,
+        embedding_api_key=os.getenv("EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY", "")),
+        embedding_base_url=os.getenv("EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
         rrf_k=rrf_k,
         evidence_threshold=threshold,
         parent_chunk_max_tokens=parse_positive_int(os.getenv("KNOWLEDGE_PARENT_CHUNK_MAX_TOKENS"), 1200),
@@ -190,4 +193,3 @@ def get_knowledge_settings() -> KnowledgeSettings:
         max_upload_bytes=parse_positive_int(os.getenv("KNOWLEDGE_MAX_UPLOAD_BYTES"), 50 * 1024 * 1024),
         embedding_batch_size=parse_positive_int(os.getenv("EMBEDDING_BATCH_SIZE"), 20),
     )
-

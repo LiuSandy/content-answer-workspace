@@ -45,12 +45,9 @@ def _get_memory_llm():
 
 def _get_embedding_provider():
     """复用知识库 Embedding Provider。"""
-    from ..core.config import get_knowledge_settings
-    from ..infrastructure.knowledge.embedding import EmbeddingProviderPort
-    from ..infrastructure.knowledge.embedding import KnowledgeEmbeddingProvider
+    from ..infrastructure.knowledge.embedding import get_embedding_provider
 
-    settings = get_knowledge_settings()
-    return KnowledgeEmbeddingProvider(settings)
+    return get_embedding_provider()
 
 
 def _parse_extraction_json(content: str) -> list[dict[str, Any]]:
@@ -115,6 +112,8 @@ async def extract_memories(
         try:
             provider = _get_embedding_provider()
             vecs = await provider.embed(contents)
+            from ..infrastructure.knowledge.embedding import validate_embeddings
+            validate_embeddings(contents, vecs, provider.dimensions)
             embeddings = [list(v) for v in vecs]
         except Exception as e:
             logger.warning("Memory embedding failed, will persist without vectors: %s", e)
@@ -320,6 +319,8 @@ async def update_memory_content(
         try:
             provider = _get_embedding_provider()
             vecs = await provider.embed([content])
+            from ..infrastructure.knowledge.embedding import validate_embeddings
+            validate_embeddings([content], vecs, provider.dimensions)
             mem.embedding = list(vecs[0])
         except Exception as e:  # noqa: BLE001 - 向量化失败保留旧 embedding
             logger.warning("Re-embed on memory edit failed: %s", e)

@@ -1,10 +1,36 @@
 import asyncio
 import logging
+import math
 import random
+from typing import TYPE_CHECKING
+
 from openai import AsyncOpenAI
 from app.core.config import get_knowledge_settings
 
+if TYPE_CHECKING:
+    from app.domain.ports import EmbeddingProviderPort
+
 logger = logging.getLogger(__name__)
+
+
+def validate_embeddings(
+    texts: list[str],
+    embeddings: list[list[float]],
+    expected_dimensions: int,
+) -> None:
+    """拒绝数量、维度或数值非法的远端 Embedding 输出。"""
+    if len(embeddings) != len(texts):
+        raise ValueError(
+            f"Expected {len(texts)} embeddings, got {len(embeddings)}"
+        )
+    for index, vector in enumerate(embeddings):
+        if len(vector) != expected_dimensions:
+            raise ValueError(
+                f"Expected {expected_dimensions} dimensions for embedding "
+                f"{index}, got {len(vector)}"
+            )
+        if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in vector):
+            raise ValueError(f"Embedding {index} must contain only finite numbers")
 
 
 class EmbeddingNotConfiguredError(RuntimeError):
@@ -75,13 +101,10 @@ class OpenAIEmbeddingProvider:
                 results = []
                 for data in response.data:
                     vec = data.embedding
-                    if len(vec) != self.dimensions:
-                        raise ValueError(f"Expected {self.dimensions} dimensions, got {len(vec)}")
                     norm = sum(x * x for x in vec) ** 0.5
                     norm_vec = [x / norm for x in vec] if norm > 0 else vec
                     results.append(norm_vec)
-                if len(results) != len(batch):
-                    raise ValueError(f"Expected {len(batch)} embeddings, got {len(results)}")
+                validate_embeddings(batch, results, self.dimensions)
                 return results
             except Exception as e:
                 last_error = e
@@ -99,7 +122,7 @@ class OpenAIEmbeddingProvider:
         return results
 
 
-def get_embedding_provider():
+def get_embedding_provider() -> "EmbeddingProviderPort":
     """生产 embedding provider 工厂。
 
     未配置 key 时显式抛 EmbeddingNotConfiguredError 而非返回 Mock：
@@ -109,5 +132,9 @@ def get_embedding_provider():
     if not settings.embedding_api_key:
         raise EmbeddingNotConfiguredError(
             "Embedding 未配置：请设置 EMBEDDING_API_KEY 或 OPENAI_API_KEY 后重试"
+        )
+    if settings.embedding_dimensions != 1536:
+        raise ValueError(
+            "EMBEDDING_DIMENSIONS must be 1536 to match PostgreSQL vector(1536)"
         )
     return OpenAIEmbeddingProvider()
