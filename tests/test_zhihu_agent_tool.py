@@ -67,3 +67,44 @@ async def test_zhihu_search_marks_authentication_failure_as_non_retryable(monkey
         "message": "知乎登录凭据已失效，请更新 Cookie 和请求签名后重试。",
         "items": [],
     }
+
+
+@pytest.mark.asyncio
+async def test_zhihu_search_treats_missing_signature_as_authentication_failure(monkeypatch):
+    monkeypatch.setattr(
+        zhihu_tool,
+        "search_zhihu_for_keyword",
+        AsyncMock(side_effect=ValueError("当前缺少：ZHIHU_X_ZSE_96")),
+    )
+
+    raw = await zhihu_tool.zhihu_search.ainvoke({"keyword": "个人网站", "limit": 5})
+    result = json.loads(raw)
+
+    assert result["error_code"] == "zhihu_auth_invalid"
+    assert result["retryable"] is False
+    assert "登录凭据" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_zhihu_hot_search_fetches_candidates_and_returns_most_answered(monkeypatch):
+    items = [
+        QuestionItem(
+            id=str(index),
+            title=f"问题{index}",
+            url=f"https://www.zhihu.com/question/{index}",
+            answerCount=answer_count,
+            topic="个人网站",
+        )
+        for index, answer_count in ((1, 3), (2, 30), (3, 12))
+    ]
+    search = AsyncMock(return_value=items)
+    monkeypatch.setattr(zhihu_tool, "search_zhihu_for_keyword", search)
+
+    raw = await zhihu_tool.zhihu_search.ainvoke(
+        {"keyword": "个人网站", "limit": 2, "sort": "hot"}
+    )
+    result = json.loads(raw)
+
+    search.assert_awaited_once()
+    assert search.await_args.kwargs["limit"] == 8
+    assert [item["title"] for item in result["items"]] == ["问题2", "问题3"]

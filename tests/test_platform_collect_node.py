@@ -22,6 +22,8 @@ def _state() -> dict:
         "intent": "chat",
         "intent_platform": "zhihu",
         "intent_query": "热门",
+        "intent_limit": 10,
+        "intent_sort": "relevance",
         "messages": [],
     }
 
@@ -57,7 +59,7 @@ async def test_platform_collect_invokes_only_matching_tool_once(monkeypatch):
 
     result = await platform_collect.platform_collect_node(_state())
 
-    assert tool.calls == [{"keyword": "热门", "limit": 10}]
+    assert tool.calls == [{"keyword": "热门", "limit": 10, "sort": "relevance"}]
     assert len(result["messages"]) == 2
     assert result["messages"][0].name == "zhihu_search"
     assert json.loads(result["messages"][0].content)["items"][0]["title"] == "问题一"
@@ -82,7 +84,7 @@ async def test_platform_collect_turns_tool_error_into_terminal_response(monkeypa
 
     result = await platform_collect.platform_collect_node(_state())
 
-    assert tool.calls == [{"keyword": "热门", "limit": 10}]
+    assert tool.calls == [{"keyword": "热门", "limit": 10, "sort": "relevance"}]
     assert len(result["messages"]) == 2
     assert result["messages"][1].content == "知乎检索失败：知乎登录凭据已失效，请更新凭据后重试。"
 
@@ -99,3 +101,23 @@ def test_generic_chat_has_no_platform_search_route(monkeypatch):
     assert platform_collect.has_platform_search_route(
         {"intent": "chat", "intent_platform": None, "intent_query": "热门"}
     ) is False
+
+
+@pytest.mark.asyncio
+async def test_platform_collect_passes_parsed_limit_and_sort(monkeypatch):
+    from app.application.agent.nodes import platform_collect
+
+    tool = _FakeSearchTool({"platform": "zhihu", "items": []})
+    monkeypatch.setattr(platform_collect, "ALL_TOOLS", [tool])
+    state = _state()
+    state.update(
+        {
+            "intent_query": "个人网站",
+            "intent_limit": 5,
+            "intent_sort": "hot",
+        }
+    )
+
+    await platform_collect.platform_collect_node(state)
+
+    assert tool.calls == [{"keyword": "个人网站", "limit": 5, "sort": "hot"}]

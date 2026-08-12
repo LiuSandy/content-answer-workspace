@@ -18,10 +18,11 @@ class _PlatformSearchSpec:
     tool_name: str
     query_argument: str
     supports_limit: bool = True
+    sort_argument: str | None = None
 
 
 _PLATFORM_SEARCH_SPECS = {
-    "zhihu": _PlatformSearchSpec("zhihu_search", "keyword"),
+    "zhihu": _PlatformSearchSpec("zhihu_search", "keyword", sort_argument="sort"),
     "xiaohongshu": _PlatformSearchSpec("xiaohongshu_search", "query"),
     "bilibili": _PlatformSearchSpec("bilibili_search", "query"),
     "twitter": _PlatformSearchSpec("twitter_search", "query"),
@@ -96,7 +97,16 @@ async def platform_collect_node(state: ChatAgentState) -> dict:
 
     arguments: dict[str, Any] = {spec.query_argument: query}
     if spec.supports_limit:
-        arguments["limit"] = 10
+        try:
+            requested_limit = int(state.get("intent_limit") or 10)
+        except (TypeError, ValueError):
+            requested_limit = 10
+        arguments["limit"] = max(1, min(20, requested_limit))
+    if spec.sort_argument:
+        requested_sort = str(state.get("intent_sort") or "relevance")
+        arguments[spec.sort_argument] = (
+            requested_sort if requested_sort in {"relevance", "hot", "latest"} else "relevance"
+        )
 
     try:
         raw = await tool.ainvoke(arguments)
