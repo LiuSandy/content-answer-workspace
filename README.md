@@ -119,6 +119,25 @@ bun run dev
 ```
 前端开发服务默认监听：`http://127.0.0.1:5173`。
 
+### 4. 后端日志
+
+后端日志同时输出到控制台和项目根目录下的日期目录：
+
+```text
+logs/YYYY-MM-DD/info.log
+logs/YYYY-MM-DD/warning.log
+logs/YYYY-MM-DD/error.log
+logs/YYYY-MM-DD/critical.log
+```
+
+日志文件内部为一行一条 JSON。默认 `LOG_LEVEL=INFO`；如需调试日志，在 `.env` 中设置：
+
+```dotenv
+LOG_LEVEL=DEBUG
+```
+
+此时会额外生成 `logs/YYYY-MM-DD/debug.log`。每个级别文件默认达到 100MB 后独立轮转，历史日期目录默认保留 14 天。HTTP 响应的 `X-Request-ID` 可以用于关联同一次请求的日志；对话、生成和 PDF 识别日志还会携带对应的 run ID 或 job ID。
+
 ---
 
 ## 🔄 核心运行机制

@@ -2,6 +2,8 @@
 
 > 对应规格：[feature-structured-file-logging.md](../specs/feature-structured-file-logging.md)
 
+**状态：** 已完成
+
 ## Goal
 
 在不改变现有业务流程的前提下，统一接管后端应用、HTTP 访问、后台任务、Uvicorn 和第三方库日志，实现 JSON 控制台输出、按日期和级别分类落盘、单文件大小轮转、请求与任务上下文关联、敏感信息脱敏，以及 `LOG_LEVEL=INFO/DEBUG` 全局等级控制。
