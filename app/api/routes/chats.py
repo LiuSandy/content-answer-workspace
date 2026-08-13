@@ -599,14 +599,22 @@ async def send_message_stream(
                     summary_leaf = saved.id
                     assistant_text = full_text
 
-                    # 检查大模型在此轮对话中是否运行了 zhihu_search 或 xiaohongshu_search 工具
-                    # 若运行了，解析并将其持久化为 source_list 消息，从而支持前端结构化卡片与左键选中写作
+                    # 确定性平台采集结果保存在独立 state 字段中，不写入 ToolMessage；
+                    # 仍兼容读取普通 ReAct 工具调用产生的合法 ToolMessage。
                     messages_list = values.get("messages", [])
                     tool_items = []
                     tool_platform = None
                     tool_name = None
 
-                    for m in reversed(messages_list):
+                    platform_result = values.get("platform_collect_result") or {}
+                    if isinstance(platform_result, dict):
+                        result_items = platform_result.get("items")
+                        if isinstance(result_items, list):
+                            tool_items = result_items
+                            tool_platform = platform_result.get("platform")
+                            tool_name = platform_result.get("tool_type")
+
+                    for m in reversed(messages_list) if not tool_items else []:
                         if hasattr(m, "type") and m.type == "tool" and m.name in ("xiaohongshu_search", "zhihu_search"):
                             try:
                                 import json

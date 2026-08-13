@@ -61,6 +61,38 @@ def _rebuild_message(role: str, content: str):
     return AIMessage(content=content)
 
 
+def _drop_orphaned_tool_messages(messages: list) -> tuple[list, int]:
+    """移除没有对应 assistant tool_calls 的 ToolMessage。
+
+    旧版确定性平台采集节点曾把工具结果直接写成 ToolMessage，导致后续轮次
+    发送给 OpenAI-compatible API 时违反工具消息协议。这里同时防止上下文裁剪
+    把合法工具调用的 assistant 前置消息裁掉。
+    """
+    cleaned: list = []
+    pending_tool_call_ids: set[str] = set()
+    dropped = 0
+    for message in messages:
+        if isinstance(message, AIMessage):
+            pending_tool_call_ids = {
+                str(call.get("id"))
+                for call in (message.tool_calls or [])
+                if isinstance(call, dict) and call.get("id")
+            }
+            cleaned.append(message)
+            continue
+        if isinstance(message, ToolMessage):
+            tool_call_id = str(message.tool_call_id or "")
+            if tool_call_id and tool_call_id in pending_tool_call_ids:
+                cleaned.append(message)
+                pending_tool_call_ids.discard(tool_call_id)
+            else:
+                dropped += 1
+            continue
+        pending_tool_call_ids.clear()
+        cleaned.append(message)
+    return cleaned, dropped
+
+
 def _bound_messages(raw_messages: list, system_content: str, summary: str | None) -> tuple[list, dict]:
     """在模型输入预算内组装消息（roadmap R4）。
 
@@ -93,12 +125,14 @@ def _bound_messages(raw_messages: list, system_content: str, summary: str | None
         else:
             final.append(_rebuild_message(item["role"], item["content"]))
 
+    final, dropped_orphaned_tools = _drop_orphaned_tool_messages(final)
     meta = {
         "kept": len(composed.messages),
         "dropped": composed.dropped,
         "budget": composed.budget,
         "totalTokens": composed.total_tokens(),
         "truncated": composed.truncated_message_ids,
+        "droppedOrphanedTools": dropped_orphaned_tools,
     }
     return [SystemMessage(content=system_content)] + final, meta
 

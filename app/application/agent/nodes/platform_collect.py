@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any
-from uuid import uuid4
-
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage
 
 from ..state import ChatAgentState
 from ..tools import ALL_TOOLS
@@ -122,11 +120,6 @@ async def platform_collect_node(state: ChatAgentState) -> dict:
         }
         content = json.dumps(payload, ensure_ascii=False)
 
-    tool_message = ToolMessage(
-        content=content,
-        name=spec.tool_name,
-        tool_call_id=f"platform-{platform}-{uuid4().hex}",
-    )
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     error = str(payload.get("error") or "").strip()
     user_message = str(payload.get("message") or error).strip()
@@ -137,4 +130,11 @@ async def platform_collect_node(state: ChatAgentState) -> dict:
     else:
         response = f"已从{label}检索到 {len(items)} 条与“{query}”相关的结果。"
 
-    return {"messages": [tool_message, AIMessage(content=response)]}
+    return {
+        "messages": [AIMessage(content=response)],
+        "platform_collect_result": {
+            "tool_type": spec.tool_name,
+            "platform": platform,
+            "items": items,
+        },
+    }

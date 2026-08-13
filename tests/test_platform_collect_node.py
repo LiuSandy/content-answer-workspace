@@ -60,10 +60,11 @@ async def test_platform_collect_invokes_only_matching_tool_once(monkeypatch):
     result = await platform_collect.platform_collect_node(_state())
 
     assert tool.calls == [{"keyword": "热门", "limit": 10, "sort": "relevance"}]
-    assert len(result["messages"]) == 2
-    assert result["messages"][0].name == "zhihu_search"
-    assert json.loads(result["messages"][0].content)["items"][0]["title"] == "问题一"
-    assert "检索到 1 条" in result["messages"][1].content
+    assert len(result["messages"]) == 1
+    assert result["messages"][0].type == "ai"
+    assert "检索到 1 条" in result["messages"][0].content
+    assert result["platform_collect_result"]["tool_type"] == "zhihu_search"
+    assert result["platform_collect_result"]["items"][0]["title"] == "问题一"
 
 
 @pytest.mark.asyncio
@@ -85,8 +86,8 @@ async def test_platform_collect_turns_tool_error_into_terminal_response(monkeypa
     result = await platform_collect.platform_collect_node(_state())
 
     assert tool.calls == [{"keyword": "热门", "limit": 10, "sort": "relevance"}]
-    assert len(result["messages"]) == 2
-    assert result["messages"][1].content == "知乎检索失败：知乎登录凭据已失效，请更新凭据后重试。"
+    assert len(result["messages"]) == 1
+    assert result["messages"][0].content == "知乎检索失败：知乎登录凭据已失效，请更新凭据后重试。"
 
 
 def test_generic_chat_has_no_platform_search_route(monkeypatch):

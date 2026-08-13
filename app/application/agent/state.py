@@ -25,6 +25,8 @@ class ChatAgentState(TypedDict):
     intent_query: str | None
     intent_limit: int | None
     intent_sort: Literal["relevance", "hot", "latest"] | None
+    # 确定性平台采集结果独立保存，不伪装成 LLM ToolMessage。
+    platform_collect_result: dict | None
     extracted_urls: list[str]
     collection_request: CollectionRequest | None
     tool_result: ToolResult | None
