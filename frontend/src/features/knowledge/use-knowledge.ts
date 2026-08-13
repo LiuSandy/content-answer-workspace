@@ -8,6 +8,8 @@ import {
   confirmKnowledgeDocument,
   reconvertKnowledgeDocument,
   deleteKnowledgeDocument,
+  fetchKnowledgeSourceFiles,
+  scanKnowledgeSourceFiles,
 } from "./knowledge-api";
 
 export function useKnowledgeDocuments(workspaceId: string = "default", statusFilter?: string) {
@@ -20,6 +22,19 @@ export function useKnowledgeDocuments(workspaceId: string = "default", statusFil
         (doc) => doc.status === "pending" || doc.status === "indexing"
       );
       return hasActiveProcessing ? 2000 : false;
+    },
+  });
+}
+
+export function useKnowledgeSourceFiles(workspaceId: string = "default") {
+  return useQuery({
+    queryKey: ["knowledge-source-files", workspaceId],
+    queryFn: () => fetchKnowledgeSourceFiles(workspaceId),
+    refetchInterval: (query) => {
+      const files = query.state.data?.sourceFiles || [];
+      return files.some((file) => file.job?.status === "queued" || file.job?.status === "running")
+        ? 2000
+        : false;
     },
   });
 }
@@ -38,6 +53,7 @@ export function useKnowledgeMutations(workspaceId: string = "default") {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["knowledge-documents", workspaceId] });
     queryClient.invalidateQueries({ queryKey: ["knowledge-markdown"] });
+    queryClient.invalidateQueries({ queryKey: ["knowledge-source-files", workspaceId] });
   };
 
   const uploadMutation = useMutation({
@@ -71,6 +87,11 @@ export function useKnowledgeMutations(workspaceId: string = "default") {
     onSuccess: invalidate,
   });
 
+  const scanMutation = useMutation({
+    mutationFn: () => scanKnowledgeSourceFiles(workspaceId),
+    onSuccess: invalidate,
+  });
+
   return {
     uploadMutation,
     importUrlMutation,
@@ -78,5 +99,6 @@ export function useKnowledgeMutations(workspaceId: string = "default") {
     confirmMutation,
     reconvertMutation,
     deleteMutation,
+    scanMutation,
   };
 }

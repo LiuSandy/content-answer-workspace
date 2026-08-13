@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete, apiUpload } from "@/lib/api";
-import type { KnowledgeDocument } from "./types";
+import type { KnowledgeDocument, KnowledgeSourceFile } from "./types";
 
 export interface ListDocumentsResponse {
   documents: KnowledgeDocument[];
@@ -20,11 +20,38 @@ export async function fetchKnowledgeDocuments(
 export async function uploadKnowledgeDocument(
   file: File,
   workspaceId: string = "default"
-): Promise<KnowledgeDocument> {
+): Promise<{ sourceFileId: string; status: string; outcome: string }> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("workspaceId", workspaceId);
-  return apiUpload<KnowledgeDocument>("/api/knowledge/documents", formData);
+  return apiUpload<{ sourceFileId: string; status: string; outcome: string }>(
+    "/api/knowledge/documents",
+    formData
+  );
+}
+
+export interface SourceFileScanResult {
+  discovered: number;
+  queued: number;
+  duplicates: number;
+  failed: number;
+}
+
+export async function scanKnowledgeSourceFiles(
+  workspaceId: string = "default"
+): Promise<SourceFileScanResult> {
+  return apiPost<SourceFileScanResult>(
+    `/api/knowledge/source-files/scan?workspaceId=${encodeURIComponent(workspaceId)}`,
+    {}
+  );
+}
+
+export async function fetchKnowledgeSourceFiles(
+  workspaceId: string = "default"
+): Promise<{ sourceFiles: KnowledgeSourceFile[] }> {
+  return apiGet<{ sourceFiles: KnowledgeSourceFile[] }>(
+    `/api/knowledge/source-files?workspaceId=${encodeURIComponent(workspaceId)}`
+  );
 }
 
 export async function importKnowledgeUrl(

@@ -59,6 +59,25 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
     }
   };
 
+  const stageLabel = (stage?: string) => {
+    const labels: Record<string, string> = {
+      discovered: "等待处理",
+      recovering: "恢复处理中",
+      preparing: "准备文件",
+      hashing: "校验源文件",
+      parsing: "识别 Markdown",
+      initializing_pages: "初始化 PDF 页面",
+      parsing_pages: "逐页识别 PDF",
+      merging_markdown: "合并页面 Markdown",
+      saving_candidate: "保存候选稿",
+      saving_markdown: "保存 Markdown",
+      dispatching_index: "提交索引",
+      completed: "处理完成",
+      failed: "处理失败",
+    };
+    return stage ? labels[stage] || stage : "";
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-card">
       <div className="h-11 flex items-center px-3.5 border-b border-[#edf0f4] dark:border-border text-[10px] text-[#778395] shrink-0">
@@ -101,6 +120,39 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
                     更新于 · {new Date(doc.updatedAt || doc.createdAt || Date.now()).toLocaleDateString()}
                   </div>
                   {renderStatusTag(doc.status)}
+                  {doc.sourceFile?.job && ["queued", "running"].includes(doc.sourceFile.job.status) ? (
+                    <div className="mt-1.5">
+                      <div className="flex items-center justify-between text-[9px] text-[#64748b]">
+                        <span>{stageLabel(doc.sourceFile.job.stage)}</span>
+                        <span>{doc.sourceFile.job.progressPercent}%</span>
+                      </div>
+                      <div className="mt-1 h-1 rounded-full bg-[#e2e8f0] overflow-hidden">
+                        <div
+                          className="h-full bg-[#3b82f6] transition-[width]"
+                          style={{ width: `${doc.sourceFile.job.progressPercent}%` }}
+                        />
+                      </div>
+                      {doc.sourceFile.job.totalPages > 0 ? (
+                        <div className="mt-1 text-[9px] text-[#64748b]">
+                          已完成 {doc.sourceFile.job.completedPages}/{doc.sourceFile.job.totalPages} 页
+                          <span className="ml-1.5 text-[#059669]">成功 {doc.sourceFile.job.succeededPages}</span>
+                          {doc.sourceFile.job.failedPages > 0 ? (
+                            <span className="ml-1.5 text-[#be123c]">失败 {doc.sourceFile.job.failedPages}</span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {doc.sourceFile?.job?.status === "completed_with_errors" ? (
+                    <div className="mt-1 text-[9px] text-[#b45309]">
+                      识别完成，{doc.sourceFile.job.failedPages} 页失败，请确认前校对
+                    </div>
+                  ) : null}
+                  {doc.sourceFile?.failureReason ? (
+                    <div className="mt-1 text-[9px] text-[#be123c] line-clamp-2" title={doc.sourceFile.failureReason}>
+                      {doc.sourceFile.failureReason}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );

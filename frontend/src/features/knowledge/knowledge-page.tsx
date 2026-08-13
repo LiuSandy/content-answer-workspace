@@ -1,12 +1,17 @@
 import React, { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { KnowledgeList } from "./knowledge-list";
 import { KnowledgeDetail } from "./knowledge-detail";
-import { useKnowledgeDocuments, useKnowledgeMarkdown, useKnowledgeMutations } from "./use-knowledge";
+import {
+  useKnowledgeDocuments,
+  useKnowledgeMarkdown,
+  useKnowledgeMutations,
+  useKnowledgeSourceFiles,
+} from "./use-knowledge";
 import type { KnowledgeDocument } from "./types";
 
 export const KnowledgePage: React.FC = () => {
@@ -18,7 +23,29 @@ export const KnowledgePage: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
   const { data, isLoading } = useKnowledgeDocuments();
-  const allDocuments = data?.documents || [];
+  const { data: sourceFilesData } = useKnowledgeSourceFiles();
+  const sourceFiles = sourceFilesData?.sourceFiles || [];
+  const sourceOnlyFailures: KnowledgeDocument[] = sourceFiles
+    .filter((source) => !source.knowledgeDocumentId && source.status === "failed")
+    .map((source) => ({
+      id: `source:${source.id}`,
+      workspaceId: source.workspaceId,
+      ownerId: source.ownerId,
+      sourceType: source.extension === "pdf" ? "pdf" : source.extension === "md" || source.extension === "markdown" ? "markdown" : "text",
+      title: source.originalFilename,
+      status: "failed",
+      hasManualEdits: false,
+      createdAt: source.createdAt,
+      updatedAt: source.updatedAt,
+      conversionError: source.failureReason,
+      sourceFile: source,
+      sourceOnly: true,
+    }));
+  const allDocuments = [...(data?.documents || []), ...sourceOnlyFailures];
+  const activeSourceCount = sourceFiles.filter(
+    (source) => source.job?.status === "queued" || source.job?.status === "running"
+  ).length;
+  const latestSourceFailure = sourceFiles.find((source) => source.status === "failed");
 
   const filteredDocuments = allDocuments.filter((doc) => {
     if (searchQuery.trim()) {
@@ -55,6 +82,7 @@ export const KnowledgePage: React.FC = () => {
     confirmMutation,
     reconvertMutation,
     deleteMutation,
+    scanMutation,
   } = useKnowledgeMutations();
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,7 +111,11 @@ export const KnowledgePage: React.FC = () => {
         <div>
           <div className="text-sm font-bold">私有资料库</div>
           <div className="text-[10px] text-[#7b8797] dark:text-muted-foreground mt-0.5">
-            管理 Agent 创作时可检索和引用的个人资料
+            {activeSourceCount > 0
+              ? `${activeSourceCount} 个源文件正在后台处理，刷新页面不会中断`
+              : latestSourceFailure
+                ? `最近失败：${latestSourceFailure.originalFilename} · ${latestSourceFailure.failureReason || "处理失败"}`
+                : "管理 Agent 创作时可检索和引用的个人资料"}
           </div>
         </div>
 
@@ -114,13 +146,24 @@ export const KnowledgePage: React.FC = () => {
             {uploadMutation.isPending ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                上传解析中...
+                上传中...
               </>
             ) : (
               "＋　添加资料"
             )}
           </Button>
         </div>
+
+        <Button
+          variant="outline"
+          disabled={scanMutation.isPending}
+          onClick={() => scanMutation.mutate()}
+          className="h-8 text-xs px-2.5"
+          title="递归检查 pending 源文件目录"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${scanMutation.isPending ? "animate-spin" : ""}`} />
+          {scanMutation.isPending ? "检查中" : "检查源文件"}
+        </Button>
 
         {/* 🌐 导入 URL 按钮 */}
         <Button
@@ -239,7 +282,9 @@ export const KnowledgePage: React.FC = () => {
             <KnowledgeList
               documents={filteredDocuments}
               selectedDocId={selectedDoc?.id}
-              onSelectDoc={setSelectedDoc}
+              onSelectDoc={(doc) => {
+                if (!doc.sourceOnly) setSelectedDoc(doc);
+              }}
             />
           )}
         </section>
