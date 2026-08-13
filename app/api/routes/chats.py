@@ -18,6 +18,7 @@ from ...application.memory_extractor import run_memory_extraction
 from ...persistence.session import get_db_session, get_session_factory
 from ..sse_utils import sse_named_event, make_sse_response
 from ...core.config import AGENT_MAX_RECURSION, AGENT_RUN_TIMEOUT
+from ...observability.context import reset_log_context, set_log_context
 
 logger = logging.getLogger(__name__)
 
@@ -502,7 +503,8 @@ async def send_message_stream(
         assistant_content_parts = []
         summary_leaf: uuid.UUID | None = None
         assistant_text: str | None = None
-        
+        log_token = set_log_context(run_id=run_id, chat_id=chat_id_str)
+
         try:
             # 3. 运行图并捕捉事件（统一经 scheduling 封装：子图感知匹配 + 运行级超时）
             rag_payload: dict | None = None
@@ -755,7 +757,7 @@ async def send_message_stream(
             yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
-            logger.error("Chat agent stream execution failed: %s", e)
+            logger.exception("Chat agent stream execution failed")
             if type(e).__name__ == "GraphRecursionError" or "recursion" in str(e).lower():
                 err_data = {
                     "error_code": "agent_recursion_limit",
@@ -780,5 +782,7 @@ async def send_message_stream(
                 logger.error("Failed to save error message to database: %s", db_err)
 
             yield sse_named_event("run.failed", err_data)
+        finally:
+            reset_log_context(log_token)
 
     return make_sse_response(_event_generator())

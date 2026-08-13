@@ -17,7 +17,7 @@ from ..persistence.models.documents import AnswerDocument
 from ..prompts.composer import compose_writing_prompt
 from ..prompts.registry import prompt_registry
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 
 
 async def full_rewrite_workflow(

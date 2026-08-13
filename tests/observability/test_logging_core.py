@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+import asyncio
 from datetime import datetime
 
-from app.observability.context import bind_log_context
+from app.observability.context import bind_log_context, get_log_context
 from app.observability.formatter import JsonFormatter
 from app.observability.logging import (
     DatedLevelFileHandler,
@@ -86,3 +87,16 @@ def test_configure_logging_writes_exact_level_files(tmp_path):
     assert "info message" in (tmp_path / day / "info.log").read_text()
     assert "error message" in (tmp_path / day / "error.log").read_text()
     assert "error message" not in (tmp_path / day / "info.log").read_text()
+
+
+def test_async_log_contexts_are_isolated():
+    async def worker(job_id: str):
+        with bind_log_context(job_id=job_id):
+            await asyncio.sleep(0)
+            return get_log_context()["job_id"]
+
+    async def run():
+        return await asyncio.gather(worker("job-a"), worker("job-b"))
+
+    assert asyncio.run(run()) == ["job-a", "job-b"]
+    assert "job_id" not in get_log_context()

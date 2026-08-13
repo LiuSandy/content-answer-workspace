@@ -14,7 +14,7 @@ from ..persistence.models.content import SourceItem
 from ..prompts.composer import compose_writing_prompt
 from ..prompts.registry import prompt_registry
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 
 
 async def generate_answer_workflow(

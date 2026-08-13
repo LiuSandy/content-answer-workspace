@@ -20,7 +20,7 @@ from ..infrastructure.llm.registry import llm_provider_registry
 from ..persistence.models.documents import AIOperation, AnswerVersion
 from ..prompts.registry import prompt_registry, RenderedPrompt
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 
 _VT_INIT = "initial_generation"
 _VT_INLINE = "inline_refinement"

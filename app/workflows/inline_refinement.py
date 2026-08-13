@@ -13,7 +13,7 @@ from ..domain.dto import SelectionDTO
 from ..errors import ValidationError
 from ..prompts.registry import prompt_registry
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 
 
 async def inline_refinement_workflow(

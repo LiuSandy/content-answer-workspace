@@ -33,6 +33,7 @@ from ...workflows.inline_refinement import inline_refinement_workflow
 from ...workflows.full_rewrite import full_rewrite_workflow
 from ..sse_utils import sse_named_event, make_sse_response
 from ...errors import AppError, DocumentConflictError, LLMOutputError
+from ...observability.context import bind_log_context, reset_log_context, set_log_context
 
 logger = logging.getLogger(__name__)
 
@@ -368,6 +369,7 @@ async def generate_answer_stream(
             )
 
         run_id = str(uuid.uuid4())
+        log_token = set_log_context(run_id=run_id, document_id=str(doc_id))
         yield sse_named_event("run.started", {"runId": run_id, "documentId": str(doc_id)})
 
         capture = WriterRunCapture()
@@ -447,7 +449,10 @@ async def generate_answer_stream(
                 yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
-            logger.error("Answer generation stream failed: %s", e)
+            with bind_log_context(
+                operation_id=str(capture.operation_id) if capture.operation_id else None
+            ):
+                logger.exception("Answer generation stream failed")
             if capture.operation_id is not None:
                 try:
                     from ...persistence.models.documents import AIOperation
@@ -466,6 +471,8 @@ async def generate_answer_stream(
                 except Exception:
                     logger.exception("Failed to persist generation failure status")
             yield _run_failed_event(e, "生成失败，请稍后重试")
+        finally:
+            reset_log_context(log_token)
 
     return make_sse_response(_event_generator())
 
@@ -480,6 +487,7 @@ async def refine_document_stream(
 
     async def _event_generator() -> AsyncIterator[str]:
         run_id = str(uuid.uuid4())
+        log_token = set_log_context(run_id=run_id, document_id=str(document_id))
         yield sse_named_event("run.started", {"runId": run_id, "documentId": str(document_id)})
 
         try:
@@ -499,8 +507,10 @@ async def refine_document_stream(
                 yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
-            logger.error("Inline refinement stream failed: %s", e)
+            logger.exception("Inline refinement stream failed")
             yield _run_failed_event(e, "精修失败，请稍后重试")
+        finally:
+            reset_log_context(log_token)
 
     return make_sse_response(_event_generator())
 
@@ -515,6 +525,7 @@ async def rewrite_document_stream(
 
     async def _event_generator() -> AsyncIterator[str]:
         run_id = str(uuid.uuid4())
+        log_token = set_log_context(run_id=run_id, document_id=str(document_id))
         yield sse_named_event("run.started", {"runId": run_id, "documentId": str(document_id)})
 
         try:
@@ -536,8 +547,10 @@ async def rewrite_document_stream(
                 yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
-            logger.error("Full rewrite stream failed: %s", e)
+            logger.exception("Full rewrite stream failed")
             yield _run_failed_event(e, "重写失败，请稍后重试")
+        finally:
+            reset_log_context(log_token)
 
     return make_sse_response(_event_generator())
 

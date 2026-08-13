@@ -26,6 +26,7 @@ from app.persistence.models.knowledge import (
     KnowledgeIngestionPageModel,
     KnowledgeSourceFileModel,
 )
+from app.observability.context import bind_log_context, reset_log_context, set_log_context
 
 logger = logging.getLogger(__name__)
 SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".md", ".markdown"}
@@ -423,6 +424,7 @@ class IngestionExecutor:
 
     async def _process(self, job_id: UUID) -> None:
         heartbeat: asyncio.Task | None = None
+        log_token = set_log_context(job_id=str(job_id))
         try:
             heartbeat = asyncio.create_task(self._heartbeat(job_id))
             async with self.session_factory() as session:
@@ -437,6 +439,10 @@ class IngestionExecutor:
                 doc = await session.get(KnowledgeDocumentModel, source.knowledge_document_id)
                 if not doc:
                     raise RuntimeError("Knowledge document missing for ingestion job")
+                reset_log_context(log_token)
+                log_token = set_log_context(
+                    job_id=str(job.id), source_file_id=str(source.id), document_id=str(doc.id)
+                )
                 path = self._locate_source(source)
                 actual_relative = str(path.relative_to(self.files.root))
                 if actual_relative != source.current_relative_path:
@@ -503,6 +509,7 @@ class IngestionExecutor:
             if heartbeat:
                 heartbeat.cancel()
                 await asyncio.gather(heartbeat, return_exceptions=True)
+            reset_log_context(log_token)
 
     def _locate_source(self, source: KnowledgeSourceFileModel) -> Path:
         configured = self.files.resolve_relative(source.current_relative_path)
@@ -687,9 +694,13 @@ class IngestionExecutor:
             if not doc:
                 return
             workspace = PdfPageWorkspace(self.settings.ingestion_work_dir, job.id)
-            await self._process_pdf_page(
-                session, job, page, source, doc, source_path, workspace
-            )
+            with bind_log_context(
+                job_id=str(job.id), source_file_id=str(source.id),
+                document_id=str(doc.id), page_number=page.page_number,
+            ):
+                await self._process_pdf_page(
+                    session, job, page, source, doc, source_path, workspace
+                )
 
     async def _process_pdf_page(
         self,

@@ -4,6 +4,7 @@ import logging
 import time
 from app.application.agent.state import ChatAgentState
 from app.domain.knowledge import KnowledgeScope
+from app.observability.context import bind_log_context
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,8 @@ async def retrieve_knowledge_node(state: ChatAgentState) -> dict:
                     reranker_model=settings.reranker_model,
                 )
                 trace_id = str(trace.id)
+                with bind_log_context(trace_id=trace_id):
+                    logger.info("Knowledge retrieval trace persisted")
             except Exception as trace_err:
                 # Trace 是可观测性功能，落库失败不应阻断回答链路
                 logger.warning("Retrieval trace persistence failed: %s", trace_err)

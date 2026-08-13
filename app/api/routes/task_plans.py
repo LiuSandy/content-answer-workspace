@@ -16,6 +16,7 @@ from ...application.task_planner_service import (
     execute_subtask,
 )
 from ..sse_utils import sse_named_event, make_sse_response
+from ...observability.context import reset_log_context, set_log_context
 
 router = APIRouter(prefix="/api/task-plans", tags=["task-plans"])
 
@@ -119,50 +120,47 @@ async def stream_task_plan(plan_id: str, req: CreateTaskPlanRequest = Body(defau
 
     async def _gen():
         run_id = str(uuid.uuid4())
+        log_token = set_log_context(run_id=run_id, plan_id=plan_id)
         yield sse_named_event("run.started", {"runId": run_id, "planId": plan_id})
-
-        async with factory() as session:
-            plan_row = await session.get(TaskPlanModel, uuid.UUID(plan_id))
-            if not plan_row:
-                yield sse_named_event("run.failed", {"error": "TaskPlan not found"})
-                return
-            stmt = select(SubTaskModel).where(SubTaskModel.plan_id == plan_row.id)
-            subs = list((await session.execute(stmt)).scalars().all())
-            plan = await _to_plan(plan_row, subs)
-            plan_row.status = "running"
-            await session.commit()
-
-        from ...application.task_planner_service import topological_order
-        layers = topological_order(plan)
-        results: dict[str, str] = {}
-
-        for layer in layers:
-            yield sse_named_event("layer.started", {"taskIds": [t.task_id for t in layer]})
-
-            # 检查是否被 interrupt 端点标记为中断
-            async with factory() as s_check:
-                cur = await s_check.get(TaskPlanModel, plan_row.id)
-                if cur and cur.status == "interrupted":
-                    yield sse_named_event("plan.interrupted", {"planId": plan_id})
+        try:
+            async with factory() as session:
+                plan_row = await session.get(TaskPlanModel, uuid.UUID(plan_id))
+                if not plan_row:
+                    yield sse_named_event("run.failed", {"error": "TaskPlan not found"})
                     return
+                stmt = select(SubTaskModel).where(SubTaskModel.plan_id == plan_row.id)
+                subs = list((await session.execute(stmt)).scalars().all())
+                plan = await _to_plan(plan_row, subs)
+                plan_row.status = "running"
+                await session.commit()
 
-            # yield 不支持在 gather 里，改成逐层串行 yield 但每个 task 用 asyncio.gather 并行执行
-            layer_results = await asyncio.gather(*(_run_one_no_yield(t, plan_row.id, results) for t in layer))
-            for tid, status, preview_or_err in layer_results:
-                if status == "done":
-                    yield sse_named_event("task.completed", {"taskId": tid, "resultPreview": preview_or_err[:200]})
-                else:
-                    yield sse_named_event("task.failed", {"taskId": tid, "error": preview_or_err})
+            from ...application.task_planner_service import topological_order
+            layers = topological_order(plan)
+            results: dict[str, str] = {}
 
-            yield sse_named_event("layer.completed", {"taskIds": [t.task_id for t in layer]})
+            for layer in layers:
+                yield sse_named_event("layer.started", {"taskIds": [t.task_id for t in layer]})
+                async with factory() as s_check:
+                    cur = await s_check.get(TaskPlanModel, plan_row.id)
+                    if cur and cur.status == "interrupted":
+                        yield sse_named_event("plan.interrupted", {"planId": plan_id})
+                        return
+                layer_results = await asyncio.gather(*(_run_one_no_yield(t, plan_row.id, results) for t in layer))
+                for tid, status, preview_or_err in layer_results:
+                    if status == "done":
+                        yield sse_named_event("task.completed", {"taskId": tid, "resultPreview": preview_or_err[:200]})
+                    else:
+                        yield sse_named_event("task.failed", {"taskId": tid, "error": preview_or_err})
+                yield sse_named_event("layer.completed", {"taskIds": [t.task_id for t in layer]})
 
-        async with factory() as s5:
-            plan_row = await s5.get(TaskPlanModel, plan_row.id)
-            if plan_row:
-                plan_row.status = "done"
-                await s5.commit()
-
-        yield sse_named_event("plan.completed", {"planId": plan_id})
+            async with factory() as s5:
+                plan_row = await s5.get(TaskPlanModel, plan_row.id)
+                if plan_row:
+                    plan_row.status = "done"
+                    await s5.commit()
+            yield sse_named_event("plan.completed", {"planId": plan_id})
+        finally:
+            reset_log_context(log_token)
 
     return make_sse_response(_gen)
 
@@ -171,6 +169,7 @@ async def _run_one_no_yield(sub_task, plan_id: uuid.UUID, results: dict):
     """并行执行单 subtask，返回 (task_id, status, preview_or_err)；不做 yield。"""
     from ...application.task_planner_service import execute_subtask
     factory = get_session_factory()
+    log_token = set_log_context(plan_id=str(plan_id), task_id=sub_task.task_id)
     try:
         async with factory() as s:
             sub_row = (await s.execute(
@@ -209,6 +208,8 @@ async def _run_one_no_yield(sub_task, plan_id: uuid.UUID, results: dict):
                 sub_row.status = "failed"
                 await s3.commit()
         return sub_task.task_id, "failed", str(e)
+    finally:
+        reset_log_context(log_token)
 
 
 @router.post("/{plan_id}/tasks/{task_id}/retry")

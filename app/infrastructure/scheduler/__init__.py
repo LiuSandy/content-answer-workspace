@@ -9,6 +9,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from ...observability.context import bind_log_context
 
 logger = logging.getLogger(__name__)
 
@@ -50,19 +51,20 @@ async def _scan_opportunities_job():
     凌晨 1-7 点跳过（非活跃时段，spec 第 8 节风险应对）。
     实际扫描逻辑在 OpportunityService.scan_and_persist。
     """
-    from datetime import datetime
-    now = datetime.now()
-    if 1 <= now.hour < 7:
-        logger.info("Skip opportunity scan in inactive hours (1-7am)")
-        return
+    with bind_log_context(scheduler_job_id="opportunity_scanner"):
+        from datetime import datetime
+        now = datetime.now()
+        if 1 <= now.hour < 7:
+            logger.info("Skip opportunity scan in inactive hours (1-7am)")
+            return
 
-    try:
-        from ...application.opportunity_service import OpportunityService
-        from ...persistence.session import get_session_factory
-        factory = get_session_factory()
-        async with factory() as session:
-            svc = OpportunityService(session)
-            count = await svc.scan_and_persist(workspace_id="default")
-            logger.info("Opportunity scan completed: %d new opportunities", count)
-    except Exception as e:
-        logger.error("Opportunity scan job failed: %s", e)
+        try:
+            from ...application.opportunity_service import OpportunityService
+            from ...persistence.session import get_session_factory
+            factory = get_session_factory()
+            async with factory() as session:
+                svc = OpportunityService(session)
+                count = await svc.scan_and_persist(workspace_id="default")
+                logger.info("Opportunity scan completed: %d new opportunities", count)
+        except Exception:
+            logger.exception("Opportunity scan job failed")

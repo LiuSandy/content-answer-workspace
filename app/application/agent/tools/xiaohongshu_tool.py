@@ -13,7 +13,7 @@ import json
 import logging
 import subprocess
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 
 import yaml
 from langchain_core.tools import tool
@@ -105,8 +105,11 @@ def xiaohongshu_search(query: str, limit: int = 5, min_likes: int = 0) -> str:
     交由 Agent 决定是否询问用户（human-in-the-loop）。
     需要 Chrome 已打开并登录小红书，且安装了 OpenCLI 扩展。"""
     raw = _run(["opencli", "xiaohongshu", "search", query, "-f", "yaml"])
-    logger.info("[xiaohongshu_search] query: %s, min_likes=%s, raw output:\n%s", query, min_likes, raw)
     raw_items = _parse_yaml_list(raw)
+    logger.debug(
+        "Xiaohongshu search response parsed",
+        extra={"result_count": len(raw_items), "min_likes": min_likes},
+    )
     if not raw_items:
         logger.warning("[xiaohongshu_search] parse failed, raw_items is empty.")
         return json.dumps({"platform": _PLATFORM, "topic": query, "error": raw, "items": []}, ensure_ascii=False)
