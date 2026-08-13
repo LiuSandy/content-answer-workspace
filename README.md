@@ -109,7 +109,7 @@ uv run alembic upgrade head
 uv sync
 uv run python -m app.server
 ```
-后端服务默认监听：`http://127.0.0.1:3000`。
+后端服务默认监听：`http://127.0.0.1:8000`。
 
 ### 3. 前端服务启动
 在项目 `frontend/` 目录下运行：

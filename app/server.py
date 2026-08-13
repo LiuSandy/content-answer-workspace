@@ -233,7 +233,7 @@ else:
 
 def main() -> None:
     load_env_file()
-    port = int(os.getenv("PORT", "3000"))
+    port = int(os.getenv("PORT", "8000"))
     uvicorn.run("app.server:app", host="127.0.0.1", port=port, reload=False)
 
 
