@@ -131,6 +131,13 @@
 }
 
 @layer components {
+  .katex-display {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-block: 0.25rem;
+  }
+
   .markdown-editor-shell {
     border: 1px solid var(--surface-line-strong);
     overflow: hidden;
@@ -336,4 +343,3 @@
 .dark .selection-highlight {
   background-color: oklch(0.52 0.17 252 / 35%);
 }
-

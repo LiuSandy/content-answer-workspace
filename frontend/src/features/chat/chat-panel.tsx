@@ -16,8 +16,6 @@ import {
     ArrowUp,
     Clock
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {useNavigate} from "react-router-dom";
 
 import {apiGet, apiPost} from "@/lib/api";
@@ -41,6 +39,7 @@ import {cn} from "@/lib/utils";
 import {PromptInput} from "@/components/ui/prompt-input";
 import {Textarea} from "@/components/ui/textarea";
 import {SourceList} from "@/features/knowledge/source-list";
+import {MarkdownContent} from "@/components/ui/markdown-content";
 
 type Message = {
     messageId: string;
@@ -612,12 +611,9 @@ export function ChatPanel() {
                                     )}
                                     {streamingText && (
                                         <div className="text-sm leading-relaxed max-w-none text-foreground/90">
-                                            <ReactMarkdown
-                                                remarkPlugins={[remarkGfm]}
-                                                components={getMarkdownComponents(false)}
-                                            >
+                                            <MarkdownContent components={getMarkdownComponents(false)}>
                                                 {streamingText}
-                                            </ReactMarkdown>
+                                            </MarkdownContent>
                                         </div>
                                     )}
                                     {streamingSourceList && (
@@ -801,12 +797,9 @@ function MessageBubble({
                         {msg.messageType === "text" && (
                             <div
                                 className={cn("text-sm leading-relaxed max-w-none", isUser ? "text-primary-foreground" : "text-foreground/90")}>
-                                <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={getMarkdownComponents(isUser)}
-                                >
+                                <MarkdownContent components={getMarkdownComponents(isUser)}>
                                     {msg.content || ""}
-                                </ReactMarkdown>
+                                </MarkdownContent>
                                 {/* RAG 私有资料来源展示 */}
                                 {!isUser && msg.payload?.ragSources && (
                                     <SourceList

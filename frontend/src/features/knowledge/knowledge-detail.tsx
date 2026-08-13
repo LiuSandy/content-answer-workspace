@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 import { ReconvertDiffDialog } from "./reconvert-diff-dialog";
 import type { KnowledgeDocument } from "./types";
 
@@ -198,9 +197,9 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
           />
         ) : (
           <div className="flex-1 w-full p-5 overflow-y-auto prose dark:prose-invert max-w-none text-xs leading-normal">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <MarkdownContent>
               {editorText}
-            </ReactMarkdown>
+            </MarkdownContent>
           </div>
         )}
       </div>
