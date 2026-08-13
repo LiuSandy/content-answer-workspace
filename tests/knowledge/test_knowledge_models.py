@@ -5,6 +5,9 @@ from app.persistence.models.knowledge import (
     KnowledgeChunkModel,
     RetrievalTraceModel,
     RetrievalHitModel,
+    KnowledgeSourceFileModel,
+    KnowledgeIngestionJobModel,
+    KnowledgeIngestionPageModel,
 )
 
 def test_knowledge_models_instantiation():
@@ -29,3 +32,27 @@ def test_knowledge_models_instantiation():
         index_version="v1",
     )
     assert chunk.content == "Test chunk"
+
+    source = KnowledgeSourceFileModel(
+        workspace_id="default",
+        owner_id="default",
+        ingest_source="directory_scan",
+        original_filename="example.pdf",
+        original_relative_path="技术/example.pdf",
+        current_relative_path="processing/技术/example.pdf",
+        extension="pdf",
+        size_bytes=42,
+        status="processing",
+    )
+    job = KnowledgeIngestionJobModel(
+        source_file_id=uuid.uuid4(),
+        status="queued",
+        stage="discovered",
+    )
+    assert source.status == "processing"
+    assert job.stage == "discovered"
+
+    page = KnowledgeIngestionPageModel(
+        job_id=uuid.uuid4(), page_number=1, status="pending"
+    )
+    assert page.page_number == 1

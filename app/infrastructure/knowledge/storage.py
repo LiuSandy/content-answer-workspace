@@ -1,6 +1,7 @@
 from pathlib import Path
 from uuid import UUID
 import hashlib
+import os
 
 
 class KnowledgeStorage:
@@ -20,7 +21,12 @@ class KnowledgeStorage:
 
     def save_candidate(self, document_id: UUID, markdown: str) -> Path:
         target_path = self.documents_dir / f"{document_id}.candidate.md"
-        target_path.write_text(markdown, encoding="utf-8")
+        temporary = target_path.with_suffix(".candidate.md.tmp")
+        with temporary.open("w", encoding="utf-8") as handle:
+            handle.write(markdown)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target_path)
         return target_path
 
     def publish_markdown(self, document_id: UUID, markdown: str) -> Path:

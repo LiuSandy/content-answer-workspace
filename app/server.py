@@ -88,6 +88,12 @@ async def lifespan(app: FastAPI):
         app.state.chat_runtime = ChatRuntime()
         app.state.session_factory = get_session_factory()
 
+        try:
+            from .application.knowledge.ingestion_service import start_ingestion_runtime
+            app.state.ingestion_runtime = await start_ingestion_runtime(app.state.session_factory)
+        except Exception as e:
+            logging.warning(f"Knowledge ingestion startup warning (non-critical): {e}")
+
         # 启动定时任务基建（Phase 2 主动感知）
         try:
             from .infrastructure.scheduler import start_scheduler
@@ -96,6 +102,12 @@ async def lifespan(app: FastAPI):
             logging.warning(f"Scheduler startup warning (non-critical): {e}")
 
         yield
+
+        try:
+            from .application.knowledge.ingestion_service import stop_ingestion_runtime
+            await stop_ingestion_runtime()
+        except Exception:
+            pass
 
         # 关闭定时任务
         try:

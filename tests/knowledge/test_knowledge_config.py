@@ -13,3 +13,8 @@ def test_knowledge_config_defaults():
     assert settings.context_token_budget == 6000
     assert settings.sources_dir.name == "sources"
     assert settings.documents_dir.name == "documents"
+    assert settings.source_files_dir.name == "source-files"
+    assert settings.ingestion_concurrency == 2
+    assert settings.max_source_file_bytes == 2 * 1024 * 1024 * 1024
+    assert settings.source_file_buffer_bytes == 4 * 1024 * 1024
+    assert settings.pdf_page_concurrency == 1

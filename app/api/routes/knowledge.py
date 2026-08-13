@@ -8,6 +8,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.knowledge import KnowledgeDocumentStatus, SourceType, KnowledgeScope
@@ -24,13 +25,18 @@ from app.infrastructure.knowledge.parsers import (
 )
 from app.core.config import get_knowledge_settings, is_truthy
 from app.persistence.session import get_db_session, get_session_factory
+from app.application.knowledge.ingestion_service import (
+    SourceIngestionService,
+    source_file_to_dict,
+    wake_ingestion_runtime,
+)
+from app.infrastructure.knowledge.source_files import SourceFileStorage
+from app.infrastructure.knowledge.pdf_pages import PdfPageWorkspace
+from app.persistence.models.knowledge import KnowledgeIngestionJobModel, KnowledgeSourceFileModel
 
 router = APIRouter(prefix="/api", tags=["knowledge"])
 
 logger = logging.getLogger(__name__)
-
-# 允许上传的文件扩展名白名单；其他类型既无解析器也不该落盘
-ALLOWED_UPLOAD_EXTENSIONS = {"md", "markdown", "txt", "pdf"}
 
 # 转换置信度阈值；候选稿确认界面低于此值需展示人工校对警告（复用检索层 KNOWLEDGE_EVIDENCE_THRESHOLD 的概念）
 KNOWLEDGE_CONVERSION_CONFIDENCE_THRESHOLD = 0.7
@@ -109,8 +115,8 @@ async def _parse_pdf_to_markdown(file_bytes: bytes, filename: str, doc_id: str, 
     warnings = ["本地提取模式(MinerU 不可用或失败),识别质量有限"] if confidence < 0.7 else []
     return ParsedMarkdown(markdown=md_text, confidence=confidence, warnings=warnings)
 
-def _doc_to_dict(doc) -> dict:
-    return {
+def _doc_to_dict(doc, source=None, job=None) -> dict:
+    data = {
         "id": str(doc.id),
         "workspaceId": doc.workspace_id,
         "ownerId": doc.owner_id,
@@ -126,6 +132,9 @@ def _doc_to_dict(doc) -> dict:
         "createdAt": doc.created_at.isoformat() if doc.created_at else None,
         "updatedAt": doc.updated_at.isoformat() if doc.updated_at else None,
     }
+    if source:
+        data["sourceFile"] = source_file_to_dict(source, job)
+    return data
 
 async def _run_indexing_task(document_id: UUID, workspace_id: str, owner_id: str) -> None:
     """在独立 session 中执行索引，不复用请求 session。"""
@@ -167,55 +176,65 @@ class UpdateMarkdownRequest(BaseModel):
 
 @router.post("/knowledge/documents")
 async def upload_document(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     workspace_id: str = Form("default", alias="workspaceId"),
     owner_id: str = Form("default", alias="ownerId"),
     source_type: str | None = Form(None, alias="sourceType"),
-    doc_service: DocumentService = Depends(_get_document_service)
+    session: AsyncSession = Depends(get_db_session),
 ):
     filename = file.filename or "uploaded_file"
-    ext = filename.split(".")[-1].lower() if "." in filename else ""
-    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"不支持的文件类型 .{ext}，仅支持: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
-        )
-    inferred_type = SourceType.MARKDOWN if ext in ("md", "markdown") else (SourceType.PDF if ext == "pdf" else SourceType.TEXT)
-    final_source_type = source_type or inferred_type.value
-
     settings = get_knowledge_settings()
-    # 多读 1 字节以检测超限，避免恰好等于上限时误判
-    file_bytes = await file.read(settings.max_upload_bytes + 1)
-    if len(file_bytes) > settings.max_upload_bytes:
+    source_storage = SourceFileStorage(settings.source_files_dir)
+    try:
+        pending_path, _, content_hash = await source_storage.save_upload_stream(
+            filename,
+            file,
+            settings.max_source_file_bytes,
+            settings.source_file_buffer_bytes,
+        )
+    except ValueError as exc:
+        if str(exc) != "file_too_large":
+            raise
         raise HTTPException(
             status_code=413,
-            detail=f"文件超过大小上限 {settings.max_upload_bytes // (1024 * 1024)}MB",
+            detail=f"文件超过大小上限 {settings.max_source_file_bytes // (1024 * 1024)}MB",
         )
+    outcome, source = await SourceIngestionService(session, settings).register_uploaded(
+        pending_path, workspace_id, owner_id, content_hash=content_hash
+    )
+    wake_ingestion_runtime()
+    return {
+        "ok": True,
+        "data": {"sourceFileId": str(source.id), "status": source.status, "outcome": outcome},
+    }
 
-    doc, created = await doc_service.create_from_upload(file_bytes, filename, final_source_type, workspace_id, owner_id)
-    if not created:
-        # 去重命中：直接返回已存在文档，绝不重新解析覆盖其候选稿/索引状态
-        return {"ok": True, "data": _doc_to_dict(doc), "deduplicated": True}
 
-    parsed_markdown = ""
-    confidence: float | None = None
-    if ext == "pdf":
-        pm = await _parse_pdf_to_markdown(file_bytes, filename, str(doc.id), settings)
-        parsed_markdown = pm.markdown
-        confidence = pm.confidence
-    else:
-        # 文本类上传是确定性转换,不存在识别不确定性,置信度恒为 1.0
-        parsed_markdown = _decode_text_file(file_bytes)
-        confidence = 1.0
+@router.post("/knowledge/source-files/scan")
+async def scan_source_files(
+    workspace_id: str = Query("default", alias="workspaceId"),
+    owner_id: str = Query("default", alias="ownerId"),
+    session: AsyncSession = Depends(get_db_session),
+):
+    result = await SourceIngestionService(session).scan_pending(workspace_id, owner_id)
+    wake_ingestion_runtime()
+    return {
+        "ok": True,
+        "data": {
+            "discovered": result.discovered,
+            "queued": result.queued,
+            "duplicates": result.duplicates,
+            "failed": result.failed,
+        },
+    }
 
-    await doc_service.save_candidate_markdown(doc.id, parsed_markdown, workspace_id, confidence=confidence)
 
-    if final_source_type == SourceType.MARKDOWN.value or final_source_type == SourceType.MARKDOWN:
-        background_tasks.add_task(_run_indexing_task, doc.id, workspace_id, owner_id)
-
-    doc = await doc_service.get_document(doc.id, workspace_id)
-    return {"ok": True, "data": _doc_to_dict(doc)}
+@router.get("/knowledge/source-files")
+async def list_source_files(
+    workspace_id: str = Query("default", alias="workspaceId"),
+    session: AsyncSession = Depends(get_db_session),
+):
+    rows = await SourceIngestionService(session).list_sources(workspace_id)
+    return {"ok": True, "data": {"sourceFiles": rows}}
 
 @router.post("/knowledge/documents/import-url")
 async def import_url(
@@ -256,10 +275,34 @@ async def list_documents(
     doc_service: DocumentService = Depends(_get_document_service)
 ):
     docs, total = await doc_service.list_documents(workspace_id, status=status, limit=limit, offset=offset)
+    sources = []
+    if docs:
+        sources = list((await doc_service.session.execute(
+            select(KnowledgeSourceFileModel).where(
+                KnowledgeSourceFileModel.knowledge_document_id.in_([doc.id for doc in docs])
+            )
+        )).scalars().all())
+    source_by_doc = {source.knowledge_document_id: source for source in sources}
+    latest_job_by_source = {}
+    if sources:
+        jobs = list((await doc_service.session.execute(
+            select(KnowledgeIngestionJobModel)
+            .where(KnowledgeIngestionJobModel.source_file_id.in_([source.id for source in sources]))
+            .order_by(KnowledgeIngestionJobModel.created_at.desc())
+        )).scalars().all())
+        for job in jobs:
+            latest_job_by_source.setdefault(job.source_file_id, job)
     return {
         "ok": True,
         "data": {
-            "documents": [_doc_to_dict(d) for d in docs],
+            "documents": [
+                _doc_to_dict(
+                    doc,
+                    source_by_doc.get(doc.id),
+                    latest_job_by_source.get(source_by_doc[doc.id].id) if doc.id in source_by_doc else None,
+                )
+                for doc in docs
+            ],
             "total": total,
             "limit": limit,
             "offset": offset,
@@ -337,6 +380,29 @@ async def confirm_document(
     except ValueError as e:
         # 文档或候选稿不存在属于客户端可修复的错误，映射为 404 而非 500
         raise HTTPException(status_code=404, detail=str(e))
+    source = (
+        await doc_service.session.execute(
+            select(KnowledgeSourceFileModel).where(
+                KnowledgeSourceFileModel.knowledge_document_id == document_id,
+                KnowledgeSourceFileModel.status == "recognized",
+            )
+        )
+    ).scalar_one_or_none()
+    if source:
+        managed_files = SourceFileStorage(get_knowledge_settings().source_files_dir)
+        moved = managed_files.move(source.current_relative_path, "archived", source.id)
+        source.current_relative_path = str(moved)
+        source.status = "archived"
+        doc.source_path = str(managed_files.resolve_relative(moved))
+        await doc_service.session.commit()
+        jobs = list((await doc_service.session.execute(
+            select(KnowledgeIngestionJobModel).where(
+                KnowledgeIngestionJobModel.source_file_id == source.id
+            )
+        )).scalars().all())
+        settings = get_knowledge_settings()
+        for job in jobs:
+            PdfPageWorkspace(settings.ingestion_work_dir, job.id).cleanup()
     background_tasks.add_task(_run_indexing_task, document_id, workspace_id, doc.owner_id)
     return {
         "ok": True,
@@ -361,7 +427,21 @@ async def reconvert_document(
         raise HTTPException(status_code=422, detail="该文档没有原始文件，无法重新解析")
     settings = get_knowledge_settings()
     storage = KnowledgeStorage(settings.sources_dir, settings.documents_dir)
-    file_bytes = storage.read_source(doc.source_path)
+    source = (
+        await doc_service.session.execute(
+            select(KnowledgeSourceFileModel).where(
+                KnowledgeSourceFileModel.knowledge_document_id == document_id
+            )
+        )
+    ).scalar_one_or_none()
+    try:
+        if source:
+            managed = SourceFileStorage(settings.source_files_dir)
+            file_bytes = managed.resolve_relative(source.current_relative_path).read_bytes()
+        else:
+            file_bytes = storage.read_source(doc.source_path)
+    except (ValueError, OSError):
+        raise HTTPException(status_code=422, detail="源文件路径无效，无法重新解析")
     if file_bytes is None:
         raise HTTPException(status_code=404, detail="原始文件已不存在，无法重新解析")
 
@@ -399,7 +479,23 @@ async def delete_document(
     workspace_id: str = Query("default", alias="workspaceId"),
     doc_service: DocumentService = Depends(_get_document_service)
 ):
+    source = (
+        await doc_service.session.execute(
+            select(KnowledgeSourceFileModel).where(
+                KnowledgeSourceFileModel.knowledge_document_id == document_id
+            )
+        )
+    ).scalar_one_or_none()
     await doc_service.soft_delete(document_id, workspace_id)
+    if source:
+        jobs = list((await doc_service.session.execute(
+            select(KnowledgeIngestionJobModel).where(
+                KnowledgeIngestionJobModel.source_file_id == source.id
+            )
+        )).scalars().all())
+        settings = get_knowledge_settings()
+        for job in jobs:
+            PdfPageWorkspace(settings.ingestion_work_dir, job.id).cleanup()
     return {
         "ok": True,
         "data": {

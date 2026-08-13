@@ -137,6 +137,15 @@ from dataclasses import dataclass, field
 class KnowledgeSettings:
     sources_dir: Path = field(default_factory=lambda: (OUTPUT_DIR / "knowledge" / "sources").resolve())
     documents_dir: Path = field(default_factory=lambda: (OUTPUT_DIR / "knowledge" / "documents").resolve())
+    source_files_dir: Path = field(default_factory=lambda: (OUTPUT_DIR / "knowledge" / "source-files").resolve())
+    ingestion_work_dir: Path = field(default_factory=lambda: (OUTPUT_DIR / "knowledge" / "ingestion-work").resolve())
+    ingestion_concurrency: int = 2
+    ingestion_lease_seconds: int = 120
+    source_file_stable_seconds: int = 2
+    max_source_file_bytes: int = 2 * 1024 * 1024 * 1024
+    source_file_buffer_bytes: int = 4 * 1024 * 1024
+    pdf_page_concurrency: int = 1
+    pdf_page_max_attempts: int = 3
     embedding_dimensions: int = 1536
     parent_chunk_max_tokens: int = 1200
     child_chunk_max_tokens: int = 350
@@ -170,6 +179,12 @@ def get_knowledge_settings() -> KnowledgeSettings:
     load_env_file()
     sources_dir = Path(os.getenv("KNOWLEDGE_SOURCES_DIR", OUTPUT_DIR / "knowledge" / "sources")).resolve()
     documents_dir = Path(os.getenv("KNOWLEDGE_DOCUMENTS_DIR", OUTPUT_DIR / "knowledge" / "documents")).resolve()
+    source_files_dir = Path(
+        os.getenv("KNOWLEDGE_SOURCE_FILES_DIR", OUTPUT_DIR / "knowledge" / "source-files")
+    ).resolve()
+    ingestion_work_dir = Path(
+        os.getenv("KNOWLEDGE_INGESTION_WORK_DIR", OUTPUT_DIR / "knowledge" / "ingestion-work")
+    ).resolve()
     embedding_dims = parse_positive_int(os.getenv("EMBEDDING_DIMENSIONS"), 1536)
     rrf_k = parse_positive_int(os.getenv("KNOWLEDGE_RRF_K"), 60)
 
@@ -183,6 +198,19 @@ def get_knowledge_settings() -> KnowledgeSettings:
     return KnowledgeSettings(
         sources_dir=sources_dir,
         documents_dir=documents_dir,
+        source_files_dir=source_files_dir,
+        ingestion_work_dir=ingestion_work_dir,
+        ingestion_concurrency=parse_positive_int(os.getenv("KNOWLEDGE_INGEST_CONCURRENCY"), 2),
+        ingestion_lease_seconds=parse_positive_int(os.getenv("KNOWLEDGE_INGEST_LEASE_SECONDS"), 120),
+        source_file_stable_seconds=parse_positive_int(os.getenv("KNOWLEDGE_SOURCE_FILE_STABLE_SECONDS"), 2),
+        max_source_file_bytes=parse_positive_int(
+            os.getenv("KNOWLEDGE_MAX_SOURCE_FILE_BYTES"), 2 * 1024 * 1024 * 1024
+        ),
+        source_file_buffer_bytes=parse_positive_int(
+            os.getenv("KNOWLEDGE_SOURCE_FILE_BUFFER_BYTES"), 4 * 1024 * 1024
+        ),
+        pdf_page_concurrency=parse_positive_int(os.getenv("KNOWLEDGE_PDF_PAGE_CONCURRENCY"), 1),
+        pdf_page_max_attempts=parse_positive_int(os.getenv("KNOWLEDGE_PDF_PAGE_MAX_ATTEMPTS"), 3),
         embedding_dimensions=embedding_dims,
         embedding_api_key=os.getenv("EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY", "")),
         embedding_base_url=os.getenv("EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),

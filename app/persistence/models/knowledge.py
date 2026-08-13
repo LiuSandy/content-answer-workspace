@@ -75,6 +75,134 @@ class KnowledgeDocumentModel(Base):
     )
 
 
+class KnowledgeSourceFileModel(Base):
+    """受管源文件；数据库状态是权威，目录位置是可恢复的物理投影。"""
+
+    __tablename__ = "knowledge_source_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    workspace_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    owner_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    ingest_source: Mapped[str] = mapped_column(String(32), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    original_relative_path: Mapped[str] = mapped_column(Text, nullable=False)
+    current_relative_path: Mapped[str] = mapped_column(Text, nullable=False)
+    extension: Mapped[str] = mapped_column(String(32), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    knowledge_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("knowledge_documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    jobs: Mapped[list[KnowledgeIngestionJobModel]] = relationship(
+        "KnowledgeIngestionJobModel", back_populates="source_file", cascade="all, delete-orphan"
+    )
+
+
+class KnowledgeIngestionJobModel(Base):
+    """可租约领取、持久化进度并在进程重启后恢复的摄取任务。"""
+
+    __tablename__ = "knowledge_ingestion_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    source_file_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("knowledge_source_files.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(64), nullable=False)
+    progress_current: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    progress_total: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    progress_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    checkpoint: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    succeeded_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    current_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    source_file: Mapped[KnowledgeSourceFileModel] = relationship(
+        "KnowledgeSourceFileModel", back_populates="jobs"
+    )
+    pages: Mapped[list[KnowledgeIngestionPageModel]] = relationship(
+        "KnowledgeIngestionPageModel", back_populates="job", cascade="all, delete-orphan"
+    )
+
+
+class KnowledgeIngestionPageModel(Base):
+    """大型 PDF 的单页转换状态与可恢复结果。"""
+
+    __tablename__ = "knowledge_ingestion_pages"
+    __table_args__ = (
+        Index("uq_knowledge_ingestion_page_number", "job_id", "page_number", unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("knowledge_ingestion_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    markdown_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    job: Mapped[KnowledgeIngestionJobModel] = relationship(
+        "KnowledgeIngestionJobModel", back_populates="pages"
+    )
+
+
 class KnowledgeChunkModel(Base):
     __tablename__ = "knowledge_chunks"
 

@@ -7,6 +7,9 @@ from .documents import AIOperation, AnswerDocument, AnswerVersion
 from .knowledge import (
     KnowledgeChunkModel,
     KnowledgeDocumentModel,
+    KnowledgeIngestionJobModel,
+    KnowledgeIngestionPageModel,
+    KnowledgeSourceFileModel,
     RetrievalHitModel,
     RetrievalTraceModel,
 )
@@ -30,6 +33,9 @@ __all__ = [
     "AppSettings",
     "KnowledgeDocumentModel",
     "KnowledgeChunkModel",
+    "KnowledgeSourceFileModel",
+    "KnowledgeIngestionJobModel",
+    "KnowledgeIngestionPageModel",
     "RetrievalTraceModel",
     "RetrievalHitModel",
     "QualityScoreModel",
@@ -41,4 +47,3 @@ __all__ = [
     "PublishMetricsModel",
     "BranchSummary",
 ]
-
