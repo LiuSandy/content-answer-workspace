@@ -6,7 +6,7 @@
 
 ## Goal
 
-在不改变现有业务流程的前提下，统一接管后端应用、HTTP 访问、后台任务、Uvicorn 和第三方库日志，实现 JSON 控制台输出、按日期和级别分类落盘、单文件大小轮转、请求与任务上下文关联、敏感信息脱敏，以及 `LOG_LEVEL=INFO/DEBUG` 全局等级控制。
+在不改变现有业务流程的前提下，统一接管后端应用、HTTP 访问、后台任务、Uvicorn 和第三方库日志，实现人类可读的控制台输出、JSON 文件日志、按日期和级别分类落盘、单文件大小轮转、请求与任务上下文关联、敏感信息脱敏，以及 `LOG_LEVEL=INFO/DEBUG` 全局等级控制。
 
 ## Scope
 
@@ -27,7 +27,7 @@ logs/YYYY-MM-DD/critical.log
 ## Architecture
 
 - `app/observability/logging.py` 负责读取环境变量、初始化 root logger、日志队列、控制台和文件 handler，并统一接管 Uvicorn 与第三方 logger。
-- `app/observability/formatter.py` 将 `LogRecord` 格式化为单行 JSON，并规范异常结构。
+- `app/observability/formatter.py` 为控制台生成紧凑文本，为日志文件生成单行 JSON，并分别规范异常呈现。
 - `app/observability/context.py` 使用 `ContextVar` 保存 request、run、job、task、trace 和业务实体 ID。
 - `app/observability/redaction.py` 在日志进入队列前完成字段和字符串脱敏。
 - `app/observability/middleware.py` 使用纯 ASGI middleware 管理 HTTP 请求上下文和访问日志，兼容 SSE。
@@ -74,7 +74,7 @@ LOG_BACKUP_COUNT=10
 - 非法等级和非法数值回退。
 - 相对路径解析。
 
-### Task 2：JSON Formatter 与精确等级过滤
+### Task 2：Console/JSON Formatter 与精确等级过滤
 
 涉及文件：
 
@@ -84,7 +84,8 @@ LOG_BACKUP_COUNT=10
 
 工作内容：
 
-- 实现稳定的单行 JSON formatter。
+- 实现人类可读的控制台 formatter 和稳定的文件 JSON formatter。
+- 控制台只显示非空上下文，终端支持时使用颜色，异常按多行文本呈现。
 - 固定输出 Spec 约定的时间、等级、logger、message、上下文、调用位置和 exception 字段。
 - 时间使用本地时区 ISO 8601 格式并包含毫秒。
 - `logger.exception()` 生成结构化异常类型、消息和堆栈。
@@ -169,14 +170,14 @@ LOG_BACKUP_COUNT=10
 - 将业务模块中的 `logging.getLogger("uvicorn")` 逐步改为 `logging.getLogger(__name__)`。
 - Uvicorn 启动时不得覆盖统一日志配置。
 - 禁用 Uvicorn 默认 access log，后续由统一请求中间件记录。
-- `httpx`、APScheduler、SQLAlchemy 等第三方日志通过 root logger 输出相同 JSON，但仍受全局 INFO/DEBUG 等级控制。
+- `httpx`、APScheduler、SQLAlchemy 等第三方日志通过 root logger 输出相同的控制台文本和文件 JSON，但仍受全局 INFO/DEBUG 等级控制。
 - 避免 propagate 和重复 handler 造成同一条日志输出两次。
 
 测试：
 
 - 初始化一次和多次的 handler 数量一致。
 - 同一条业务日志只输出一次。
-- Uvicorn 和 HTTPX 日志可格式化为相同 JSON。
+- Uvicorn 和 HTTPX 日志在控制台格式一致，并能写入相同结构的 JSON 文件。
 - listener 停止前能够刷新待写日志。
 
 ### Task 6：HTTP 请求 ID 与访问日志
@@ -275,7 +276,7 @@ LOG_BACKUP_COUNT=10
 - 记录 INFO 和 DEBUG 两种启动配置。
 - 说明日志目录、文件分类、大小轮转和保留策略。
 - 给出使用 request ID、run ID 和 job ID 定位日志的示例。
-- 说明日志文件包含 JSON 行而不是普通文本格式。
+- 说明控制台为紧凑文本，日志文件包含 JSON 行。
 
 验证命令：
 
@@ -309,7 +310,7 @@ git diff --check
 ## Acceptance Criteria
 
 1. 默认只输出 INFO、WARNING、ERROR、CRITICAL，DEBUG 配置额外输出 DEBUG。
-2. 控制台和文件中的每条日志都是可解析的单行 JSON。
+2. 控制台日志紧凑可读，文件中的每条日志都是可解析的单行 JSON。
 3. 每条日志只进入 `logs/YYYY-MM-DD/<level>.log` 中对应的一个级别文件。
 4. 跨天和单文件大小轮转均正确工作。
 5. 历史日期目录按保留天数安全清理。

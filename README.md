@@ -130,7 +130,7 @@ logs/YYYY-MM-DD/error.log
 logs/YYYY-MM-DD/critical.log
 ```
 
-日志文件内部为一行一条 JSON。默认 `LOG_LEVEL=INFO`；如需调试日志，在 `.env` 中设置：
+控制台使用紧凑文本格式，只显示非空的 request、run、job 等上下文；日志文件内部为一行一条完整 JSON。默认 `LOG_LEVEL=INFO`；如需调试日志，在 `.env` 中设置：
 
 ```dotenv
 LOG_LEVEL=DEBUG

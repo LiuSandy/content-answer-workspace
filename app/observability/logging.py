@@ -16,7 +16,7 @@ from threading import RLock
 from app.core.config import ROOT_DIR
 
 from .context import CONTEXT_FIELDS, get_log_context
-from .formatter import JsonFormatter
+from .formatter import ConsoleFormatter, JsonFormatter
 from .redaction import redact_text, redact_value
 
 
@@ -189,10 +189,10 @@ def configure_logging(settings: LoggingSettings | None = None) -> LoggingSetting
         return settings or get_logging_settings()
     settings = settings or get_logging_settings()
     settings.directory.mkdir(parents=True, exist_ok=True)
-    formatter = JsonFormatter()
+    json_formatter = JsonFormatter()
     handlers: list[logging.Handler] = []
     console = logging.StreamHandler(sys.stdout)
-    console.setFormatter(formatter)
+    console.setFormatter(ConsoleFormatter(colors=sys.stdout.isatty()))
     handlers.append(console)
     levels = [logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL]
     if settings.level == "DEBUG":
@@ -203,7 +203,7 @@ def configure_logging(settings: LoggingSettings | None = None) -> LoggingSetting
             settings.backup_count, settings.retention_days,
         )
         handler.addFilter(ExactLevelFilter(level))
-        handler.setFormatter(formatter)
+        handler.setFormatter(json_formatter)
         handlers.append(handler)
     log_queue: queue.SimpleQueue = queue.SimpleQueue()
     _queue_handler = InProcessQueueHandler(log_queue)

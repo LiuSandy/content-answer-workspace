@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime
 
 from app.observability.context import bind_log_context, get_log_context
-from app.observability.formatter import JsonFormatter
+from app.observability.formatter import ConsoleFormatter, JsonFormatter
 from app.observability.logging import (
     DatedLevelFileHandler,
     ExactLevelFilter,
@@ -46,6 +46,50 @@ def test_json_formatter_includes_context_and_exception():
     assert data["job_id"] == "job-1"
     assert REDACTED in data["exception"]["message"]
     assert "secret-token" not in data["exception"]["stacktrace"]
+
+
+def test_console_formatter_is_compact_and_omits_null_context():
+    formatter = ConsoleFormatter(colors=False)
+    record = logging.makeLogRecord({
+        "name": "app.api.routes.chats",
+        "levelno": logging.INFO,
+        "levelname": "INFO",
+        "msg": "Chat started",
+        "request_id": "req-1",
+        "run_id": "run-1",
+        "job_id": None,
+        "method": "POST",
+    })
+
+    rendered = formatter.format(record)
+
+    assert "INFO" in rendered
+    assert "app.api.routes.chats" in rendered
+    assert "Chat started" in rendered
+    assert "request_id=req-1" in rendered
+    assert "run_id=run-1" in rendered
+    assert "method=POST" in rendered
+    assert "job_id" not in rendered
+    assert not rendered.startswith("{")
+
+
+def test_console_formatter_renders_readable_redacted_exception():
+    formatter = ConsoleFormatter(colors=False)
+    try:
+        raise RuntimeError("Bearer console-secret")
+    except RuntimeError:
+        record = logging.getLogger("test.console").makeRecord(
+            "test.console", logging.ERROR, __file__, 10, "failed", (),
+            exc_info=__import__("sys").exc_info(),
+        )
+    from app.observability.logging import ContextRedactionFilter
+    ContextRedactionFilter().filter(record)
+
+    rendered = formatter.format(record)
+
+    assert "Traceback (most recent call last)" in rendered
+    assert REDACTED in rendered
+    assert "console-secret" not in rendered
 
 
 def test_redacts_nested_sensitive_values():
