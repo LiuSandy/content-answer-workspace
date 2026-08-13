@@ -17,6 +17,7 @@ htmlcov/
 
 output/
 .data/
+logs/
 
 .superpowers/
 

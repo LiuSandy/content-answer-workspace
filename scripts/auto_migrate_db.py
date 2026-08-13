@@ -9,7 +9,6 @@ from app.persistence.session import get_engine
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_FLAG_FILE = ROOT_DIR / "output" / ".migration_completed"
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("auto_migrate")
 
 

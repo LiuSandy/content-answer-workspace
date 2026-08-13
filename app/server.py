@@ -30,6 +30,8 @@ from .core.config import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
 from sqlalchemy.exc import DBAPIError
 from .errors import AppError, DocumentConflictError
 from .prompts.registry import warmup as warmup_prompts
+from .observability.logging import configure_logging, shutdown_logging
+from .observability.middleware import RequestLoggingMiddleware
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIST_DIR = ROOT_DIR / "frontend" / "dist"
@@ -40,6 +42,7 @@ CONVERSATION_CHECKPOINT_DB = OUTPUT_DIR / "agent_checkpoints.sqlite"
 async def lifespan(app: FastAPI):
     """启动时初始化配置与提示词，开启对话历史的 SQLite 连接并编译对话 Graph。"""
     load_env_file()
+    configure_logging()
     warmup_config()
     
     # 自动无感平滑迁移检测与自愈快照护航
@@ -124,9 +127,11 @@ async def lifespan(app: FastAPI):
             reset_engine()
         except Exception:
             pass
+        shutdown_logging()
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(RequestLoggingMiddleware)
 GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/generated-images", StaticFiles(directory=GENERATED_IMAGES_DIR), name="generated-images")
 
@@ -233,8 +238,16 @@ else:
 
 def main() -> None:
     load_env_file()
+    configure_logging()
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("app.server:app", host="127.0.0.1", port=port, reload=False)
+    uvicorn.run(
+        "app.server:app",
+        host="127.0.0.1",
+        port=port,
+        reload=False,
+        log_config=None,
+        access_log=False,
+    )
 
 
 if __name__ == "__main__":
