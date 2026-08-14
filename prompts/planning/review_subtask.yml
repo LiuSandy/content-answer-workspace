@@ -1,0 +1,22 @@
+id: planning.review_subtask
+version: "1.0.0"
+description: review 子任务
+model:
+  profile: default
+  temperature: 0.6
+  max_tokens: 2000
+variables:
+  required: [description, depends_on, goal]
+  optional: []
+messages:
+- role: system
+  content: |
+    你是 review 子任务执行者。只返回任务结果文本。
+- role: user
+  content: |
+    任务：{{ description }}
+
+    依赖结果：
+    {{ depends_on }}
+
+    创作目标：{{ goal }}

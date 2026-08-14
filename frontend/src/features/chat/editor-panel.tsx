@@ -17,14 +17,32 @@ import {
   Save,
   History,
   ExternalLink,
+  ClipboardList,
+  ListTree,
+  Bot,
 } from "lucide-react";
 
 import { apiGet, apiPut, apiPost } from "@/lib/api";
 import { streamPost } from "@/lib/sse";
 import { useChatStore } from "@/store/chat-store";
+import { useAlertDialog } from "@/hooks/use-alert-dialog";
+import { InlineRefineMenu, type InlineRefineParams } from "./inline-refine-menu";
+import { SelectionHighlight } from "./selection-highlight-extension";
+import { QualityReviewDialog, ReportCard } from "./quality-review-dialog";
+import type { QualityReviewRecordDTO } from "./quality-review-api";
+import {
+  compactOutlineLabel,
+  compactReviewLabel,
+  currentVersionBadgeClass,
+  modelLabel,
+} from "./version-history";
+import {
+  initialCreationProgress,
+  reduceCreationProgress,
+} from "./creation-review-lifecycle";
+import { OutlineDialog } from "./outline-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PromptInput } from "@/components/ui/prompt-input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -36,6 +54,13 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "@/components/ui/drawer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type DocumentState = {
   documentId: string;
@@ -52,6 +77,25 @@ type DocumentState = {
   } | null;
 };
 
+/**
+ * run.failed 事件携带的业务层错误负载；后端把工作流内部异常（如选区不匹配、
+ * 锁版本冲突）包装成这个 SSE 事件而不是 HTTP 错误状态码，因此不会触发
+ * streamPost 的 onError，必须在 onEvent 里单独识别。
+ */
+type RunFailedPayload = {
+  errorCode?: string;
+  message?: string;
+};
+
+/**
+ * 三处流式调用（生成 / 精修 / 重写）共用的 run.failed 处理逻辑：提示错误信息。
+ * notify 由调用组件通过 useAlertDialog() 传入，因为该函数定义在组件外部，
+ * 无法直接调用依赖 Context 的 Hook。
+ */
+function handleRunFailed(data: RunFailedPayload, notify: (options: { description: string }) => Promise<void>) {
+  void notify({ description: data.message || "操作失败，请稍后重试" });
+}
+
 type VersionSummary = {
   id: string;
   versionNumber: number;
@@ -59,6 +103,18 @@ type VersionSummary = {
   instruction: string | null;
   provider: string | null;
   model: string | null;
+  outlineOperationId: string | null;
+  outlineVersionNumber: number | null;
+  outlineStatus: "draft" | "confirmed" | null;
+  outlineSections: Array<{
+    id?: string;
+    order?: number;
+    heading: string;
+    keyPoints: string[];
+    wordCountEstimate: number;
+  }>;
+  qualityReview: QualityReviewRecordDTO | null;
+  contentSummary: string;
   createdAt: string;
 };
 
@@ -73,10 +129,11 @@ type VersionSummary = {
 export function EditorPanel() {
   const queryClient = useQueryClient();
   const { selectedSourceItemId, setSelectedSourceItemId } = useChatStore();
+  const { confirm, notify } = useAlertDialog();
 
-  const [refineInstruction, setRefineInstruction] = useState("");
   const [rewriteInstruction, setRewriteInstruction] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [creationProgress, setCreationProgress] = useState(initialCreationProgress);
   const isGeneratingRef = useRef(isGenerating);
   useEffect(() => {
     isGeneratingRef.current = isGenerating;
@@ -85,6 +142,8 @@ export function EditorPanel() {
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [wordCount, setWordCount] = useState<number>(1000);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [qualityDialogOpen, setQualityDialogOpen] = useState(false);
+  const [outlineDialogOpen, setOutlineDialogOpen] = useState(false);
 
   const STYLE_DESCRIPTIONS: Record<string, string> = {
     professional: "- 专业严谨：语言条理清晰，论证逻辑严密，多用客观事实与专业数据支撑观点。",
@@ -109,7 +168,7 @@ export function EditorPanel() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      alert("复制失败");
+      void notify("复制失败");
     }
   };
 
@@ -147,6 +206,7 @@ export function EditorPanel() {
       Placeholder.configure({
         placeholder: "点击上方「生成回答」开始创作，或者在此手动输入内容...",
       }),
+      SelectionHighlight,
     ],
     content: "",
     onUpdate: () => {
@@ -232,6 +292,12 @@ export function EditorPanel() {
 
   const hasContent = !!editor?.getText()?.trim();
 
+  // 乐观锁冲突：让编辑器基于最新内容操作
+  const handleQualityConflictRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
+    queryClient.invalidateQueries({ queryKey: ["versions", docState?.documentId] });
+  };
+
   // 3. 手动保存版本
   const saveCheckpointMutation = useMutation({
     mutationFn: () =>
@@ -241,6 +307,8 @@ export function EditorPanel() {
     onSuccess: (updatedState) => {
       queryClient.setQueryData(["document", selectedSourceItemId], updatedState);
       queryClient.invalidateQueries({ queryKey: ["versions", docStateRef.current?.documentId] });
+      queryClient.invalidateQueries({ queryKey: ["outline", docStateRef.current?.documentId] });
+      queryClient.invalidateQueries({ queryKey: ["outline-versions", docStateRef.current?.documentId] });
     },
   });
 
@@ -279,7 +347,9 @@ export function EditorPanel() {
     if (!currentDocState || isGenerating || !editor) return;
     cancelDebouncedSave();
     setIsGenerating(true);
+    setCreationProgress(reduceCreationProgress(initialCreationProgress, "run.started", {}));
     editor.commands.setContent("");
+    let terminalEventReceived = false;
 
     try {
       await streamPost(
@@ -293,57 +363,68 @@ export function EditorPanel() {
         },
         {
           onEvent: (event, data) => {
+            if (["run.started", "review.started", "review.completed", "rewrite.started", "document.completed", "run.completed", "run.failed"].includes(event)) {
+              setCreationProgress((state) => reduceCreationProgress(state, event, data));
+            }
             if (event === "document.delta") {
               editor.commands.insertContent(data.delta);
             } else if (event === "document.completed") {
               queryClient.setQueryData(["document", selectedSourceItemId], data);
               queryClient.invalidateQueries({ queryKey: ["versions", data.documentId] });
+              queryClient.invalidateQueries({ queryKey: ["quality-reviews", data.documentId] });
               (editor.commands as any).setContent(data.currentContent || "", {
                 contentType: "markdown",
                 emitUpdate: false,
               });
+            } else if (event === "run.completed") {
+              terminalEventReceived = true;
+              setIsGenerating(false);
+            } else if (event === "run.failed") {
+              terminalEventReceived = true;
+              setIsGenerating(false);
+              handleRunFailed(data, notify);
+              queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
             }
           },
           onError: (err) => {
-            alert(`生成失败: ${err.message}`);
+            terminalEventReceived = true;
+            setIsGenerating(false);
+            setCreationProgress((state) => reduceCreationProgress(state, "run.failed", {}));
+            void notify(`生成失败: ${err.message}`);
             queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
           },
         },
       );
     } finally {
-      setIsGenerating(false);
+      if (!terminalEventReceived) {
+        setIsGenerating(false);
+        setCreationProgress((state) => reduceCreationProgress(state, "run.failed", {}));
+      }
     }
   };
 
-  // 5. 局部精修 (Stream)
-  const handleInlineRefinement = async () => {
+  // 5. 局部精修 (Stream)：由 InlineRefineMenu 在提交对话框时携带选区快照调用
+  const handleInlineRefinement = async ({ from, to, text: selectedText, instruction }: InlineRefineParams) => {
     const cachedDocState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
     const currentDocState = cachedDocState || docStateRef.current;
-    if (!currentDocState || isGenerating || !editor || !refineInstruction.trim()) return;
+    if (!currentDocState || isGenerating || !editor) return;
 
-    const { from, to } = editor.state.selection;
-    if (from === to) {
-      alert("请先在编辑器中划选一段要优化的文字");
-      return;
-    }
-    const selectedText = editor.state.doc.textBetween(from, to, " ");
-    
     // 立即保存挂起的修改，确保后端内容最新，并获取最新 lockVersion
     const updatedState = await flushPendingSave();
     const activeCachedState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
-    const activeLockVersion = updatedState 
-      ? updatedState.lockVersion 
+    const activeLockVersion = updatedState
+      ? updatedState.lockVersion
       : (activeCachedState ? activeCachedState.lockVersion : currentDocState.lockVersion);
-    
+
     setIsGenerating(true);
-    editor.commands.deleteSelection();
+    editor.commands.deleteRange({ from, to });
 
     try {
       await streamPost(
         `/api/documents/${currentDocState.documentId}/refine`,
         {
           expectedLockVersion: activeLockVersion,
-          instruction: refineInstruction,
+          instruction,
           selection: { fromPos: from, toPos: to, text: selectedText },
         },
         {
@@ -357,18 +438,23 @@ export function EditorPanel() {
                 contentType: "markdown",
                 emitUpdate: false,
               });
+            } else if (event === "run.failed") {
+              // run.failed 走的是业务层错误通道（HTTP 200 + SSE 事件），不经过 onError，
+              // 因此这里之前已执行的 deleteRange 从未被撤销——必须在这个分支里手动恢复。
+              handleRunFailed(data, notify);
+              editor.commands.insertContentAt(from, selectedText);
+              queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
             }
           },
           onError: (err) => {
-            alert(`精修失败: ${err.message}`);
-            editor.commands.insertContent(selectedText);
+            void notify(`精修失败: ${err.message}`);
+            editor.commands.insertContentAt(from, selectedText);
             queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
           },
         },
       );
     } finally {
       setIsGenerating(false);
-      setRefineInstruction("");
     }
   };
 
@@ -415,10 +501,13 @@ export function EditorPanel() {
                 contentType: "markdown",
                 emitUpdate: false,
               });
+            } else if (event === "run.failed") {
+              handleRunFailed(data, notify);
+              queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
             }
           },
           onError: (err) => {
-            alert(`重写失败: ${err.message}`);
+            void notify(`重写失败: ${err.message}`);
             queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
           },
         },
@@ -579,27 +668,51 @@ export function EditorPanel() {
                 )}
               </DrawerTrigger>
 
-              <DrawerContent className="w-[30rem]">
-                <DrawerHeader className="border-b pb-3">
-                  <DrawerTitle className="flex items-center gap-2 text-base">
-                    <History className="h-4 w-4 text-muted-foreground" />
-                    历史版本
+              <DrawerContent className="w-[31rem] max-w-[calc(100vw-0.75rem)] overflow-hidden border-l-slate-200 bg-[#fbfbf8] dark:border-slate-800 dark:bg-slate-950">
+                <DrawerHeader className="border-b border-slate-200/80 px-6 py-5 dark:border-slate-800">
+                  <DrawerTitle className="flex items-center gap-2.5 text-lg font-semibold tracking-tight text-slate-950 dark:text-slate-50">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-950">
+                      <History className="h-4 w-4" />
+                    </span>
+                    创作档案
                   </DrawerTitle>
-                  <DrawerDescription>
-                    点击「恢复此版本」可覆盖当前内容
+                  <DrawerDescription className="pl-10 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    回看每次创作使用的模型、大纲与评审结果
                   </DrawerDescription>
                 </DrawerHeader>
 
                 <HistoryDrawerContent
                   versions={versions}
-                  onRestore={(versionId) => {
-                    if (confirm("确认恢复此版本？当前编辑中的内容将被覆盖。")) {
+                  currentVersionId={docState?.currentVersionId ?? null}
+                  onRestore={async (versionId) => {
+                    const confirmed = await confirm({
+                      description: "确认恢复此版本？当前编辑中的内容将被覆盖。",
+                    });
+                    if (confirmed) {
                       restoreVersionMutation.mutate(versionId);
                     }
                   }}
                 />
               </DrawerContent>
             </Drawer>
+
+            <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
+
+            {/* 质检评审入口 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  onClick={() => setQualityDialogOpen(true)}
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  查看评审
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>查看本次创作的自动评审结果</TooltipContent>
+            </Tooltip>
 
             <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-700" />
 
@@ -625,13 +738,33 @@ export function EditorPanel() {
       <EditorTabContent
         editor={editor}
         isGenerating={isGenerating}
+        progressLabel={creationProgress.label}
         rewriteInstruction={rewriteInstruction}
         setRewriteInstruction={setRewriteInstruction}
         onRewrite={handleFullRewrite}
+        onInlineRefine={handleInlineRefinement}
         selectedStyles={selectedStyles}
         setSelectedStyles={setSelectedStyles}
         wordCount={wordCount}
         onWordCountChange={setWordCount}
+        onOpenOutline={() => setOutlineDialogOpen(true)}
+      />
+
+      {/* 质检评审 Dialog */}
+      <QualityReviewDialog
+        open={qualityDialogOpen}
+        onOpenChange={setQualityDialogOpen}
+        documentId={docState?.documentId ?? null}
+      />
+
+      {/* 大纲 Dialog */}
+      <OutlineDialog
+        open={outlineDialogOpen}
+        onOpenChange={setOutlineDialogOpen}
+        documentId={docState?.documentId ?? null}
+        sourceItemId={docState?.sourceItemId ?? null}
+        lockVersion={docState?.lockVersion ?? 1}
+        onLockConflict={handleQualityConflictRefresh}
       />
     </aside>
   );
@@ -640,23 +773,29 @@ export function EditorPanel() {
 function EditorTabContent({
   editor,
   isGenerating,
+  progressLabel,
   rewriteInstruction,
   setRewriteInstruction,
   onRewrite,
+  onInlineRefine,
   selectedStyles,
   setSelectedStyles,
   wordCount,
   onWordCountChange,
+  onOpenOutline,
 }: {
   editor: ReturnType<typeof useEditor>;
   isGenerating: boolean;
+  progressLabel: string;
   rewriteInstruction: string;
   setRewriteInstruction: (v: string) => void;
   onRewrite: () => void;
+  onInlineRefine: (params: InlineRefineParams) => void;
   selectedStyles: string[];
   setSelectedStyles: (styles: string[]) => void;
   wordCount: number;
   onWordCountChange: (v: number) => void;
+  onOpenOutline: () => void;
 }) {
   const hasContent = !!editor?.getText()?.trim();
 
@@ -665,6 +804,7 @@ function EditorTabContent({
       {/* Tiptap 编辑区 */}
       <ScrollArea className="flex-1 min-h-0 p-4">
         <EditorContent editor={editor} className="prose dark:prose-invert max-w-none outline-none min-h-[300px]" />
+        <InlineRefineMenu editor={editor} isGenerating={isGenerating} onRefine={onInlineRefine} />
       </ScrollArea>
 
       {/* 居中加载浮层 */}
@@ -673,7 +813,7 @@ function EditorTabContent({
           <div className="flex items-center gap-2.5 rounded-xl border border-indigo-100 dark:border-indigo-900 bg-white/95 dark:bg-zinc-900/95 px-5 py-3.5 shadow-xl">
             <Loader2 className="h-4.5 w-4.5 animate-spin text-indigo-600 dark:text-indigo-400" />
             <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 animate-pulse">
-              AI 正在为您撰写/优化中，请稍候...
+              {progressLabel || "正在生成内容"}
             </span>
           </div>
         </div>
@@ -694,6 +834,20 @@ function EditorTabContent({
           onSelectedStylesChange={setSelectedStyles}
           wordCount={wordCount}
           onWordCountChange={onWordCountChange}
+          afterWordCountActions={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs gap-1 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              onClick={onOpenOutline}
+              disabled={isGenerating}
+              title="生成或编辑回答大纲"
+            >
+              <ListTree className="h-3.5 w-3.5" />
+              大纲
+            </Button>
+          }
         />
       </div>
     </div>
@@ -704,11 +858,16 @@ function EditorTabContent({
 
 function HistoryDrawerContent({
   versions,
+  currentVersionId,
   onRestore,
 }: {
   versions: VersionSummary[];
+  currentVersionId: string | null;
   onRestore: (versionId: string) => void;
 }) {
+  const [outlineDetail, setOutlineDetail] = useState<VersionSummary | null>(null);
+  const [reviewDetail, setReviewDetail] = useState<VersionSummary | null>(null);
+
   if (versions.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-xs text-muted-foreground">
@@ -718,45 +877,159 @@ function HistoryDrawerContent({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="space-y-3">
-        {versions.map((ver) => (
-          <Card key={ver.id}>
-            <CardContent className="flex flex-col gap-3 p-4">
-              <div className="flex items-start justify-between">
-                <span className="text-sm font-bold">版本 {ver.versionNumber}</span>
-                <span className="text-[10px] text-muted-foreground">
-                  {new Date(ver.createdAt).toLocaleString()}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">类型:</span>
-                  <Badge variant="secondary" className="text-[10px] uppercase">
-                    {ver.versionType}
-                  </Badge>
+    <>
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="relative space-y-3 before:absolute before:bottom-5 before:left-[7px] before:top-5 before:w-px before:bg-slate-200 dark:before:bg-slate-800">
+        {versions.map((ver) => {
+          const isCurrent = ver.id === currentVersionId;
+          const reviewPassed = ver.qualityReview?.passed;
+          return (
+            <article
+              key={ver.id}
+              className="relative pl-6"
+            >
+              <span
+                className={`absolute left-0 top-4 z-10 h-[15px] w-[15px] rounded-full border-4 border-[#fbfbf8] dark:border-slate-950 ${
+                  isCurrent ? "bg-slate-950 dark:bg-slate-100" : "bg-slate-300 dark:bg-slate-700"
+                }`}
+              />
+              <div className={`overflow-hidden rounded-xl border bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] transition-shadow hover:shadow-[0_8px_24px_rgba(15,23,42,0.065)] dark:bg-slate-900 ${
+                isCurrent ? "border-slate-900 dark:border-slate-200" : "border-slate-200 dark:border-slate-800"
+              }`}>
+                {isCurrent ? <div className="h-0.5 bg-slate-950 dark:bg-slate-100" /> : null}
+                <div className="flex flex-col gap-2.5 p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold tracking-tight text-slate-950 dark:text-slate-50">
+                      版本 {ver.versionNumber}
+                    </span>
+                    {isCurrent && (
+                      <Badge className={currentVersionBadgeClass}>
+                        当前版本
+                      </Badge>
+                    )}
+                  </div>
+                  <time className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                    {new Date(ver.createdAt).toLocaleString()}
+                  </time>
                 </div>
-                {ver.instruction && (
-                  <p className="text-xs text-muted-foreground">
-                    指令: <span className="italic">"{ver.instruction}"</span>
+                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  <Bot className="h-3.5 w-3.5 shrink-0 text-slate-700 dark:text-slate-300" />
+                  <span className="truncate font-mono">{modelLabel(ver.provider, ver.model)}</span>
+                </div>
+
+                <div>
+                  <p className="line-clamp-3 text-xs leading-[1.65] text-slate-600 dark:text-slate-300">
+                    {ver.contentSummary || "该版本暂无内容摘要"}
                   </p>
-                )}
-                {(ver.provider || ver.model) && (
-                  <p className="text-[10px] text-muted-foreground">
-                    模型: {ver.provider}/{ver.model}
-                  </p>
-                )}
+                </div>
+
+                <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
+                  <div className="flex min-w-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 rounded-md px-2 text-[11px] font-medium text-amber-800 hover:bg-amber-50 hover:text-amber-950 disabled:text-slate-400 dark:text-amber-300 dark:hover:bg-amber-950/50"
+                      disabled={!ver.outlineOperationId}
+                      onClick={() => setOutlineDetail(ver)}
+                    >
+                      <ListTree className="h-3.5 w-3.5" />
+                      {compactOutlineLabel(ver.outlineVersionNumber, ver.outlineSections.length)}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={`h-7 rounded-md px-2 text-[11px] font-medium disabled:text-slate-400 ${
+                        reviewPassed
+                          ? "text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
+                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                      }`}
+                      disabled={!ver.qualityReview}
+                      onClick={() => setReviewDetail(ver)}
+                    >
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      {compactReviewLabel(ver.qualityReview)}
+                    </Button>
+                  </div>
+                  <Button
+                    variant={isCurrent ? "ghost" : "outline"}
+                    size="sm"
+                    className="h-7 shrink-0 rounded-md px-2.5 text-[11px]"
+                    onClick={() => onRestore(ver.id)}
+                    disabled={isCurrent}
+                  >
+                    <Undo2 className="h-3 w-3" />
+                    {isCurrent ? "当前版本" : "恢复此版本"}
+                  </Button>
+                </div>
+                </div>
               </div>
-              <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={() => onRestore(ver.id)}>
-                  <Undo2 className="h-3 w-3" />
-                  恢复此版本
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+            </article>
+          );
+        })}
+        </div>
       </div>
-    </div>
+
+      <Dialog open={!!outlineDetail} onOpenChange={(open) => !open && setOutlineDetail(null)}>
+        <DialogContent className="h-[min(78vh,680px)] max-w-xl !flex min-h-0 flex-col overflow-hidden bg-[#fbfbf8] dark:bg-slate-950">
+          <DialogHeader className="shrink-0 border-b border-slate-200 pb-4 dark:border-slate-800">
+            <DialogTitle className="flex items-center gap-2 text-lg tracking-tight">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                <ListTree className="h-4 w-4" />
+              </span>
+              版本 {outlineDetail?.versionNumber} 使用的大纲
+              {outlineDetail?.outlineVersionNumber ? (
+                <Badge variant="secondary">O{outlineDetail.outlineVersionNumber}</Badge>
+              ) : null}
+            </DialogTitle>
+            <DialogDescription>历史大纲快照，仅供查看，不会修改当前大纲。</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="min-h-0 flex-1 pr-3">
+            <div className="space-y-3 py-1">
+              {(outlineDetail?.outlineSections ?? []).map((section, index) => (
+                <section key={section.id ?? index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <div className="flex items-start gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-950 text-[10px] font-semibold text-white dark:bg-slate-100 dark:text-slate-950">
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xs font-semibold">{section.heading}</h4>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">约 {section.wordCountEstimate} 字</p>
+                    </div>
+                  </div>
+                  {section.keyPoints.length > 0 ? (
+                    <ul className="mt-2 list-disc space-y-1 pl-9 text-[11px] leading-5 text-muted-foreground">
+                      {section.keyPoints.map((point, pointIndex) => <li key={pointIndex}>{point}</li>)}
+                    </ul>
+                  ) : null}
+                </section>
+              ))}
+              {outlineDetail && outlineDetail.outlineSections.length === 0 ? (
+                <p className="py-12 text-center text-xs text-muted-foreground">该版本没有大纲快照。</p>
+              ) : null}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!reviewDetail} onOpenChange={(open) => !open && setReviewDetail(null)}>
+        <DialogContent className="h-[min(78vh,680px)] max-w-2xl !flex min-h-0 flex-col overflow-hidden bg-[#fbfbf8] dark:bg-slate-950">
+          <DialogHeader className="shrink-0 border-b border-slate-200 pb-4 dark:border-slate-800">
+            <DialogTitle className="flex items-center gap-2 text-lg tracking-tight">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                <ClipboardList className="h-4 w-4" />
+              </span>
+              版本 {reviewDetail?.versionNumber} 的自动评审
+            </DialogTitle>
+            <DialogDescription>历史评审结果，仅供查看。</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="min-h-0 flex-1 pr-3">
+            {reviewDetail?.qualityReview ? <ReportCard report={reviewDetail.qualityReview} /> : null}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -13,8 +13,10 @@ import { CollectSettings } from "./collect-settings";
 import { LlmSettings } from "./llm-settings";
 import { PublishSettings } from "./publish-settings";
 import { TopicsSettings } from "./topics-settings";
+import { AgentSettingsPanel } from "./agent-settings-panel";
+import { MemoryPanel } from "./memory-panel";
 
-type Section = "llm" | "agent-reach" | "topics" | "publish" | "collect";
+type Section = "llm" | "agent-reach" | "topics" | "publish" | "collect" | "agent" | "memory";
 
 interface NavItem {
   id: Section;
@@ -28,6 +30,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "topics", label: "主题管理", description: "采集主题的增删改" },
   { id: "publish", label: "发布配置", description: "测试模式与 CTA 文本" },
   { id: "collect", label: "采集默认值", description: "平台、上限、排序模式" },
+  { id: "agent", label: "主动感知", description: "热榜机会扫描与推送开关" },
+  { id: "memory", label: "我的记忆", description: "Agent 记录的用户偏好" },
 ];
 
 const SECTION_COMPONENTS: Record<Section, React.FC> = {
@@ -36,6 +40,8 @@ const SECTION_COMPONENTS: Record<Section, React.FC> = {
   topics: TopicsSettings,
   publish: PublishSettings,
   collect: CollectSettings,
+  agent: AgentSettingsPanel,
+  memory: MemoryPanel,
 };
 
 type RestartState = "idle" | "pending" | "polling" | "success" | "error";
@@ -135,14 +141,18 @@ export function SettingsPage() {
 
         {/* 右侧内容区 */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl px-8 py-6">
-            <div className="mb-5">
-              <h2 className="text-base font-semibold">{activeNav.label}</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">{activeNav.description}</p>
+          {activeSection === "memory" ? (
+            <MemoryPanel />
+          ) : (
+            <div className="max-w-2xl px-8 py-6">
+              <div className="mb-5">
+                <h2 className="text-base font-semibold">{activeNav.label}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{activeNav.description}</p>
+              </div>
+              <Separator className="mb-5" />
+              <ActiveSection />
             </div>
-            <Separator className="mb-5" />
-            <ActiveSection />
-          </div>
+          )}
         </div>
       </div>
     </section>

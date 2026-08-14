@@ -1,0 +1,19 @@
+id: memory.retrieve
+version: "1.0.0"
+description: 检索记忆后拼接到 system prompt 中的指导语
+model:
+  profile: default
+  temperature: 0.2
+  max_tokens: 500
+variables:
+  required: [memories, query]
+  optional: []
+messages:
+- role: system
+  content: |
+    请结合以下用户长期偏好（已按相关性排序）回答本次查询：
+
+    {{ memories }}
+
+    # 查询
+    {{ query }}

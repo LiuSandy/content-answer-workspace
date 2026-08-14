@@ -1,10 +1,6 @@
 """Zhihu Content Source 适配器；实现 domain.ports.ContentSource 协议。"""
 from __future__ import annotations
 
-import os
-from typing import Sequence
-import re
-
 from ....domain.dto import (
     SourceItemDTO,
     ParseUrlRequest,
@@ -13,9 +9,8 @@ from ....domain.dto import (
 )
 from ....models import QuestionItem, Topic
 from ....core.config import get_workflow_config
-from ....services.zhihu_service import fetch_zhihu_question_by_url, get_zhihu_question_web_url
+from ....services.zhihu_service import fetch_zhihu_question_by_url
 from ...collectors.zhihu_collector import ZhihuCollector
-from ...collectors.zhihu_official_collector import ZhihuOfficialCollector
 
 
 def _question_item_to_dto(item: QuestionItem) -> SourceItemDTO:
@@ -77,13 +72,6 @@ class ZhihuSource:
             "maxPushCount": request.max_results,
         })
 
-        # 判断是否使用官方搜索 API
-        has_official = bool(os.getenv("ZHIHU_ACCESS_SECRET", "").strip())
-        
-        if has_official:
-            collector = ZhihuOfficialCollector()
-        else:
-            collector = ZhihuCollector()
-
+        collector = ZhihuCollector()
         items = await collector.collect([topic], config)
         return [_question_item_to_dto(item) for item in items]

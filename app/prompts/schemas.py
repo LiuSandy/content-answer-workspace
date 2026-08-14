@@ -56,4 +56,10 @@ class ModelProfileEntry(BaseModel):
     model: str
     temperature: float | None = None
     max_tokens: int | None = None
+    # 上下文窗口总 token 数（roadmap R4）；用于 ContextComposer 预算
+    context_window: int | None = None
+    # 为输出预留的 token 数；组装输入时保证输出空间（roadmap R4）
+    output_reserve_tokens: int | None = None
+    # 声明结构化输出能力（roadmap R1）：兼容端点不支持原生 json_schema 时不声明它
+    structured_methods: list[str] = Field(default_factory=lambda: ["json_mode", "generic_parse"])
     model_config = {"populate_by_name": True}

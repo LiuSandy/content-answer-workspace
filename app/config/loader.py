@@ -51,12 +51,6 @@ class XiaohongshuSettings(BaseModel):
     cookie_domain: str = ".xiaohongshu.com"
 
 
-class HotlistSettings(BaseModel):
-    """知乎热榜参数；单独定义以约束官方接口返回上限。"""
-
-    max_limit: int = 30
-
-
 class LLMSettings(BaseModel):
     """LLM 非密钥默认值；密钥仍由 .env 提供，这里只放可公开提交的默认模型与地址。"""
 
@@ -71,7 +65,6 @@ class Settings(BaseModel):
     http: HttpSettings = Field(default_factory=HttpSettings)
     playwright: PlaywrightSettings = Field(default_factory=PlaywrightSettings)
     xiaohongshu: XiaohongshuSettings = Field(default_factory=XiaohongshuSettings)
-    hotlist: HotlistSettings = Field(default_factory=HotlistSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
 
 

@@ -67,3 +67,49 @@ async def test_chat_message_branching_path() -> None:
         assert path_fallback[3].id == a3.id
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_chat_branching_current_user_message_not_duplicated() -> None:
+    """每次图运行输入中当前用户消息只出现一次。
+
+    当 leaf_message_id 为 None（首次提问或线性历史）时，get_message_path 会把
+    最新消息（即刚保存的当前用户消息）当作叶子，历史路径因此会包含它；拼装
+    LangGraph 输入时必须排除该条当前消息，只保留历史，再额外追加一次当前消息。
+    """
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with session_factory() as session:
+        chat_service = ChatService(session)
+        chat = await chat_service.create_chat("Dedup")
+
+        # 第一轮：保存当前用户消息（无 parent），路径会包含它自身
+        u1 = await chat_service.save_user_message(chat.id, "User Q1", parent_message_id=None)
+        a1 = await chat_service.save_assistant_message(chat.id, "text", "Assistant A1", parent_message_id=u1.id)
+
+        # 第二轮：新的用户消息
+        u2 = await chat_service.save_user_message(chat.id, "User Q2", parent_message_id=a1.id)
+
+        # 历史路径（到 a1 为止，不含 u2）
+        path_hist = await chat_service.get_message_path(chat.id, a1.id)
+        assert [m.id for m in path_hist] == [u1.id, a1.id]
+
+        # 用 ChatService 相同逻辑拼装 LangGraph 输入：历史 + 当前用户消息
+        # 必须排除刚保存的当前用户消息（u2 不应出现在历史里）
+        from app.api.routes.chats import build_langgraph_history
+
+        history = build_langgraph_history(path_hist, str(u2.id))
+        langgraph_messages = history + [{"role": "user", "content": "User Q2"}]
+        # 当前用户消息 "User Q2" 只能出现一次（历史排除后由调用方追加一次）
+        current_msgs = [m for m in langgraph_messages if m["content"] == "User Q2"]
+        assert len(current_msgs) == 1
+        # 历史中不应包含当前用户消息 u2
+        assert all(m["content"] != "User Q2" for m in history)
+        # 历史仍包含上一轮的用户消息（合法历史，不算重复）
+        assert any(m["content"] == "User Q1" for m in history)
+
+    await engine.dispose()

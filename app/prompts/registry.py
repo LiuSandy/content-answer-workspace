@@ -39,12 +39,14 @@ class RenderedPrompt:
         model: str,
         temperature: float,
         max_tokens: int,
+        structured_methods: list[str] | None = None,
     ):
         self.prompt_id = prompt_id
         self.messages = messages
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.structured_methods = structured_methods or ["json_mode", "generic_parse"]
 
     def to_llm_request(self) -> LLMRequest:
         return LLMRequest(
@@ -107,6 +109,9 @@ class PromptRegistry:
             return  # 跳过空文件
         schema = PromptSchema.model_validate(raw)
         if schema.id in self._prompts:
+            # 同一文件被重复加载时跳过，避免测试或多次 warmup 误报重复 ID
+            if self._sources.get(schema.id) == str(path):
+                return
             raise PromptDuplicateIdError(schema.id, self._sources[schema.id], str(path))
         self._prompts[schema.id] = schema
         self._sources[schema.id] = str(path)
@@ -122,6 +127,45 @@ class PromptRegistry:
         if prompt_id not in self._prompts:
             raise PromptNotFoundError(prompt_id)
         return self._prompts[prompt_id]
+
+    def has(self, prompt_id: str) -> bool:
+        """判断 Prompt 是否已注册；供调用方做兜底选择（如平台包回退 default）。"""
+        return prompt_id in self._prompts
+
+    def get_source_path(self, prompt_id: str) -> Path:
+        """返回 Prompt 的源 YAML 文件路径；供编辑接口读写文件用。"""
+        if prompt_id not in self._sources:
+            raise PromptNotFoundError(prompt_id)
+        return Path(self._sources[prompt_id])
+
+    def reload(self) -> None:
+        """重新从磁盘加载全部 Prompt（编辑保存后调用），完成后恢复冻结状态。"""
+        if not self._sources:
+            return
+        first_source = Path(next(iter(self._sources.values())))
+        prompts_dir = first_source.parent.parent
+        self._frozen = False
+        self._prompts.clear()
+        self._sources.clear()
+        self.load_from_dir(prompts_dir)
+        self.freeze()
+
+    def get_model_profile(self, profile_key: str) -> ModelProfileEntry | None:
+        """返回模型 profile；用于 R4 ContextComposer 读取 context_window 等预算字段。"""
+        return self._model_profiles.get(profile_key)
+
+    def render_fragment(self, prompt_id: str, **variables: Any) -> str:
+        """渲染 content-only 共享片段并返回纯文本。
+
+        这是拼接场景（平台包、风格尾部等）的唯一公开入口——
+        业务代码不得访问 _prompts 私有属性自行渲染。
+        """
+        schema = self.get(prompt_id)
+        if schema.content is None:
+            raise PromptRenderError(
+                f"Prompt '{prompt_id}' has no 'content' field, cannot render as fragment"
+            )
+        return self._render_str(schema.content, dict(variables), prompt_id).strip()
 
     def list_ids(self) -> list[str]:
         return sorted(self._prompts.keys())
@@ -154,7 +198,7 @@ class PromptRegistry:
             messages.append(LLMMessage(role=msg.role, content=content))
 
         # 解析模型参数
-        model_str, temperature, max_tokens = self._resolve_model_params(schema)
+        model_str, temperature, max_tokens, structured_methods = self._resolve_model_params(schema)
 
         return RenderedPrompt(
             prompt_id=prompt_id,
@@ -162,6 +206,7 @@ class PromptRegistry:
             model=model_str,
             temperature=temperature,
             max_tokens=max_tokens,
+            structured_methods=structured_methods,
         )
 
     def _render_str(self, template: str, variables: dict[str, Any], prompt_id: str) -> str:
@@ -172,14 +217,15 @@ class PromptRegistry:
 
     def _resolve_model_params(
         self, schema: PromptSchema
-    ) -> tuple[str, float, int]:
+    ) -> tuple[str, float, int, list[str]]:
         profile_key = schema.model.profile if schema.model else "default"
         profile = self._model_profiles.get(profile_key)
 
         # 基础默认值
-        model_str = "deepseek-chat"
+        model_str = "deepseek-v4-pro"
         temperature = 0.7
         max_tokens = 4096
+        structured_methods: list[str] = ["json_mode", "generic_parse"]
 
         if profile:
             model_str = profile.model
@@ -187,6 +233,8 @@ class PromptRegistry:
                 temperature = profile.temperature
             if profile.max_tokens is not None:
                 max_tokens = profile.max_tokens
+            if profile.structured_methods:
+                structured_methods = list(profile.structured_methods)
 
         # Prompt 级覆盖
         if schema.model:
@@ -195,7 +243,7 @@ class PromptRegistry:
             if schema.model.max_tokens is not None:
                 max_tokens = schema.model.max_tokens
 
-        return model_str, temperature, max_tokens
+        return model_str, temperature, max_tokens, structured_methods
 
 
 # ── 全局单例 ─────────────────────────────────────────────────────────────────
