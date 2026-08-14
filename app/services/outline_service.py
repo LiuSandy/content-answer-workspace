@@ -99,6 +99,7 @@ class OutlineService:
             completed_at=datetime.now(timezone.utc),
         )
         self._session.add(operation)
+        await self._session.flush()
         doc.current_outline_operation_id = operation.id
         await self._session.commit()
         await self._session.refresh(operation)
