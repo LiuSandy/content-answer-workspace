@@ -33,3 +33,4 @@ frontend/*.tsbuildinfo
 # AI assistant directories
 .claude/
 .gemini/
+docs/codebase
