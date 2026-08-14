@@ -21,7 +21,7 @@ from app.contracts.dto import (
     StructuredResult,
     TopicEvaluation,
 )
-from app.infrastructure.llm.structured_output import generate_structured
+from app.services.llm.structured_output import generate_structured
 
 
 def _quality_dimension_scores(score: int = 80) -> dict[str, int]:

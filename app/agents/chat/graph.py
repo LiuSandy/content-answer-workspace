@@ -153,4 +153,6 @@ def build_chat_agent_graph(checkpointer: BaseCheckpointSaver):
 
 # 向后兼容：保留旧名称供 server.py 使用
 def build_conversation_graph(checkpointer: BaseCheckpointSaver):
-    return build_chat_agent_graph(checkpointer)
+    agent = build_chat_agent_graph(checkpointer)
+    # agent.get_graph().draw_mermaid()
+    return agent

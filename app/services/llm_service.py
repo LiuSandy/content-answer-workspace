@@ -5,14 +5,14 @@ import os
 from pydantic import BaseModel
 
 from app.contracts.dto import LLMMessage, LLMRequest, StructuredResult
-from app.infrastructure.llm.clients.deepseek_client import DeepSeekAnswerGenerator
+from app.services.llm.answer_generator import AnswerGenerationService
 
 
 class DeepSeekLLMAdapter:
-    """将 DeepSeekAnswerGenerator 适配为 LLMClientPort。"""
+    """将统一回答生成服务适配为历史 LLMClientPort。"""
 
     def __init__(self) -> None:
-        self._gen = DeepSeekAnswerGenerator()
+        self._gen = AnswerGenerationService()
 
     async def refine(self, instruction: str, current_answer: str) -> str:
         prompt = "\n".join([
@@ -45,7 +45,7 @@ class DeepSeekLLMAdapter:
         审计到各自 AIOperation.model_parameters。
         """
         from app.infrastructure.llm.registry import llm_provider_registry
-        from app.infrastructure.llm.structured_output import generate_structured as _run
+        from app.services.llm.structured_output import generate_structured as _run
 
         provider = llm_provider_registry.get("deepseek")
         request = LLMRequest(

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from app.infrastructure.llm.clients.deepseek_client import DeepSeekTopicExpander
+from app.services.llm.topic_expansion import TopicExpansionService
 from app.api.schemas.workflow import Topic
 from .zhihu_service import build_keyword_hints, unique_by
 
-_topic_expander = DeepSeekTopicExpander()
+_topic_expander = TopicExpansionService()
 
 
 def merge_retrieval_keywords(topic: Topic, expanded_keywords: list[str]) -> list[str]:

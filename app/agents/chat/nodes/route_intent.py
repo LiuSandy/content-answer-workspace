@@ -15,7 +15,7 @@ import logging
 
 from app.contracts.dto import IntentRoute
 from ....infrastructure.llm.registry import llm_provider_registry
-from app.infrastructure.llm.structured_output import generate_structured
+from app.services.llm.structured_output import generate_structured
 from ....prompts.registry import prompt_registry
 from .intent_rules import detect_intent_by_rules, extract_urls
 from app.state import ChatAgentState

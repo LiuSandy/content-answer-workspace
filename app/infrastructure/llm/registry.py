@@ -1,7 +1,8 @@
-"""LLM Provider Registry；根据 model_profiles 配置选择 Provider 实例。"""
+"""LLM Provider registration and default-provider wiring."""
 from __future__ import annotations
 
 import logging
+import os
 
 from app.contracts.ports import LLMProvider
 from .providers.deepseek import DeepSeekProvider
@@ -25,6 +26,11 @@ class LLMProviderRegistry:
                 f"LLM provider '{key}' not registered. Available: {list(self._providers)}"
             )
         return self._providers[key]
+
+    def get_default(self) -> LLMProvider:
+        """Return the provider selected at the application wiring boundary."""
+        key = os.getenv("LLM_PROVIDER", "deepseek").strip() or "deepseek"
+        return self.get(key)
 
     def get_structured_methods(self, key: str) -> list[str]:
         """返回 provider 声明的结构化输出能力（roadmap R1）。"""
