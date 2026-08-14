@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.application.task_planner_service import (
+from app.services.planning_service import (
     SubTask, TaskPlan, _parse_plan_json, _validate_dag, topological_order,
     execute_subtask, execute_task_plan,
 )
-from app.errors import LLMOutputError
+from app.contracts.errors import LLMOutputError
 
 
 def _valid_plan_json():
@@ -98,7 +98,7 @@ async def test_execute_subtask_falls_back_when_prompt_missing(monkeypatch):
     fake_llm = MagicMock()
     fake_llm.analyze = AsyncMock(return_value="fallback result")
     monkeypatch.setattr(
-        "app.application.task_planner_service._get_planner_llm",
+        "app.services.planning_service._get_planner_llm",
         lambda: fake_llm,
     )
     # 不预热 prompt registry，触发异常回退分支
@@ -118,7 +118,7 @@ async def test_execute_task_plan_parallel_layer(monkeypatch):
         return f"result-{subtask.task_id}"
 
     monkeypatch.setattr(
-        "app.application.task_planner_service.execute_subtask",
+        "app.services.planning_service.execute_subtask",
         fake_execute,
     )
 

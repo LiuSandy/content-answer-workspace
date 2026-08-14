@@ -9,31 +9,31 @@ from fastapi import APIRouter, Request, Query, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from ...application.document_service import DocumentService
-from ...application.version_service import VersionService
-from ...application.outline_service import OutlineService, OutlineError
-from ...application.quality_service import (
+from app.services.document_service import DocumentService
+from app.services.version_service import VersionService
+from app.services.outline_service import OutlineService, OutlineError
+from app.services.quality_service import (
     ReviewContext,
     evaluate_content,
     persist_creation_review,
 )
-from ...application.writer_service import (
+from app.services.writing_service import (
     WriterRunCapture,
     finalize_deferred_writer_run,
 )
-from ...application.workflows.creation_review import (
+from app.services.creation_review_service import (
     CreationReviewOutcome,
     run_creation_review,
 )
-from ...domain.dto import InlineRefineRequest, SelectionDTO
-from ...persistence.session import get_db_session, get_session_factory
-from ...persistence.models.content import SourceItem
-from ...workflows.answer_generation import generate_answer_workflow
-from ...workflows.inline_refinement import inline_refinement_workflow
-from ...workflows.full_rewrite import full_rewrite_workflow
-from ..sse_utils import sse_named_event, make_sse_response
-from ...errors import AppError, DocumentConflictError, LLMOutputError
-from ...observability.context import bind_log_context, reset_log_context, set_log_context
+from app.contracts.dto import InlineRefineRequest, SelectionDTO
+from app.infrastructure.database.session import get_db_session, get_session_factory
+from app.infrastructure.database.models.content import SourceItem
+from app.agents.writer.nodes.answer_generation import generate_answer_workflow
+from app.agents.writer.nodes.inline_refinement import inline_refinement_workflow
+from app.agents.writer.nodes.full_rewrite import full_rewrite_workflow
+from app.api.streaming.sse import sse_named_event, make_sse_response
+from app.contracts.errors import AppError, DocumentConflictError, LLMOutputError
+from app.infrastructure.observability.context import bind_log_context, reset_log_context, set_log_context
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ router = APIRouter(prefix="", tags=["documents"])
 
 async def _rewrite_creation_draft(content: str, instruction: str) -> str:
     """按评审指令重写内存草稿，不创建 AnswerVersion。"""
-    from ...application.agent.adapters import DeepSeekLLMAdapter
+    from app.services.llm_service import DeepSeekLLMAdapter
 
     return await DeepSeekLLMAdapter().refine(
         instruction="保留已正确内容，只修复评审指出的问题。\n" + instruction,
@@ -262,7 +262,7 @@ async def review_document_quality(
     req: QualityReviewRequest,
 ) -> JSONResponse:
     """对文档当前内容执行一次质检，返回报告与 reportId。"""
-    from ...application.quality_service import QualityService, QualityReviewError
+    from app.services.quality_service import QualityService, QualityReviewError
 
     async for session in get_db_session():
         service = QualityService(session)
@@ -291,7 +291,7 @@ async def review_document_quality(
 @router.get("/api/documents/{document_id}/quality/reviews")
 async def list_quality_reviews(document_id: uuid.UUID) -> JSONResponse:
     """返回某文档的自动创作报告，并兼容历史手动质检报告。"""
-    from ...application.quality_service import QualityService
+    from app.services.quality_service import QualityService
 
     async for session in get_db_session():
         service = QualityService(session)
@@ -306,7 +306,7 @@ async def adopt_quality_suggestion(
     req: QualityAdoptRequest,
 ) -> JSONResponse:
     """逐条采纳质检建议，生成 inline_refinement 新版本并回填 quality_adopt 溯源。"""
-    from ...application.quality_service import QualityService, QualityReviewError
+    from app.services.quality_service import QualityService, QualityReviewError
 
     async for session in get_db_session():
         service = QualityService(session)
@@ -455,7 +455,7 @@ async def generate_answer_stream(
                 logger.exception("Answer generation stream failed")
             if capture.operation_id is not None:
                 try:
-                    from ...persistence.models.documents import AIOperation
+                    from app.infrastructure.database.models.documents import AIOperation
 
                     async with session_factory() as failure_session:
                         operation = await failure_session.get(
@@ -562,8 +562,8 @@ async def rewrite_document_stream(
 async def get_quality_scores(document_id: uuid.UUID):
     """返回某文档的全部自评记录，按 iteration 排序。"""
     from sqlalchemy import select
-    from ...persistence.models.quality_scores import QualityScoreModel
-    from ...persistence.session import get_session_factory
+    from app.infrastructure.database.models.quality_scores import QualityScoreModel
+    from app.infrastructure.database.session import get_session_factory
 
     session_factory = get_session_factory()
     async with session_factory() as session:

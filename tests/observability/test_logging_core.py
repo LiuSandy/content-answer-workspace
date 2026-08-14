@@ -5,9 +5,9 @@ import logging
 import asyncio
 from datetime import datetime
 
-from app.observability.context import bind_log_context, get_log_context
-from app.observability.formatter import ConsoleFormatter, JsonFormatter
-from app.observability.logging import (
+from app.infrastructure.observability.context import bind_log_context, get_log_context
+from app.infrastructure.observability.formatter import ConsoleFormatter, JsonFormatter
+from app.infrastructure.observability.logging import (
     DatedLevelFileHandler,
     ExactLevelFilter,
     LoggingSettings,
@@ -15,7 +15,7 @@ from app.observability.logging import (
     get_logging_settings,
     shutdown_logging,
 )
-from app.observability.redaction import REDACTED, redact_value
+from app.infrastructure.observability.redaction import REDACTED, redact_value
 
 
 def test_logging_settings_default_and_debug(monkeypatch, tmp_path):
@@ -39,7 +39,7 @@ def test_json_formatter_includes_context_and_exception():
             record = logging.getLogger("test").makeRecord(
                 "test", logging.ERROR, __file__, 10, "failed", (), exc_info=__import__("sys").exc_info()
             )
-            from app.observability.logging import ContextRedactionFilter
+            from app.infrastructure.observability.logging import ContextRedactionFilter
             ContextRedactionFilter().filter(record)
             data = json.loads(formatter.format(record))
     assert data["request_id"] == "req-1"
@@ -82,7 +82,7 @@ def test_console_formatter_renders_readable_redacted_exception():
             "test.console", logging.ERROR, __file__, 10, "failed", (),
             exc_info=__import__("sys").exc_info(),
         )
-    from app.observability.logging import ContextRedactionFilter
+    from app.infrastructure.observability.logging import ContextRedactionFilter
     ContextRedactionFilter().filter(record)
 
     rendered = formatter.format(record)

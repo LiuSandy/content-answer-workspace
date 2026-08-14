@@ -12,9 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.application.agent.scheduling import run_agent_stream, retrieve_with_retry
-from app.application.chat_service import ChatService
-from app.persistence import Base
+from app.agents._shared.runtime import run_agent_stream, retrieve_with_retry
+from app.services.chat_service import ChatService
+from app.infrastructure.database import Base
 
 
 @compiles(JSONB, "sqlite")

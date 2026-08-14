@@ -10,15 +10,15 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from langgraph.types import Command
 
-from ...application.chat_service import ChatService
-from ...application.agent.scheduling import run_agent_stream
-from ...application.context.run_inputs import branch_thread_id, compose_run_inputs
-from ...application.context.summary_updater import SummaryUpdater
-from ...application.memory_extractor import run_memory_extraction
-from ...persistence.session import get_db_session, get_session_factory
-from ..sse_utils import sse_named_event, make_sse_response
-from ...core.config import AGENT_MAX_RECURSION, AGENT_RUN_TIMEOUT
-from ...observability.context import reset_log_context, set_log_context
+from app.services.chat_service import ChatService
+from app.agents._shared.runtime import run_agent_stream
+from app.context import branch_thread_id, compose_run_inputs
+from app.services.context.summary_updater import SummaryUpdater
+from app.services.memory.extraction import run_memory_extraction
+from app.infrastructure.database.session import get_db_session, get_session_factory
+from app.api.streaming.sse import sse_named_event, make_sse_response
+from app.config.runtime import AGENT_MAX_RECURSION, AGENT_RUN_TIMEOUT
+from app.infrastructure.observability.context import reset_log_context, set_log_context
 
 logger = logging.getLogger(__name__)
 
@@ -514,7 +514,7 @@ async def send_message_stream(
                     yield sse_named_event(name, data)
                 elif name in ("rag.sources", "rag.fallback"):
                     # RAG 检索结束：透传命中来源给前端（受 RAG_SOURCE_DISPLAY 开关控制）
-                    from app.core.config import is_rag_source_display_enabled
+                    from app.config.runtime import is_rag_source_display_enabled
                     if is_rag_source_display_enabled():
                         if name == "rag.sources":
                             rag_payload = {
@@ -632,7 +632,7 @@ async def send_message_stream(
                     if tool_items:
                         try:
                             from datetime import datetime as _dt
-                            from ...domain.dto import SourceItemDTO
+                            from app.contracts.dto import SourceItemDTO
                             dto_items = []
                             for i in tool_items:
                                 ext_id = i.get("url") or i.get("link") or ""

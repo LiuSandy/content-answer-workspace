@@ -11,9 +11,9 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 CONFIG_DIR = Path(__file__).resolve().parent
-PROMPTS_DIR = CONFIG_DIR / "prompts"
-SETTINGS_FILE = CONFIG_DIR / "settings.toml"
-DEFAULT_TOPICS_FILE = CONFIG_DIR / "default_topics.toml"
+DEFAULTS_DIR = CONFIG_DIR / "defaults"
+SETTINGS_FILE = DEFAULTS_DIR / "settings.toml"
+DEFAULT_TOPICS_FILE = DEFAULTS_DIR / "default_topics.toml"
 
 
 class CollectSettings(BaseModel):

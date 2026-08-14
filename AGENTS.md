@@ -46,12 +46,12 @@ bun run build
 ```text
 app/
 ├── server.py                  # FastAPI 入口、路由挂载、静态文件托管
-├── models.py                  # Pydantic 模型，使用 camelCase alias
-├── api/routes/                # workflow/session/config/settings/hotlist/agent/stream
-├── application/workflow_service.py
-├── application/agent/         # LangGraph 对话、热榜分析、回答精修、工具适配
-├── services/                  # 平台、回答、会话、设置、热榜等服务
-└── infrastructure/            # collectors、llm、知乎 official client
+├── graph.py / state.py / context.py
+├── api/                       # routes、schemas、streaming
+├── agents/                    # 六个独立 Agent 及 _shared 公共能力
+├── services/                  # 平台、回答、会话、RAG、设置、热榜等业务服务
+├── infrastructure/            # database、collectors、llm、files、observability
+└── contracts/                 # DTO、Port、业务错误
 
 frontend/src/
 ├── app/App.tsx
@@ -67,7 +67,7 @@ frontend/src/
 
 - 路由保持轻薄；采集、导入、生成、润色等编排放在 `WorkflowService` 或对应服务层。
 - Pydantic 模型使用 `alias="camelCase"` 和 `populate_by_name=True`；返回前端时使用 `model_dump(by_alias=True)`。
-- 新增后端字段时同步更新 `app/models.py`、`frontend/src/types/workflow.ts` 和相关测试。
+- 新增后端字段时同步更新 `app/api/schemas/workflow.py`、`frontend/src/types/workflow.ts` 和相关测试。
 - API 响应保持 `{"ok": true, "data": ...}`；异常由后端统一包装为 `{"ok": false, "error": ...}`。
 - 不要在前端组件里直接写业务 `fetch`；通过 `workflow-api.ts`、settings API 或 feature 专属 API 层调用。
 
@@ -89,7 +89,7 @@ Workbench 页面使用独立的 `workbench-store.ts`。不要把工作台专属�
 
 新增强类型平台 collector：
 
-1. 实现 `app/domain/ports.py` 中的 collector port。
+1. 实现 `app/contracts/ports.py` 中的 collector port。
 2. 放入 `app/infrastructure/collectors/`。
 3. 在 `CollectorFactory._collectors` 注册平台名，必要时注册 `platform:official`。
 4. 更新前端 `Platform` 类型、平台选择 UI 和测试。

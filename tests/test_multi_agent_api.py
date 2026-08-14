@@ -32,7 +32,7 @@ def _fake_state(agents_status: dict[str, str]) -> dict:
 
 
 @pytest.mark.asyncio
-@patch("app.application.agent.nodes.multi_agent.run_multi_agent_plan")
+@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
 async def test_run_multi_agent_success(mock_run):
     mock_run.return_value = _fake_state({
         "orchestrator": "done",
@@ -54,7 +54,7 @@ async def test_run_multi_agent_success(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.application.agent.nodes.multi_agent.run_multi_agent_plan")
+@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
 async def test_run_multi_agent_has_required_agents(mock_run):
     mock_run.return_value = _fake_state({
         "orchestrator": "done",
@@ -71,7 +71,7 @@ async def test_run_multi_agent_has_required_agents(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.application.agent.nodes.multi_agent.run_multi_agent_plan")
+@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
 async def test_run_multi_agent_failure_is_isolated(mock_run):
     mock_run.return_value = _fake_state({
         "orchestrator": "done",
@@ -90,7 +90,7 @@ async def test_run_multi_agent_failure_is_isolated(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.application.agent.nodes.multi_agent.run_multi_agent_plan")
+@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
 async def test_run_multi_agent_internal_error(mock_run):
     mock_run.side_effect = RuntimeError("boom")
     async with _make_client() as client:

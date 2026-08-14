@@ -11,8 +11,8 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.application.agent.adapters import DeepSeekLLMAdapter
-from app.domain.dto import (
+from app.services.llm_service import DeepSeekLLMAdapter
+from app.contracts.dto import (
     ConversationSummary,
     IntentRoute,
     LLMRequest,
@@ -21,7 +21,7 @@ from app.domain.dto import (
     StructuredResult,
     TopicEvaluation,
 )
-from app.infrastructure.llm.structured import generate_structured
+from app.infrastructure.llm.structured_output import generate_structured
 
 
 def _quality_dimension_scores(score: int = 80) -> dict[str, int]:
@@ -347,7 +347,7 @@ def test_deepseek_profiles_do_not_assume_native_json_schema():
     from pathlib import Path
 
     profiles_file = (
-        Path(__file__).resolve().parent.parent / "prompts" / "model_profiles.yml"
+        Path(__file__).resolve().parent.parent / "app" / "agents" / "_shared" / "prompts" / "model_profiles.yml"
     )
     raw = yaml.safe_load(profiles_file.read_text(encoding="utf-8"))
     assert "model_profiles" in raw

@@ -8,11 +8,11 @@ import pytest
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.application.agent.graphs.conversation import build_chat_agent_graph
+from app.agents.chat.graph import build_chat_agent_graph
 
 
 def test_route_after_intent_selects_platform_collect_for_explicit_zhihu_search(monkeypatch):
-    from app.application.agent.graphs import conversation
+    from app.agents.chat import graph as conversation
 
     monkeypatch.setattr(conversation, "has_platform_search_route", lambda state: True)
 
@@ -35,14 +35,14 @@ def graph(monkeypatch):
     fake_registry = MagicMock()
     fake_registry.get.return_value = fake_provider
     monkeypatch.setattr(
-        "app.application.agent.nodes.route_intent.llm_provider_registry", fake_registry
+        "app.agents.chat.nodes.route_intent.llm_provider_registry", fake_registry
     )
     monkeypatch.setattr(
-        "app.application.agent.nodes.route_intent.prompt_registry",
+        "app.agents.chat.nodes.route_intent.prompt_registry",
         MagicMock(render=MagicMock(return_value=fake_rendered)),
     )
     monkeypatch.setattr(
-        "app.application.memory_service.retrieve_memories", AsyncMock(return_value=[])
+        "app.services.memory.service.retrieve_memories", AsyncMock(return_value=[])
     )
     return build_chat_agent_graph(MemorySaver())
 
@@ -76,11 +76,11 @@ def _base_state(message: str) -> dict:
 @pytest.mark.asyncio
 async def test_graph_routes_task_plan_intent(graph, monkeypatch):
     """route_intent 判定 task_plan 时，自动路由到 task_plan 节点执行。"""
-    from app.application.agent.nodes.task_plan import task_plan_node
-    from app.application.task_planner_service import TaskPlan, SubTask
+    from app.agents.orchestrator.nodes.task_plan import task_plan_node
+    from app.services.planning_service import TaskPlan, SubTask
 
     # mock route_intent LLM 返回 task_plan
-    from app.application.agent.nodes import route_intent as ri_mod
+    from app.agents.chat.nodes import route_intent as ri_mod
     fake_rendered = MagicMock()
     fake_rendered.to_llm_request.return_value = MagicMock()
     fake_provider = MagicMock()
@@ -98,10 +98,10 @@ async def test_graph_routes_task_plan_intent(graph, monkeypatch):
         return {"s1": "最终成稿"}
 
     monkeypatch.setattr(
-        "app.application.agent.nodes.task_plan.generate_plan", fake_gen
+        "app.agents.orchestrator.nodes.task_plan.generate_plan", fake_gen
     )
     monkeypatch.setattr(
-        "app.application.agent.nodes.task_plan.execute_task_plan", fake_exec
+        "app.agents.orchestrator.nodes.task_plan.execute_task_plan", fake_exec
     )
 
     final = await graph.ainvoke(
@@ -116,7 +116,7 @@ async def test_graph_routes_task_plan_intent(graph, monkeypatch):
 @pytest.mark.asyncio
 async def test_graph_routes_multi_agent_intent(graph, monkeypatch):
     """route_intent 判定 multi_agent 时，自动路由到 multi_agent 节点执行。"""
-    from app.application.agent.nodes import route_intent as ri_mod
+    from app.agents.chat.nodes import route_intent as ri_mod
     fake_rendered = MagicMock()
     fake_rendered.to_llm_request.return_value = MagicMock()
     fake_provider = MagicMock()
@@ -136,7 +136,7 @@ async def test_graph_routes_multi_agent_intent(graph, monkeypatch):
         }
 
     monkeypatch.setattr(
-        "app.application.agent.nodes.multi_agent_exec.run_multi_agent_plan",
+        "app.agents.orchestrator.graph_exec.run_multi_agent_plan",
         AsyncMock(return_value=FakeMultiResult()),
     )
 

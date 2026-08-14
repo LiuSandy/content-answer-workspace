@@ -10,14 +10,14 @@ from pathlib import Path
 from typing import Any
 
 from ..config.loader import get_settings
-from ..core.config import (
+from app.config.runtime import (
     ENV_PATH,
     ROOT_DIR,
     get_default_topics,
     is_truthy,
     load_env_file,
 )
-from ..models import Topic
+from app.api.schemas.workflow import Topic
 
 DATA_DIR = ROOT_DIR / ".data"
 SETTINGS_FILE = DATA_DIR / "settings.json"

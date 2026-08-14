@@ -9,11 +9,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.application.publish_analyst_service import PublishAnalystService
-from app.persistence import Base
-from app.persistence.models.content import SourceItem
-from app.persistence.models.documents import AnswerDocument
-from app.persistence.models.publish_metrics import PublishMetricsModel
+from app.services.publish_analyst_service import PublishAnalystService
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.content import SourceItem
+from app.infrastructure.database.models.documents import AnswerDocument
+from app.infrastructure.database.models.publish_metrics import PublishMetricsModel
 
 
 @compiles(JSONB, "sqlite")
@@ -73,7 +73,7 @@ async def test_sufficient_data_generates_report(monkeypatch):
     llm = MagicMock()
     llm.analyze = AsyncMock(return_value="表现良好，建议继续深耕该话题。")
     monkeypatch.setattr(
-        "app.application.agent.adapters.DeepSeekLLMAdapter", lambda: llm
+        "app.services.llm_service.DeepSeekLLMAdapter", lambda: llm
     )
 
     db, engine = await _make_db()
@@ -112,7 +112,7 @@ async def test_llm_failure_still_returns_report(monkeypatch):
     llm = MagicMock()
     llm.analyze = AsyncMock(side_effect=Exception("LLM down"))
     monkeypatch.setattr(
-        "app.application.agent.adapters.DeepSeekLLMAdapter", lambda: llm
+        "app.services.llm_service.DeepSeekLLMAdapter", lambda: llm
     )
 
     db, engine = await _make_db()

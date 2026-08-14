@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ...domain.ports import CollectorPort
+from app.contracts.ports import CollectorPort
 from .platform_config_loader import PlatformConfigLoader
 from .universal_collector import UniversalCollector
 from .xiaohongshu_collector import XiaohongshuCollector

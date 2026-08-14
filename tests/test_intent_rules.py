@@ -1,7 +1,7 @@
 """意图规则层测试：确定性关键词判定不依赖 LLM。"""
 from __future__ import annotations
 
-from app.application.agent.nodes.intent_rules import (
+from app.agents.chat.nodes.intent_rules import (
     detect_intent_by_rules,
     detect_knowledge_mode,
     extract_urls,

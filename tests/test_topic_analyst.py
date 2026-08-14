@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.application.topic_analyst_service import TopicAnalystService
-from app.persistence import Base
-from app.persistence.models.opportunity_feeds import OpportunityFeedModel
+from app.services.topic_analyst_service import TopicAnalystService
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.opportunity_feeds import OpportunityFeedModel
 
 
 @compiles(JSONB, "sqlite")
@@ -49,10 +49,10 @@ async def test_evaluate_top_n_scores_opportunities(monkeypatch):
 
     llm = _mock_llm()
     monkeypatch.setattr(
-        "app.application.agent.adapters.DeepSeekLLMAdapter", lambda: llm
+        "app.services.llm_service.DeepSeekLLMAdapter", lambda: llm
     )
     monkeypatch.setattr(
-        "app.application.topic_analyst_service.TopicAnalystService._get_active_memories",
+        "app.services.topic_analyst_service.TopicAnalystService._get_active_memories",
         AsyncMock(return_value=[]),
     )
 
@@ -81,10 +81,10 @@ async def test_evaluate_failure_preserves_rule_score(monkeypatch):
     llm = MagicMock()
     llm.generate_structured = AsyncMock(side_effect=Exception("LLM down"))
     monkeypatch.setattr(
-        "app.application.agent.adapters.DeepSeekLLMAdapter", lambda: llm
+        "app.services.llm_service.DeepSeekLLMAdapter", lambda: llm
     )
     monkeypatch.setattr(
-        "app.application.topic_analyst_service.TopicAnalystService._get_active_memories",
+        "app.services.topic_analyst_service.TopicAnalystService._get_active_memories",
         AsyncMock(return_value=[]),
     )
 

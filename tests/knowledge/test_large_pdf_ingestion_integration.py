@@ -8,17 +8,17 @@ import fitz
 import pytest
 from sqlalchemy import delete, select
 
-from app.application.knowledge.ingestion_service import IngestionExecutor, SourceIngestionService
-from app.core.config import get_knowledge_settings
-from app.infrastructure.knowledge.parsers import ParsedMarkdown
-from app.infrastructure.knowledge.source_files import SourceFileStorage
-from app.persistence.models.knowledge import (
+from app.services.rag.ingestion_service import IngestionExecutor, SourceIngestionService
+from app.config.runtime import get_knowledge_settings
+from app.infrastructure.files.parsers import ParsedMarkdown
+from app.infrastructure.files.source_files import SourceFileStorage
+from app.infrastructure.database.models.knowledge import (
     KnowledgeDocumentModel,
     KnowledgeIngestionJobModel,
     KnowledgeIngestionPageModel,
     KnowledgeSourceFileModel,
 )
-from app.persistence.session import get_session_factory
+from app.infrastructure.database.session import get_session_factory
 
 
 pytestmark = pytest.mark.skipif(

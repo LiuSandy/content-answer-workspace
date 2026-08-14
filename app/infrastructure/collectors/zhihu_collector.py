@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from ...domain.ports import CollectorPort
-from ...models import QuestionItem, Topic, WorkflowConfig
+from app.contracts.ports import CollectorPort
+from app.api.schemas.workflow import QuestionItem, Topic, WorkflowConfig
 from ...services.zhihu_service import fetch_zhihu_results_for_topic
 
 

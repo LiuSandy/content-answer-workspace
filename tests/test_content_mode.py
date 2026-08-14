@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from app.core.config import get_workflow_config
-from app.models import QuestionItem, RunPayload
+from app.config.runtime import get_workflow_config
+from app.api.schemas.workflow import QuestionItem, RunPayload
 
 
 class ContentModeDefaultsTests(unittest.TestCase):

@@ -11,9 +11,9 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.api.routes.publishing import router
-from app.persistence import Base
-from app.persistence.models.content import SourceItem
-from app.persistence.models.documents import AnswerDocument
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.content import SourceItem
+from app.infrastructure.database.models.documents import AnswerDocument
 
 
 @compiles(JSONB, "sqlite")

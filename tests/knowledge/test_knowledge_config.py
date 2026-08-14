@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from app.core.config import get_knowledge_settings, KnowledgeSettings
+from app.config.runtime import get_knowledge_settings, KnowledgeSettings
 
 def test_knowledge_config_defaults():
     settings = get_knowledge_settings()

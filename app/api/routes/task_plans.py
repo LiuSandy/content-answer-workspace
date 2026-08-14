@@ -9,14 +9,14 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from ...persistence.session import get_session_factory
-from ...persistence.models.task_plans import TaskPlanModel, SubTaskModel
-from ...application.task_planner_service import (
+from app.infrastructure.database.session import get_session_factory
+from app.infrastructure.database.models.task_plans import TaskPlanModel, SubTaskModel
+from app.services.planning_service import (
     generate_plan, execute_task_plan, TaskPlan, _validate_dag, _parse_plan_json,
     execute_subtask,
 )
-from ..sse_utils import sse_named_event, make_sse_response
-from ...observability.context import reset_log_context, set_log_context
+from app.api.streaming.sse import sse_named_event, make_sse_response
+from app.infrastructure.observability.context import reset_log_context, set_log_context
 
 router = APIRouter(prefix="/api/task-plans", tags=["task-plans"])
 
@@ -105,7 +105,7 @@ async def get_task_plan(plan_id: str):
 
 
 async def _to_plan(plan_row, subs) -> TaskPlan:
-    from ...application.task_planner_service import SubTask as _Sub
+    from app.services.planning_service import SubTask as _Sub
     tasks = [
         _Sub(task_id=s.task_id, type=s.type, description=s.description, depends_on=list(s.depends_on or []))
         for s in subs
@@ -134,7 +134,7 @@ async def stream_task_plan(plan_id: str, req: CreateTaskPlanRequest = Body(defau
                 plan_row.status = "running"
                 await session.commit()
 
-            from ...application.task_planner_service import topological_order
+            from app.services.planning_service import topological_order
             layers = topological_order(plan)
             results: dict[str, str] = {}
 
@@ -167,7 +167,7 @@ async def stream_task_plan(plan_id: str, req: CreateTaskPlanRequest = Body(defau
 
 async def _run_one_no_yield(sub_task, plan_id: uuid.UUID, results: dict):
     """并行执行单 subtask，返回 (task_id, status, preview_or_err)；不做 yield。"""
-    from ...application.task_planner_service import execute_subtask
+    from app.services.planning_service import execute_subtask
     factory = get_session_factory()
     log_token = set_log_context(plan_id=str(plan_id), task_id=sub_task.task_id)
     try:
@@ -239,7 +239,7 @@ async def retry_task(plan_id: str, task_id: str, _req: RetryTaskRequest = Body(d
             if dep and dep.result:
                 deps_results[dep_id] = dep.result
 
-        from ...application.task_planner_service import SubTask as _Sub
+        from app.services.planning_service import SubTask as _Sub
         sub_obj = _Sub(task_id=sub.task_id, type=sub.type, description=sub.description, depends_on=list(sub.depends_on or []))
         # _run_one_no_yield 直接复用
         tid, status, preview = await _run_one_no_yield(sub_obj, plan_row.id, deps_results)

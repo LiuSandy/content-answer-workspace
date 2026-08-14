@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from app.infrastructure.knowledge import reranker as reranker_module
-from app.infrastructure.knowledge.reranker import (
+from app.infrastructure.rerankers import provider as reranker_module
+from app.infrastructure.rerankers.provider import (
     CrossEncoderRerankerProvider,
     DashScopeVLRerankerProvider,
     get_reranker_provider,

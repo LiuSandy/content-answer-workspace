@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from ...domain.ports import LLMProvider
+from app.contracts.ports import LLMProvider
 from .providers.deepseek import DeepSeekProvider
 
 logger = logging.getLogger(__name__)

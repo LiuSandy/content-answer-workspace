@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.application.agent.nodes.route_intent import route_intent_node
+from app.agents.chat.nodes.route_intent import route_intent_node
 
 
 def _make_mock_deps(monkeypatch, llm_content: str):
@@ -26,10 +26,10 @@ def _make_mock_deps(monkeypatch, llm_content: str):
     fake_prompt_registry = MagicMock()
     fake_prompt_registry.render.return_value = fake_rendered
     monkeypatch.setattr(
-        "app.application.agent.nodes.route_intent.llm_provider_registry", fake_registry
+        "app.agents.chat.nodes.route_intent.llm_provider_registry", fake_registry
     )
     monkeypatch.setattr(
-        "app.application.agent.nodes.route_intent.prompt_registry", fake_prompt_registry
+        "app.agents.chat.nodes.route_intent.prompt_registry", fake_prompt_registry
     )
 
 

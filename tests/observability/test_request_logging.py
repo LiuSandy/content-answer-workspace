@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.observability.middleware import RequestLoggingMiddleware
+from app.infrastructure.observability.middleware import RequestLoggingMiddleware
 
 
 def _app() -> FastAPI:

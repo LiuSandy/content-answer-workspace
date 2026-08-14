@@ -18,13 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.application.document_service import DocumentService
-from app.application.quality_service import QualityService, ReviewContext, evaluate_content
-from app.domain.dto import QualityReport, QualitySuggestion, StructuredResult
-from app.errors import DocumentConflictError, LLMOutputError
-from app.persistence import Base
-from app.persistence.models.content import SourceItem
-from app.persistence.models.documents import AIOperation, AnswerDocument, AnswerVersion
+from app.services.document_service import DocumentService
+from app.services.quality_service import QualityService, ReviewContext, evaluate_content
+from app.contracts.dto import QualityReport, QualitySuggestion, StructuredResult
+from app.contracts.errors import DocumentConflictError, LLMOutputError
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.content import SourceItem
+from app.infrastructure.database.models.documents import AIOperation, AnswerDocument, AnswerVersion
 
 
 @compiles(JSONB, "sqlite")
@@ -116,7 +116,7 @@ async def test_evaluate_content_passes_creation_context(monkeypatch):
     fake = _FakeLLM(
         StructuredResult(value=expected, method_used="json_schema", attempts=1)
     )
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     report = await evaluate_content(
         "当前草稿",
@@ -153,7 +153,7 @@ async def test_review_writes_report_to_output_metadata(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, _ = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_schema", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -184,7 +184,7 @@ async def test_review_structured_failure_records_failed_operation(monkeypatch):
     fake = _FakeLLM(
         StructuredResult(value=None, method_used="generic_parse", attempts=3, degradation_reason="json: boom")
     )
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         with pytest.raises(LLMOutputError):
@@ -209,7 +209,7 @@ async def test_adopt_suggestion_creates_inline_refinement_version(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, lock = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -247,7 +247,7 @@ async def test_adopt_anchor_replaces_only_matching_fragment(monkeypatch):
     content = "开头。\n这是一个回答内容。\n结尾。"
     doc_id, version_id, lock = await _make_document(db, content=content)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -270,7 +270,7 @@ async def test_adopt_missing_anchor_raises(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, lock = await _make_document(db, content="完全不同的正文。")
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -291,7 +291,7 @@ async def test_adopt_source_version_lock_rejects_stale_report(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, lock = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -321,7 +321,7 @@ async def test_duplicate_adopt_is_idempotent(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, lock = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -357,7 +357,7 @@ async def test_adopt_optimistic_lock_conflict(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, lock = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -378,7 +378,7 @@ async def test_adopt_unknown_suggestion_raises(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, lock = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -399,7 +399,7 @@ async def test_list_quality_scores_returns_reports(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, _ = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         svc = QualityService(session)
@@ -423,7 +423,7 @@ async def test_list_quality_scores_marks_adopted_suggestions(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, lock = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -601,7 +601,7 @@ async def test_list_creation_reviews_keeps_legacy_quality_reviews_readable(monke
     db, engine = await _make_db()
     doc_id, version_id, _ = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -641,7 +641,7 @@ async def test_review_api_returns_report(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, _ = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     app = _make_app(db, monkeypatch)
     transport = ASGITransport(app=app)
@@ -663,7 +663,7 @@ async def test_adopt_api_returns_updated_state(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, lock = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)
@@ -690,7 +690,7 @@ async def test_adopt_api_returns_409_on_lock_conflict(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, lock = await _make_document(db)
     fake = _FakeLLM(StructuredResult(value=_sample_report(), method_used="json_mode", attempts=1))
-    monkeypatch.setattr("app.application.quality_service._get_llm", lambda: fake)
+    monkeypatch.setattr("app.services.quality_service._get_llm", lambda: fake)
 
     async with db() as session:
         result = await QualityService(session).review(doc_id, version_id=version_id)

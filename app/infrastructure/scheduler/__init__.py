@@ -9,7 +9,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from ...observability.context import bind_log_context
+from app.infrastructure.observability.context import bind_log_context
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +59,8 @@ async def _scan_opportunities_job():
             return
 
         try:
-            from ...application.opportunity_service import OpportunityService
-            from ...persistence.session import get_session_factory
+            from app.services.opportunity_service import OpportunityService
+            from app.infrastructure.database.session import get_session_factory
             factory = get_session_factory()
             async with factory() as session:
                 svc = OpportunityService(session)

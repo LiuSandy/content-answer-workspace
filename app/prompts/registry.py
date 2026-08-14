@@ -17,7 +17,7 @@ from typing import Any
 import yaml
 from jinja2 import Environment, StrictUndefined, UndefinedError
 
-from ..domain.dto import LLMMessage, LLMRequest
+from app.contracts.dto import LLMMessage, LLMRequest
 from .errors import (
     PromptDuplicateIdError,
     PromptNotFoundError,
@@ -69,6 +69,7 @@ class PromptRegistry:
         self._sources: dict[str, str] = {}  # id -> file path（用于错误提示）
         self._model_profiles: dict[str, ModelProfileEntry] = {}
         self._frozen = False
+        self._root_dir: Path | None = None
         self._jinja = Environment(undefined=StrictUndefined, keep_trailing_newline=True)
 
     # ── 加载 ──────────────────────────────────────────────────────────────────
@@ -79,9 +80,11 @@ class PromptRegistry:
             logger.warning("PromptRegistry is frozen, skipping reload")
             return
 
-        # 先加载 model_profiles.yml（如果存在）
-        profiles_file = prompts_dir / "model_profiles.yml"
-        if profiles_file.exists():
+        self._root_dir = prompts_dir
+
+        # 先加载公共 model_profiles.yml（允许放在 Agent 公共 Prompt 目录）
+        profiles_file = next(prompts_dir.rglob("model_profiles.yml"), None)
+        if profiles_file is not None:
             self._load_model_profiles(profiles_file)
 
         for yml_path in sorted(prompts_dir.rglob("*.yml")):
@@ -142,8 +145,9 @@ class PromptRegistry:
         """重新从磁盘加载全部 Prompt（编辑保存后调用），完成后恢复冻结状态。"""
         if not self._sources:
             return
-        first_source = Path(next(iter(self._sources.values())))
-        prompts_dir = first_source.parent.parent
+        prompts_dir = self._root_dir
+        if prompts_dir is None:
+            return
         self._frozen = False
         self._prompts.clear()
         self._sources.clear()
@@ -254,8 +258,8 @@ prompt_registry = PromptRegistry()
 def warmup(prompts_dir: Path | None = None, freeze: bool = True) -> None:
     """在服务启动时调用，加载并冻结 Prompt Registry。"""
     if prompts_dir is None:
-        # 默认：项目根目录的 prompts/ 目录
-        prompts_dir = Path(__file__).resolve().parent.parent.parent / "prompts"
+        # 默认：递归扫描 app/agents 下各 Agent 的 prompts 目录
+        prompts_dir = Path(__file__).resolve().parent.parent / "agents"
     prompt_registry.load_from_dir(prompts_dir)
     if freeze:
         prompt_registry.freeze()

@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from app.infrastructure.collectors.xiaohongshu_collector import XiaohongshuCollector
-from app.models import Topic, WorkflowConfig
+from app.api.schemas.workflow import Topic, WorkflowConfig
 from app.services.xiaohongshu_service import XiaohongshuAccessError
 
 SEARCH_HTML = """

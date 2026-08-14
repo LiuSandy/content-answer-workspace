@@ -10,11 +10,11 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.prompts.registry import PromptRegistry, RenderedPrompt
 from app.prompts.errors import PromptVariableMissingError, PromptNotFoundError
-from app.errors import DocumentConflictError, ValidationError
-from app.persistence import Base
-from app.persistence.models.content import SourceItem
-from app.application.document_service import DocumentService
-from app.domain.dto import SelectionDTO
+from app.contracts.errors import DocumentConflictError, ValidationError
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.content import SourceItem
+from app.services.document_service import DocumentService
+from app.contracts.dto import SelectionDTO
 
 
 def test_legacy_reflection_prompt_and_workflow_are_removed() -> None:

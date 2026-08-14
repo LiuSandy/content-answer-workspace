@@ -1,10 +1,10 @@
 import pytest
 import uuid
 from unittest.mock import AsyncMock, MagicMock
-from app.errors import DocumentConflictError
-from app.application.document_service import DocumentService
-from app.application.writer_service import WriterRunCapture
-from app.workflows.answer_generation import generate_answer_workflow
+from app.contracts.errors import DocumentConflictError
+from app.services.document_service import DocumentService
+from app.services.writing_service import WriterRunCapture
+from app.agents.writer.nodes.answer_generation import generate_answer_workflow
 
 
 @pytest.mark.asyncio
@@ -39,14 +39,14 @@ async def test_answer_generation_defers_version_and_populates_capture(monkeypatc
         yield "draft"
 
     monkeypatch.setattr(
-        "app.workflows.answer_generation.run_writer_stream", fake_writer_stream
+        "app.agents.writer.nodes.answer_generation.run_writer_stream", fake_writer_stream
     )
     monkeypatch.setattr(
-        "app.workflows.answer_generation.compose_writing_prompt",
+        "app.agents.writer.nodes.answer_generation.compose_writing_prompt",
         lambda *args, **kwargs: MagicMock(messages=[]),
     )
     monkeypatch.setattr(
-        "app.workflows.answer_generation.prompt_registry.render",
+        "app.agents.writer.nodes.answer_generation.prompt_registry.render",
         lambda *args, **kwargs: MagicMock(messages=[]),
     )
 
@@ -84,14 +84,14 @@ async def test_answer_generation_passes_selected_outline_to_prompt(monkeypatch):
         return MagicMock(messages=[])
 
     monkeypatch.setattr(
-        "app.workflows.answer_generation.run_writer_stream", fake_writer_stream
+        "app.agents.writer.nodes.answer_generation.run_writer_stream", fake_writer_stream
     )
     monkeypatch.setattr(
-        "app.workflows.answer_generation.compose_writing_prompt",
+        "app.agents.writer.nodes.answer_generation.compose_writing_prompt",
         lambda *args, **kwargs: MagicMock(messages=[]),
     )
     monkeypatch.setattr(
-        "app.workflows.answer_generation.prompt_registry.render", fake_render
+        "app.agents.writer.nodes.answer_generation.prompt_registry.render", fake_render
     )
 
     session = AsyncMock()

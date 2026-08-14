@@ -6,7 +6,7 @@ import pytest
 from app.prompts.composer import compose_writing_prompt, resolve_platform_pack_id
 from app.prompts.registry import PromptRegistry, prompt_registry
 
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "app" / "agents"
 
 
 @pytest.fixture(autouse=True)

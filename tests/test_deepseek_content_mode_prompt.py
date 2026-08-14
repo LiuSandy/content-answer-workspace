@@ -4,8 +4,8 @@ from pathlib import Path
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.infrastructure.llm.deepseek_client import DeepSeekAnswerGenerator
-from app.models import QuestionItem
+from app.infrastructure.llm.clients.deepseek_client import DeepSeekAnswerGenerator
+from app.api.schemas.workflow import QuestionItem
 from app.prompts import warmup
 
 
@@ -20,7 +20,7 @@ class DeepSeekContentModePromptTests(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        warmup(Path(__file__).resolve().parent.parent / "prompts")
+        warmup(Path(__file__).resolve().parent.parent / "app" / "agents")
 
     async def test_generate_answer_uses_imitation_prompt_for_imitate_mode(self) -> None:
         item = QuestionItem(
@@ -38,7 +38,7 @@ class DeepSeekContentModePromptTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(generator, "get_client", return_value=fake_client),
-            patch("app.infrastructure.llm.deepseek_client.get_required_env", return_value="model-x"),
+            patch("app.infrastructure.llm.clients.deepseek_client.get_required_env", return_value="model-x"),
         ):
             await generator.generate_answer(item, "活泼", "", "system", "generation")
 
@@ -54,7 +54,7 @@ class DeepSeekContentModePromptTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(generator, "get_client", return_value=fake_client),
-            patch("app.infrastructure.llm.deepseek_client.get_required_env", return_value="model-x"),
+            patch("app.infrastructure.llm.clients.deepseek_client.get_required_env", return_value="model-x"),
         ):
             await generator.generate_answer(item, "简洁", "", "system", "generation")
 
@@ -76,7 +76,7 @@ class DeepSeekContentModePromptTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(generator, "get_client", return_value=fake_client),
-            patch("app.infrastructure.llm.deepseek_client.get_required_env", return_value="model-x"),
+            patch("app.infrastructure.llm.clients.deepseek_client.get_required_env", return_value="model-x"),
         ):
             await generator.polish_answer(item, "草稿内容", "活泼", "", "system", "generation")
 

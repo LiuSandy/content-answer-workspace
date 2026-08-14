@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.persistence import Base
-from app.persistence.models.chats import Chat, Message
-from app.application.chat_service import ChatService
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.chats import Chat, Message
+from app.services.chat_service import ChatService
 
 # SQLite compatible JSONB compilation rule
 @compiles(JSONB, "sqlite")

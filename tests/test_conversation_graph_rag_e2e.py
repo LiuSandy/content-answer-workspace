@@ -17,9 +17,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.application.agent.graphs.conversation import build_chat_agent_graph
-from app.application.agent.state import ChatAgentState
-from app.application.knowledge.retrieval_service import RetrievalResult
+from app.agents.chat.graph import build_chat_agent_graph
+from app.state import ChatAgentState
+from app.services.rag.retrieval_service import RetrievalResult
 
 
 # ── 公共夹具：构造一个编译后的图，所有外部依赖被 mock ────────────────────────
@@ -41,10 +41,10 @@ def compiled_graph(monkeypatch):
     fake_prompt_registry = MagicMock()
     fake_prompt_registry.render.return_value = fake_rendered
     monkeypatch.setattr(
-        "app.application.agent.nodes.route_intent.llm_provider_registry", fake_registry
+        "app.agents.chat.nodes.route_intent.llm_provider_registry", fake_registry
     )
     monkeypatch.setattr(
-        "app.application.agent.nodes.route_intent.prompt_registry", fake_prompt_registry
+        "app.agents.chat.nodes.route_intent.prompt_registry", fake_prompt_registry
     )
 
     # 2) retrieve_knowledge：mock get_session_factory、KnowledgeRetrievalService、TraceService
@@ -53,7 +53,7 @@ def compiled_graph(monkeypatch):
     fake_factory = MagicMock()
     fake_factory.return_value.__aenter__ = AsyncMock(return_value=fake_session)
     fake_factory.return_value.__aexit__ = AsyncMock(return_value=None)
-    monkeypatch.setattr("app.persistence.session.get_session_factory", lambda: fake_factory)
+    monkeypatch.setattr("app.infrastructure.database.session.get_session_factory", lambda: fake_factory)
 
     # 3) chat_node：mock _get_chat_llm 返回可捕获 messages 的 LLM
     captured_messages = []
@@ -69,9 +69,9 @@ def compiled_graph(monkeypatch):
 
     fake_llm = FakeLLM()
     monkeypatch.setattr(
-        "app.application.agent.nodes.chat_node._get_chat_llm", lambda: fake_llm
+        "app.agents.chat.nodes.chat._get_chat_llm", lambda: fake_llm
     )
-    monkeypatch.setattr("app.application.agent.nodes.chat_node._llm", fake_llm, raising=False)
+    monkeypatch.setattr("app.agents.chat.nodes.chat._llm", fake_llm, raising=False)
 
     graph = build_chat_agent_graph(MemorySaver())
     return graph, captured_messages
@@ -105,7 +105,7 @@ def _install_retriever(monkeypatch, result: RetrievalResult | None):
     fake_svc = MagicMock()
     fake_svc.retrieve = AsyncMock(return_value=result)
     monkeypatch.setattr(
-        "app.application.knowledge.retrieval_service.KnowledgeRetrievalService",
+        "app.services.rag.retrieval_service.KnowledgeRetrievalService",
         lambda session: fake_svc,
     )
 
@@ -117,7 +117,7 @@ def _install_trace(monkeypatch):
     class FakeTrace:
         async def create_trace(self, **kwargs):
             calls["create"] += 1
-            from app.persistence.models.knowledge import RetrievalTraceModel
+            from app.infrastructure.database.models.knowledge import RetrievalTraceModel
             import uuid
             t = RetrievalTraceModel(
                 id=uuid.uuid4(), workspace_id=kwargs.get("workspace_id", "default"),
@@ -135,7 +135,7 @@ def _install_trace(monkeypatch):
             calls["finalize"] += 1
 
     monkeypatch.setattr(
-        "app.application.knowledge.trace_service.TraceService", lambda session: FakeTrace()
+        "app.services.rag.trace_service.TraceService", lambda session: FakeTrace()
     )
     return calls
 
@@ -256,7 +256,7 @@ async def test_path4_off_mode_skips_retrieval(compiled_graph, monkeypatch):
         return None
     fake_svc.retrieve = _retrieve
     monkeypatch.setattr(
-        "app.application.knowledge.retrieval_service.KnowledgeRetrievalService",
+        "app.services.rag.retrieval_service.KnowledgeRetrievalService",
         lambda session: fake_svc,
     )
 

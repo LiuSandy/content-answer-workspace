@@ -1,5 +1,5 @@
 import pytest
-from app.application.knowledge.retrieval_service import SearchHit, compute_rrf
+from app.services.rag.retrieval_service import SearchHit, compute_rrf
 
 def test_compute_rrf():
     bm25_hits = [

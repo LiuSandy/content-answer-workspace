@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock
-from app.application.knowledge.trace_service import TraceService
+from app.services.rag.trace_service import TraceService
 
 
 def test_trace_service_sanitization():

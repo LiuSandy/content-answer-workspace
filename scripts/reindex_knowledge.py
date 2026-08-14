@@ -21,9 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import select
 
-from app.core.config import get_knowledge_settings, load_env_file
-from app.domain.knowledge import KnowledgeDocumentStatus, KnowledgeScope
-from app.persistence.models.knowledge import KnowledgeDocumentModel
+from app.config.runtime import get_knowledge_settings, load_env_file
+from app.contracts.knowledge import KnowledgeDocumentStatus, KnowledgeScope
+from app.infrastructure.database.models.knowledge import KnowledgeDocumentModel
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("reindex_knowledge")
@@ -52,12 +52,12 @@ async def run(workspace_id: str | None, dry_run: bool) -> int:
 
     # 先校验 embedding 已配置：未配置时立即失败，
     # 而不是逐个文档报错（禁止用 Mock 向量重建索引）
-    from app.infrastructure.knowledge.embedding import get_embedding_provider
+    from app.infrastructure.embeddings.provider import get_embedding_provider
     get_embedding_provider()
 
-    from app.persistence.session import get_session_factory
-    from app.application.knowledge.indexing_service import IndexingService
-    from app.infrastructure.knowledge.storage import KnowledgeStorage
+    from app.infrastructure.database.session import get_session_factory
+    from app.services.rag.indexing_service import IndexingService
+    from app.infrastructure.database.repositories.knowledge_storage import KnowledgeStorage
 
     settings = get_knowledge_settings()
     storage = KnowledgeStorage(settings.sources_dir, settings.documents_dir)

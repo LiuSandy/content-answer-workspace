@@ -8,10 +8,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 
-from app.persistence import Base
-from app.persistence.models.content import SourceItem
-from app.persistence.models.documents import AIOperation, AnswerDocument
-from app.workflows.full_rewrite import full_rewrite_workflow
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.content import SourceItem
+from app.infrastructure.database.models.documents import AIOperation, AnswerDocument
+from app.agents.writer.nodes.full_rewrite import full_rewrite_workflow
 
 
 @compiles(JSONB, "sqlite")
@@ -69,14 +69,14 @@ async def test_full_rewrite_uses_restored_content_and_selected_outline(monkeypat
             yield "rewritten"
 
         monkeypatch.setattr(
-            "app.workflows.full_rewrite.compose_writing_prompt",
+            "app.agents.writer.nodes.full_rewrite.compose_writing_prompt",
             lambda *args, **kwargs: MagicMock(messages=[]),
         )
         monkeypatch.setattr(
-            "app.workflows.full_rewrite.prompt_registry.render", fake_render
+            "app.agents.writer.nodes.full_rewrite.prompt_registry.render", fake_render
         )
         monkeypatch.setattr(
-            "app.workflows.full_rewrite.run_writer_stream", fake_writer_stream
+            "app.agents.writer.nodes.full_rewrite.run_writer_stream", fake_writer_stream
         )
 
         parts = [part async for part in full_rewrite_workflow(

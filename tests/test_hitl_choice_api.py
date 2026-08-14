@@ -17,9 +17,9 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.api.routes.chats import router as chats_router
-from app.application.agent.scheduling import ChatRuntime
-from app.application.chat_service import ChatService
-from app.persistence import Base
+from app.agents._shared.runtime import ChatRuntime
+from app.services.chat_service import ChatService
+from app.infrastructure.database import Base
 
 _RECORDED_RUNS: list[dict] = []
 
@@ -185,7 +185,7 @@ async def test_per_chat_run_lock_serializes_runs():
 @pytest.mark.asyncio
 async def test_preprocess_keeps_hitl_selection():
     """续跑轮 preprocess 不清空 hitl_selection，只重置本轮 pending/choice。"""
-    from app.application.agent.nodes.preprocess import preprocess_node
+    from app.agents.chat.nodes.preprocess import preprocess_node
 
     result = await preprocess_node(
         {
