@@ -9,6 +9,7 @@ variables:
     - instruction
   optional:
     - content_mode
+    - outline
 
 messages:
   - role: user
@@ -25,5 +26,12 @@ messages:
       {{ current_answer }}
       
       重写指令：{{ instruction }}
+
+      {% if outline is defined and outline and outline != '[]' %}
+      当前文章关联的大纲：
+      {{ outline }}
+
+      请在执行重写指令时保持该大纲的章节顺序和关键论据。
+      {% endif %}
       
       请根据指令重写或润色整篇回答，直接输出处理后的完整内容。

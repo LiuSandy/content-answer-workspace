@@ -9,6 +9,7 @@ variables:
   optional:
     - content_mode
     - instruction
+    - outline
 
 messages:
   - role: user
@@ -28,4 +29,12 @@ messages:
       {% if instruction is defined and instruction %}
       【额外创作要求】：
       {{ instruction }}
+      {% endif %}
+
+      {% if outline is defined and outline and outline != '[]' %}
+      【已确认的创作大纲】：
+      {{ outline }}
+
+      请严格按照大纲的章节顺序、核心要点和篇幅分配完成创作；可以自然化章节标题，
+      但不能遗漏大纲中的关键论据，也不要额外添加与大纲冲突的结构。
       {% endif %}

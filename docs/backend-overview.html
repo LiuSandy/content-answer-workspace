@@ -307,7 +307,7 @@ flowchart LR
     <table class="ref">
       <tr><th>① 路由层</th><td>5 个 FastAPI 路由文件：workflow（采集/生成/润色/链接导入）、agent（AI 对话）、session（会话存取）、hotlist（热榜）、config（初始配置）。统一返回 <code>{ ok, data }</code> / <code>{ ok, error }</code>，不包含任何业务判断。</td></tr>
       <tr><th>② 编排层</th><td>两个互相独立的编排者：<b>WorkflowService</b> 负责"采集 + 生成"这条主线；<b>Agent Graphs</b>（LangGraph）负责"回答精修对话"和"热榜趋势分析"两个轻量交互。</td></tr>
-      <tr><th>③ 平台与服务层</th><td><b>CollectorFactory</b> 按平台选出具体采集器（知乎网页版/官方 API、小红书、或配置驱动的通用采集器）；<b>answer_service</b> 统一封装"生成正文 + 生成配图"；另有 session_service（本地会话持久化）、hotlist_service（热榜）等支持性服务。</td></tr>
+      <tr><th>③ 平台与服务层</th><td><b>CollectorFactory</b> 按平台选出具体采集器（知乎网页版、小红书、或配置驱动的通用采集器）；<b>answer_service</b> 统一封装"生成正文 + 生成配图"；另有 session_service（本地会话持久化）等支持性服务。</td></tr>
       <tr><th>④ 基础设施层</th><td>真正发起外部请求的地方：<b>DeepSeek 客户端</b>（所有 LLM 调用的唯一出口）、<b>知乎官方 API 客户端</b>、以及两种抓取器（HttpFetcher / PlaywrightFetcher）。</td></tr>
     </table>
   </section>
@@ -441,7 +441,7 @@ flowchart TD
     <ul>
       <li><b>统一响应包装</b>：所有新路由返回 <code>{ ok, data }</code> 或 <code>{ ok, error }</code>，加上一个全局异常处理器兜底，前端不用对每个接口写不同的错误解析逻辑。</li>
       <li><b>camelCase 别名约定</b>：Python 内部用 <code>snake_case</code>，但所有模型都声明了 <code>camelCase</code> 别名，序列化时统一按别名输出——这样前后端字段命名风格可以各自符合自己语言的习惯，不需要谁妥协。</li>
-      <li><b>端口/适配器解耦</b>：采集器接口（<code>CollectorPort</code>）、Agent 节点依赖的接口（Session/LLM/Hotlist）都是先定义协议，再各自实现——换一个 LLM 供应商或者把 session 从内存换成数据库，只需要换适配器，不用动编排逻辑。</li>
+      <li><b>端口/适配器解耦</b>：采集器接口（<code>CollectorPort</code>）、Agent 节点依赖的接口（Session/LLM）都是先定义协议，再各自实现——换一个 LLM 供应商或者把 session 从内存换成数据库，只需要换适配器，不用动编排逻辑。</li>
       <li><b>配置驱动扩展</b>：能用 YAML 描述清楚的平台（认证方式、搜索 URL、提取规则）就不写新代码，复杂到需要多阶段抓取或特殊反爬处理（比如小红书）才单独写采集器类——按复杂度决定要不要"上代码"。</li>
       <li><b>失败要报错不要吞掉</b>：采集结果为空、cookie 失效、风控拦截，这些场景都设计成显式抛错而不是悄悄返回空列表，避免用户以为"采集成功但没内容"，实际上是配置或权限出了问题。</li>
     </ul>
@@ -452,13 +452,12 @@ flowchart TD
     <table class="ref">
       <tr><th>目录 / 文件</th><th>负责什么</th></tr>
       <tr><td>app/server.py</td><td>FastAPI 入口，挂载各路由、托管前端构建产物、统一异常处理</td></tr>
-      <tr><td>app/api/routes/</td><td>HTTP 层薄封装：workflow（采集/生成）、agent（AI对话）、session（会话存取）、hotlist（热榜）、config（初始配置）</td></tr>
+      <tr><td>app/api/routes/</td><td>HTTP 层薄封装：workflow（采集/生成）、agent（AI对话）、session（会话存取）、config（初始配置）</td></tr>
       <tr><td>app/application/workflow_service.py</td><td>采集与生成两条主线的核心编排者</td></tr>
-      <tr><td>app/application/agent/</td><td>LangGraph 状态机：精修对话 Graph、热榜分析 Graph，及它们依赖的端口与适配器</td></tr>
+      <tr><td>app/application/agent/</td><td>LangGraph 状态机、平台工具及其依赖的端口与适配器</td></tr>
       <tr><td>app/infrastructure/collectors/</td><td>CollectorFactory + 各平台采集器实现 + 通用采集器的 fetcher/extractor 组件</td></tr>
-      <tr><td>app/services/</td><td>平台特定的业务逻辑（知乎/小红书的搜索解析）、主题扩词、热榜、答案生成封装、配图生成、会话持久化</td></tr>
+      <tr><td>app/services/</td><td>平台特定的业务逻辑（知乎/小红书的搜索解析）、主题扩词、答案生成封装、配图生成、会话持久化</td></tr>
       <tr><td>app/infrastructure/llm/deepseek_client.py</td><td>所有 LLM 调用的唯一出口：生成回答、润色、扩词、裸调用</td></tr>
-      <tr><td>app/infrastructure/zhihu/official_client.py</td><td>知乎官方 API 的 HTTP 客户端封装</td></tr>
       <tr><td>app/core/config.py</td><td>环境变量读取与规范化，产出贯穿全流程的 WorkflowConfig</td></tr>
       <tr><td>app/models.py</td><td>全局数据模型：主题、问题条目、工作流配置、各类请求/响应载荷</td></tr>
     </table>

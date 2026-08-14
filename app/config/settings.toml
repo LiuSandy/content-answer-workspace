@@ -25,10 +25,6 @@ render_wait_ms = 2000               # 跳转后等待渲染（毫秒）
 request_interval_seconds = 1.5      # 关键词之间的请求间隔，降低风控风险
 cookie_domain = ".xiaohongshu.com"
 
-# 知乎热榜
-[hotlist]
-max_limit = 30                      # 官方热榜单次返回上限
-
 # LLM 默认值（非密钥；OPENAI_API_KEY 等仍在 .env）
 [llm]
 default_model = "GLM-4.7"

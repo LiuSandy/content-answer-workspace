@@ -11,6 +11,7 @@ from ..infrastructure.llm.deepseek_client import DeepSeekAnswerGenerator
 from ..models import RegeneratePayload
 from ..services.image_service import GeneratedImagePayload, ImageGenerationService
 from .workflow_service import normalize_platform
+from ..observability.context import reset_log_context, set_log_context
 
 JobStatus = Literal["pending", "running", "done", "error", "canceled"]
 JobEventName = Literal["chunk", "done", "job_error", "canceled"]
@@ -175,6 +176,7 @@ class GenerationJobService:
         job = self._jobs.get(job_id)
         if not job or job.status == "canceled":
             return
+        log_token = set_log_context(job_id=job_id)
         try:
             job.status = "running"
             job.updated_at = datetime.now(UTC)
@@ -226,6 +228,8 @@ class GenerationJobService:
             await self.mark_done(job_id, final_item.model_dump(by_alias=True))
         except Exception as error:  # noqa: BLE001
             await self.mark_error(job_id, str(error))
+        finally:
+            reset_log_context(log_token)
 
     async def wait_for_events(self, job_id: str, last_event_id: int, timeout: float = 15.0) -> list[SseJobEvent]:
         condition = self._conditions.get(job_id)

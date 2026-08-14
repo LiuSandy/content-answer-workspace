@@ -19,6 +19,10 @@ class DeepSeekProvider:
 
     key: str = "deepseek"
 
+    # 结构化输出能力（roadmap R1）：DeepSeek 兼容端点不支持原生 json_schema，
+    # 从 json_mode 开始；不声明 json_schema 以避免异常探测。
+    structured_methods: list[str] = ["json_mode", "generic_parse"]
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -48,13 +52,16 @@ class DeepSeekProvider:
     async def generate(self, request: LLMRequest) -> LLMResponse:
         """同步生成完整回复。"""
         client = self._get_client()
+        params = dict(request.extra or {})
+        if request.response_format is not None:
+            params["response_format"] = request.response_format
         resp = await client.chat.completions.create(
             model=request.model,
             messages=self._to_openai_messages(request.messages),
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             stream=False,
-            **(request.extra or {}),
+            **params,
         )
         choice = resp.choices[0]
         return LLMResponse(

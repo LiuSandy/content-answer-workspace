@@ -1,131 +1,301 @@
-# Feature Specification: Outlines 受限解码与结构化输出集成
+# 功能规范：结构化输出与内容大纲（Structured Output & Outline Generation）
 
-为了提升工作台 LLM 操作的确定性、降低 Agent 决策出错率，并实现 100% 格式合规的数据流，本方案拟在项目中集成 [Outlines](https://github.com/dottxt-ai/outlines)。本文档详细规定了 Outlines 的应用场景、系统架构与预期的输入输出格式规范。
+**版本：** 2.2
+**日期：** 2026-08-05
+**状态：** 已确认 (Approved)
+**作者：** 架构设计
+**重写说明：** 本文档为《Outlines 受限解码与结构化输出集成》(v1.0) 的重写版。
+v1.0 的过时点见 §1.1，本文档同时澄清了"outlines"在本仓库被误当作
+"内容大纲生成"spec 引用的命名混淆（见 §1.2）。
+
+> **2.1 修订说明**：远程分支已落地三层意图识别（`route_intent.py`）、
+> 机会评分（`opportunity_service.py`）、反思评分（`reflection.py`）、
+> 记忆提取（`memory_service.py`）。这些实现**仍大量使用手写 `json.loads` 解析**，
+> 场景清单已更新为与代码现状一一对应；未实现的选题/质检/大纲保持 ◻️。
+>
+> **2.2 修订说明**：评审补齐 schema 与代码的真实匹配——
+> ① `IntentRoute` 需含 `knowledge_mode` / `confidence` / `platform` / `query` /
+> `reason` 字段（否则替换 `route_intent.py` 时丢功能，§4.1）；
+> ② `MemoryExtraction` 的 `memory_type` 需含 `implicit`（对齐 `VALID_TYPES`，§4.5）；
+> ③ 结构化输出作为 registry/适配器的**方法**（`generate_structured`）而非第三套
+> 独立入口（§2/§3）；
+> ④ 大纲/观点的落库载体明确为 `AIOperation.input_metadata`（§4.2）。
 
 ---
 
-## 1. 核心应用场景与集成点
+## 1. 背景与重写说明
 
-目前工作台中共有 4 处核心链路需要集成 Outlines 以取代传统的“Prompt 约束 + 事后 JSON 解析”方案：
+### 1.1 v1.0 过时性分析
 
-```mermaid
-graph TD
-    A[用户输入/采集触发] --> B[意图识别/路由层]
-    B -->|Outlines 限制选项| C{流程分流}
-    C -->|热点提取分析| D[热点分析 Agent]
-    C -->|回答内容创作| E[配图提取模块]
-    C -->|内容质量控制| F[合规审查模块]
-    D -->|Outlines 约束 JSON| D1[提取结构化 Topic / 写入 DB]
-    E -->|Outlines 约束 Regex| E1[生成配图 Prompt]
-    F -->|Outlines 约束 Schema| F1[输出结构化合规评分]
+| 过时点 | v1.0 内容 | 现状 |
+| :--- | :--- | :--- |
+| 技术方案 | 集成 Outlines 库做 token 级引导解码 | 项目使用 DeepSeek（OpenAI 兼容 API），引导解码仅对本地后端（transformers/vLLM/llama.cpp）有效，对 OpenAI 兼容端点收益大打折扣 |
+| 意图路由 | 操作集 `[collect_request, hotlist_analysis, inline_refinement, general_chat]` | 已实现**三层意图识别**（规则 → LLM → 校验，`route_intent.py` + `intent_rules.py`），意图集 `{chat, parse_url, task_plan, multi_agent}`，**LLM 分支仍手写 `json.loads`（`route_intent.py:76`）** |
+| 热榜分析 | 热点分析 Agent 提取结构化 Topic | 已改道 `fetch_hotlist` 直连知乎官方 API + 机会评分（`opportunity_service.py`），无独立分析 Agent |
+| 配图 / 合规 | 配图 prompt 提取、合规审查模块 | 配图存在于旧采集工作流（`image_service`），将迁入 **Content Writer** 链路（见 agent-platform-split spec §4.5）；合规审查未落地，评分由**反思循环**（`reflection.py`）承担 |
+
+### 1.2 命名澄清
+
+- v1.0 标题指 **Outlines 库**（结构化生成）。
+- 但 `docs/specs/content-creation-pipeline.md` 将其引用为 **"内容大纲（outline）生成"** spec。
+- 本文档统一覆盖两层语义：
+  - **结构化输出（技术底座）**：让 LLM 的"决策类输出"返回合法 Pydantic 对象，消灭手写 JSON 解析
+  - **内容大纲（业务场景）**：创作前生成文章大纲，属于结构化输出的一个应用
+
+### 1.3 目标
+
+1. 用 `with_structured_output` 统一替换手写 JSON 解析（`route_intent.py:76` 为真实痛点）
+2. 定义内容大纲生成规范，支撑 Content Writer 的「大纲 → 分段生成」链路
+3. 明确失败兜底与降级策略，适配 DeepSeek 对 structured output 支持不稳定的现状
+
+---
+
+## 2. 方案选型
+
+| 方案 | token 级约束 | 兼容 DeepSeek | 与流式兼容 | 结论 |
+| :--- | :--- | :--- | :--- | :--- |
+| Outlines 引导解码 | ✅ | ❌ 仅本地后端 | 部分 | **不采用** |
+| **LangChain `with_structured_output`** | ❌（schema 引导 + JSON mode） | ✅ | ✅ | **✅ 采用** |
+| 原生 JSON mode（`response_format`） | ❌ | ✅ | ✅ | 降级兜底 |
+| 工具调用 `bind_tools` | — | ✅ | ✅ | 已有（chat_node:23），复用 |
+
+**选定方案**：`ChatOpenAI.with_structured_output(PydanticModel)`，失败时降级
+JSON mode → 通用解析。项目已依赖 `langchain-openai`，无新增依赖。
+
+**底座统一（避免三套 LLM 入口）**：结构化输出直接基于 **LangChain
+`ChatOpenAI`** 构造——与 `chat_node`（bind_tools）同属 langchain 调用体系，
+复用同一模型实例与参数装配。**2.2 评审**：结构化输出作为
+`infrastructure/llm/registry.py` / `agents/adapters.py` 的一个方法
+（如 `DeepSeekLLMAdapter.generate_structured(schema, ...)`）提供，而不是另起一套
+独立文件入口，避免"统一消灭手写 JSON"演变成第三套调用体系。registry 只负责按
+model profile **提供 `ChatOpenAI` 实例/参数**并透传 provider 差异化能力
+（如 DeepSeek 的 JSON mode）；模型调用统一经 `agents/adapters.py` 封装。
+
+---
+
+## 3. 统一基础设施
+
+在 `app/infrastructure/llm/` 增加 `structured` 能力（**作为 registry/适配器的
+方法**，见 §2；文件命名 `structured.py` 仅作实现模块）：
+
+```python
+class DeepSeekLLMAdapter:  # 扩展 agents/adapters.py 现有类
+    async def generate_structured(
+        self,
+        *,
+        schema: type[BaseModel],
+        system_prompt: str,
+        user_prompt: str,
+        retries: int = 1,
+    ) -> BaseModel:
+        # ① 优先 with_structured_output（json_schema 模式）
+        # ② provider 不支持或校验失败 → JSON mode + model_validate_json
+        # ③ 仍失败 → 通用解析（提取 JSON 片段），记录降级日志
+        ...
+```
+
+**降级顺序与日志**：每次降级记录 `degraded: reason` 到 `AIOperation.model_parameters`，
+可观测性复用现有 `ai_operations` 表。所有消费方（route_intent / extractor /
+summary / reviewer / analyst）统一经此方法，不各自实现解析。
+
+---
+
+## 4. 场景清单（对齐当前代码与设计）
+
+| # | 场景 | 现状 | 输出 Schema | 优先级 |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | 意图路由 | ⚠️ 三层识别已实现，LLM 分支仍手写 `json.loads`（`route_intent.py:76`） | `IntentRoute` | P0 |
+| 2 | 内容大纲 | ❌ 未实现（Writer 未落地） | `ArticleOutline` | P1 |
+| 3 | 选题评估 | ⚠️ `opportunity_service` 规则打分已实现，缺 LLM `TopicEvaluation` | `TopicEvaluation` | P1 |
+| 4 | 质检报告 | ⚠️ `reflection.py` 5 维评分已实现，缺 `QualityReport` schema 与采纳链路 | `QualityReport` | P1 |
+| 5 | 记忆提取 | ⚠️ `memory_service.extract_memories` 已实现，`_parse_extraction_json` 手写解析（`memory_service.py:56`） | `MemoryExtraction` | P2 |
+| 6 | 滚动摘要 | ❌ `summary_updater` 未实现 | `ConversationSummary` | P2 |
+| 7 | 工具参数 | ✅ `bind_tools`（chat_node:23） | LangChain 工具 schema | 复用 |
+| 8 | 机会选题 | ⚠️ `opportunity_service` 规则评分已实现；`analysis.py` 死代码待删 | 并入场景 3 `TopicEvaluation` | P1 |
+
+### 4.1 场景 1：意图路由（P0，真实痛点）
+
+**现状**：三层意图已实现（规则优先 → LLM 兜底 → 校验降级，`route_intent.py`），
+但 LLM 分支仍手写 `json.loads`（`route_intent.py:76`），非法 JSON 才降级 chat；
+`collect` 规则已并入 `intent_rules.py`。
+
+```python
+class IntentRoute(BaseModel):
+    intent: Literal["chat", "parse_url", "task_plan", "multi_agent"] = Field(description="路由意图")
+    # 2.2 评审补录：route_intent_node 真实消费这些字段，缺了会在替换时丢功能
+    knowledge_mode: Literal["off", "normal", "strict"] = Field(default="normal")
+    confidence: float = Field(default=0.9, ge=0.0, le=1.0)   # L2 低置信度降级判断
+    platform: str | None = Field(default=None)                # 采集/搜索目标平台
+    query: str | None = Field(default=None)                   # 采集/搜索关键词
+    reason: str | None = Field(default=None)                  # 路由理由（可观测）
+```
+
+**接入点**：替换 `route_intent.py` 中 LLM 分支为 `generate_structured(IntentRoute)`，
+**保留 L2 校验逻辑**（`_MIN_CONFIDENCE=0.6` 低置信度降级 chat、`strict`/`off`
+显式模式保留、规则层命中结果与 LLM 结果合并——`route_intent.py:104`）。
+规则优先分支保持不变。
+
+### 4.2 场景 2：内容大纲生成（P1，业务重点）◻️
+
+**现状**：Writer 未落地，`ArticleOutline` schema 不存在。
+
+**输入**：题目 title + 原文 content + 平台 + 风格规则 + 用户观点（可选）。
+
+```python
+class OutlineSection(BaseModel):
+    heading: str = Field(description="小节标题")
+    key_points: list[str] = Field(description="该小节的核心要点，最多 5 条")
+    word_count_estimate: int = Field(description="该小节预估字数")
+
+class ArticleOutline(BaseModel):
+    hook_suggestion: str = Field(description="开头钩子建议")
+    sections: list[OutlineSection] = Field(description="正文大纲段落")
+    closing_suggestion: str = Field(description="结尾收束建议")
+```
+
+**流程**：
+
+```text
+编辑器「生成大纲」
+    ├─（可选）前置观点采集：向用户提 2~3 个采访问题，回答记为 viewpoint_notes
+    │         （衔接 content-creation-pipeline §4.2，观点注入 → 大纲 → 生成）
+    ▼
+`generate_structured` → 大纲卡片预览
+    → 用户确认/微调 → 分段生成（Content Writer，agent-platform spec §4.5）
+```
+
+**数据模型（2.2 评审澄清落库载体）**：大纲作为 `AIOperation`
+（`operation_type=outline`）记录存档；**`viewpoint_notes` 与确认后的大纲快照
+存入同一 `AIOperation.input_metadata` JSONB**（无需改 `answer_documents` 表——
+`source_item_id` 经 document 关联即可定位）。确认后按段落调用 Content Writer
+分段生成；观点作为大纲与分段生成的注入素材。若后续需要跨任务查询观点，
+再评估为 `answer_documents` 加独立列。
+
+### 4.3 场景 3：选题评估（P1）
+
+**现状**：`opportunity_service.py` 规则打分已实现
+（`W_HOT/W_MATCH/W_COMPETITION/W_RECENCY`，落库 `opportunity_feeds`），
+缺 LLM 维度 `TopicEvaluation`（`user_match`、原因、建议）。
+
+**输入**：采集元数据（标题、浏览量、回答数、热度）或机会扫描候选。
+
+```python
+class TopicEvaluation(BaseModel):
+    worth_score: int = Field(ge=0, le=100, description="值得答指数")
+    reason: str = Field(description="一句话理由")
+    competition_level: Literal["low", "medium", "high"]
+    suggestion: str = Field(description="作答建议")
+```
+
+**接入点**：`opportunity_service` 打分后追加 LLM `evaluate_topic` 节点
+（agent-platform-split spec §4.4）。
+
+### 4.4 场景 4：质检报告（P1）
+
+**现状**：`reflection.py` 5 维评分已实现
+（relevance/information_density/readability/logic_coherence/word_count_compliance，
+阈值 0.75），`reflect_refine.py` 迭代修正 ≤3 轮；
+缺 `QualityReport` schema 与一键采纳链路（`quality_adopt`）。
+
+**输入**：回答全文 + 平台。
+
+```python
+class QualityReport(BaseModel):
+    ai_flavor_score: int = Field(ge=0, le=100, description="AI 味检测分，越高越自然")
+    hook_score: int = Field(ge=0, le=100)
+    compliance_issues: list[str] = Field(default_factory=list, description="合规问题清单")
+    suggestions: list[str] = Field(default_factory=list, description="逐条修改建议")
+    recommend_rewrite: bool = Field(description="是否建议重写")
+```
+
+**接入点**：Quality Reviewer 节点；报告作为 `AIOperation` 存档，`quality_adopt`
+一键采纳（agent-platform-split spec §4.6）。
+
+### 4.5 场景 5：记忆提取（P2）
+
+**现状**：`memory_service.extract_memories` 已实现，`_parse_extraction_json`
+手写 `json.loads`（`memory_service.py:56`）；仅 multi_agent 的 MemoryAgent 调用，
+未接主对话图。
+
+```python
+class MemoryItem(BaseModel):
+    memory_type: Literal["explicit", "implicit", "work_pattern"]  # 2.2 评审：补 implicit，对齐 memory_service.VALID_TYPES
+    content: str
+    confidence: float = Field(ge=0, le=1)
+
+class MemoryExtraction(BaseModel):
+    items: list[MemoryItem]
+```
+
+### 4.6 场景 6：滚动摘要（P2）◻️
+
+**现状**：未实现；`chats.py:262` 仍全量拼接历史、thread_id 每次新建。
+
+```python
+class ConversationSummary(BaseModel):
+    summary: str
+    covered_message_ids: list[str]
 ```
 
 ---
 
-## 1.5 Pydantic 与 Outlines 的协同机制
+## 5. 数据流
 
-在上述大部分受限生成场景中，**Pydantic** 与 **Outlines** 将结对协同工作：
-
-* **Pydantic 的角色 (结构契约定义)**：使用 `BaseModel` 和 `Field` 来明确大模型必须输出的数据结构、字段类型限制（例如 `int` 范围、列表最大项数）以及面向 LLM 语义理解的字段描述。
-* **Outlines 的角色 (受限解码执行)**：读取 Pydantic 模型的结构，在 LLM 逐字生成 token 时进行屏蔽干预，确保大模型吐出的数据结构 100% 贴合 Pydantic 定义。
-* **开发收益**：生成流结束时，Outlines 直接返回**实例化并校验通过的 Pydantic 模型对象**，不再需要任何后置的 `json.loads` 或 `try-except` 防御性解析，从而实现大模型与业务代码的零摩擦集成。
+- **路由/决策链路**（同步）：chat → `route_intent` 用 `generate_structured` → 后续节点
+- **大纲链路**（交互）：编辑器 → 生成大纲 → 用户确认 → 分段生成
+- **批量分析链路**（异步）：选题评估 / 质检 / 记忆提取 / 摘要，走 `BackgroundTasks`
 
 ---
 
-## 2. 详细集成规范与输入输出格式
+## 6. API 与前端
 
-### 场景 1: Agent 路由意图识别 (Router Layer)
-* **痛点**：意图路由大模型需要根据用户的对话内容，从若干预设的操作分类中二选一或多选一。在传统提示词下，模型有极小概率返回多余标点、客套话，从而破坏路由的匹配条件。
-* **Outlines 约束方式**：使用受限选项解码 (`outlines.generate.choice`)。
-* **输入格式**：
-  * 操作集：`["collect_request", "hotlist_analysis", "inline_refinement", "general_chat"]`
-  * 用户对话内容：`“我想帮我分析一下知乎现在的数码热榜”`
-* **预期的输出格式 (100% 仅输出选项本身)**：
-  ```text
-  hotlist_analysis
-  ```
+| 端点 | 说明 |
+| :--- | :--- |
+| `POST /api/source-items/{id}/outline` | 生成大纲（SSE 或一次性返回均可，建议一次性返回供预览） |
+
+前端：
+- 编辑器新增「生成大纲」按钮 → 大纲预览卡片（钩子/段落/要点）→ 确认后进入生成
+- 选题评分徽章、质检报告面板（复用 agent-platform-split spec 设计）
 
 ---
 
-### 场景 2: 热点分析选题与关键词提取 (Hotlist Analysis)
-* **痛点**：解析大型热榜文本时，需要从中抓取特定结构（包含主题名、提取出的推荐关键词、热度等级和说明）。如果模型输出非法的 JSON，后端解析将抛出 `JSONDecodeError` 导致任务失败。
-* **Outlines 约束方式**：绑定 Pydantic Model 结构化生成 (`outlines.generate.json`)。
-* **Pydantic Schema 定义**：
-  ```python
-  from pydantic import BaseModel, Field
-  from typing import List
+## 7. 实现优先级与验收
 
-  class ExtractedTopic(BaseModel):
-      topic_name: str = Field(description="热点主题名称")
-      keywords: List[str] = Field(description="核心关键词列表，最多3个")
-      hot_score: int = Field(description="热度估算分值 (1-100)")
-      reason: str = Field(description="提取此选题的简短原因分析")
+| Phase | 内容 | 验收标准 |
+| :--- | :--- | :--- |
+| **P0** | `generate_structured` + 意图路由替换 | 路由无手写 JSON；非法输出自动降级且可观测 |
+| **P1** | 大纲 + 选题评估 + 质检报告 | 大纲可生成/确认/分段生成；选题与质检输出 100% 合法 |
+| **P2** | 记忆提取 + 滚动摘要 | 与 context-memory spec §4.3/§3.3 衔接 |
 
-  class HotlistExtractionResult(BaseModel):
-      platform: str
-      topics: List[ExtractedTopic]
-  ```
-* **预期的输出格式 (100% 合法 JSON)**：
-  ```json
-  {
-    "platform": "zhihu",
-    "topics": [
-      {
-        "topic_name": "AI 辅助编程工具的普及",
-        "keywords": ["AI工具", "Copilot", "程序员"],
-        "hot_score": 92,
-        "reason": "多条关联提问连续进入数码分类热榜，讨论热度上升极快。"
-      }
-    ]
-  }
-  ```
+### P0 验收细节
+
+- [ ] `route_intent.py` 移除 `json.loads` 手写解析，`IntentRoute` 全字段（含 knowledge_mode/confidence/platform/query/reason）正常消费，L2 校验行为与重构前一致
+- [ ] 结构化失败重试 1 次，降级不抛异常
+- [ ] 降级路径写入 `AIOperation.model_parameters.degraded`
+- [ ] 现有 SSE 流式链路回归通过
 
 ---
 
-### 场景 3: 生成配图段落与配图提示词提取 (Image Prompt Extractor)
-* **痛点**：为回答配图时，需要严格限制图片的长宽比例，并且提示词应当是纯英文以适应 SD/Midjourney 绘图模型。
-* **Outlines 约束方式**：利用正则表达式受限解码 (`outlines.generate.regex`)。
-* **正则表达式模板**：
-  ```regex
-  (1:1|16:9|9:16|3:4);[a-zA-Z0-9, ]+
-  ```
-  *(要求输出格式为：`[比例];[纯英文图像特征描述]`)*
-* **预期的输出格式**：
-  ```text
-  16:9;a professional desk setup with a studio microphone, warm ambient lighting, realistic style
-  ```
+## 8. 依赖与风险
+
+| 风险 | 影响 | 应对 |
+| :--- | :--- | :--- |
+| DeepSeek structured output 支持不稳定 | schema 校验失败率高 | 自动降级 JSON mode + 重试；降级可观测 |
+| schema 过严导致输出失败 | 决策链路中断 | 字段尽量可选，description 给足语义引导 |
+| 大纲生成改变创作心智 | 用户不适应 | 大纲仅预览+确认，不自动生成；可关闭 |
+| 与流式创作冲突 | 润色/重写被误约束 | **只约束决策类输出**，自由文本（正文/润色）不接入 |
+| 大规模批量分析成本 | API 配额上升 | 批量场景走异步 + 阈值触发（同 context-memory spec） |
 
 ---
 
-### 场景 4: 内容质量合规性审查 (Compliance Evaluator)
-* **痛点**：需要评估生成的回答是否满足工作台严格的排版规则（如分步小标题格式、是否有 Markdown 代码外壳等），并在格式出错时直接触发自动重试重写。
-* **Outlines 约束方式**：绑定 Pydantic Model 进行结构化布尔判定。
-* **Pydantic Schema 定义**：
-  ```python
-  from pydantic import BaseModel
+## 9. 技术架构影响评估
 
-  class ComplianceReport(BaseModel):
-      markdown_valid: bool
-      has_markdown_block_wrapper: bool
-      steps_format_correct: bool
-      overall_quality_score: int
-      reconstruction_required: bool
-  ```
-* **预期的输出格式 (100% 包含且仅包含指定键值的 JSON)**：
-  ```json
-  {
-    "markdown_valid": true,
-    "has_markdown_block_wrapper": false,
-    "steps_format_correct": true,
-    "overall_quality_score": 95,
-    "reconstruction_required": false
-  }
-  ```
-
----
-
-## 3. 集成收益与衡量指标
-
-1. **零解析错误**：数据接入与结构化分析模块的 `JSONDecodeError` 发生频率应降低为 **0**。
-2. **极速路由决策**：意图识别路由延迟控制在 **200ms** 以内，不存在任何后置清洗或校验的重试开销。
-3. **闭环排版合规**：配合合规审查模块，首次生成排版合格率达到 **100%**。
+| 组件 | 当前状态 | 变化后 |
+| :--- | :--- | :--- |
+| `route_intent.py` | 手写 JSON 解析（`route_intent.py:76`） | 改用 `generate_structured(IntentRoute)`，保留 L2 校验 |
+| `infrastructure/llm/` | registry + deepseek provider（已含 `planning`/`memory`/`writing.reflection` prompt 目录） | + `structured.py` 实现模块；`DeepSeekLLMAdapter` 增加 `generate_structured` 方法；registry 按 model profile 提供 `ChatOpenAI` 实例/参数 |
+| `prompts/` | planning/memory/writing.reflection 等 | + `outline/` 提示词目录 |
+| `application/` | workflow_service 等 | + 大纲生成逻辑（Content Writer 子能力） |
+| `api/routes/` | 现有路由 | + outline 端点 |
+| `ai_operations` | 已有表 | operation_type 增加 `outline`，model_parameters 记录降级；观点/大纲快照存 `input_metadata` |
+| 前端 | 编辑器 | + 大纲生成/预览卡片 |

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { type Components } from "react-markdown";
 
 import { cn } from "@/lib/utils";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 
 type MarkdownEditorProps = {
   value: string;
@@ -74,9 +74,9 @@ function MarkdownEditor({ value, onChange, className, placeholder, readOnly = fa
       {mode === "preview" ? (
         <div className="markdown-editor__content">
           {value.trim() ? (
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <MarkdownContent components={markdownComponents}>
               {value}
-            </ReactMarkdown>
+            </MarkdownContent>
           ) : (
             <p className="m-0 text-slate-400">{placeholder}</p>
           )}

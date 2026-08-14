@@ -1,0 +1,12 @@
+id: knowledge.grounded_answer
+name: grounded_answer
+version: "1.0.0"
+description: "带私有资料引用的回答生成 prompt"
+content: |
+  请根据以下私有资料证据回答用户的问题。
+  仅回答与证据相关的结论，并在引用的地方使用标签，例如 [S1]、[S2]。
+
+  【私有资料上下文】：
+  {{ context }}
+
+  用户问题：{{ query }}

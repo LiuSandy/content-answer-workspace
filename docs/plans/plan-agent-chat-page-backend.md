@@ -1131,7 +1131,7 @@ Expected: 终端输出 Uvicorn 启动日志，无报错；`output/agent_checkpoi
 - [ ] **Step 3: 创建一个新 session**
 
 ```bash
-curl -s -X POST http://127.0.0.1:3000/api/session/new | python3 -m json.tool
+curl -s -X POST http://127.0.0.1:8000/api/session/new | python3 -m json.tool
 ```
 
 Expected: 返回 `{"ok": true, "data": {"sessionId": "...", "title": "新对话", "createdAt": "..."}}`，记下这个 `sessionId`。
@@ -1139,7 +1139,7 @@ Expected: 返回 `{"ok": true, "data": {"sessionId": "...", "title": "新对话"
 - [ ] **Step 4: 发一条对话消息**
 
 ```bash
-curl -s -X POST http://127.0.0.1:3000/api/agent/conversation \
+curl -s -X POST http://127.0.0.1:8000/api/agent/conversation \
   -H "Content-Type: application/json" \
   -d '{"sessionId": "<上一步的 sessionId>", "message": "帮我想三个关于远程办公的选题方向"}' \
   | python3 -m json.tool
@@ -1150,7 +1150,7 @@ Expected: 返回 `{"ok": true, "data": {"reply": "..."}}`，`reply` 是模型给
 - [ ] **Step 5: 发第二条消息，验证多轮记忆**
 
 ```bash
-curl -s -X POST http://127.0.0.1:3000/api/agent/conversation \
+curl -s -X POST http://127.0.0.1:8000/api/agent/conversation \
   -H "Content-Type: application/json" \
   -d '{"sessionId": "<同一个 sessionId>", "message": "把第二个方向展开讲讲"}' \
   | python3 -m json.tool
@@ -1161,7 +1161,7 @@ Expected: 回复内容明显围绕"第二个方向"展开，证明模型看到�
 - [ ] **Step 6: 读取对话历史**
 
 ```bash
-curl -s http://127.0.0.1:3000/api/agent/conversation/<同一个 sessionId>/history | python3 -m json.tool
+curl -s http://127.0.0.1:8000/api/agent/conversation/<同一个 sessionId>/history | python3 -m json.tool
 ```
 
 Expected: 返回 4 条消息（2 轮 user/assistant），顺序和内容跟上面两步一致。
@@ -1169,7 +1169,7 @@ Expected: 返回 4 条消息（2 轮 user/assistant），顺序和内容跟上�
 - [ ] **Step 7: 验证 Session 列表**
 
 ```bash
-curl -s http://127.0.0.1:3000/api/session/list | python3 -m json.tool
+curl -s http://127.0.0.1:8000/api/session/list | python3 -m json.tool
 ```
 
 Expected: 列表里包含刚创建的 session，且其 `title` 已经从默认的"新对话"自动更新成了第一条消息的前 20 个字（"帮我想三个关于远程办公的选..."），证明 Task 9 里"首条消息自动回填标题"的逻辑生效。
@@ -1177,8 +1177,8 @@ Expected: 列表里包含刚创建的 session，且其 `title` 已经从默认�
 - [ ] **Step 8: 验证现有功能未受影响**
 
 ```bash
-curl -s http://127.0.0.1:3000/api/session/latest | python3 -m json.tool
-curl -s -X POST http://127.0.0.1:3000/api/agent/chat \
+curl -s http://127.0.0.1:8000/api/session/latest | python3 -m json.tool
+curl -s -X POST http://127.0.0.1:8000/api/agent/chat \
   -H "Content-Type: application/json" \
   -d '{"sessionId": "manual-test", "message": "请分析当前热榜，给出内容策略建议"}' \
   | python3 -m json.tool

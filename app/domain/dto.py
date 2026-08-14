@@ -5,11 +5,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 import uuid
 from pydantic import BaseModel, Field
 from pydantic.alias_generators import to_camel
+from typing_extensions import TypedDict
+
+T = TypeVar("T")
 
 
 
@@ -123,6 +126,125 @@ class LLMStreamEvent(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 结构化输出公共类型（roadmap R1）
+# ─────────────────────────────────────────────────────────────────────────────
+
+class StructuredResult(BaseModel, Generic[T]):
+    """结构化输出结果；含降级元数据，底层不写 DB。
+
+    降级元数据（method_used / attempts / degradation_reason）由业务调用方
+    审计到各自 AIOperation.model_parameters。
+    """
+
+    value: T | None = None
+    method_used: Literal["json_schema", "json_mode", "generic_parse"] | None = None
+    attempts: int = 0
+    degradation_reason: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class IntentRoute(BaseModel):
+    """意图路由 LLM 判定结果；字段对齐 route_intent 节点消费（spec §4.1）。"""
+
+    intent: Literal["chat", "parse_url", "collect", "task_plan", "multi_agent"] = "chat"
+    knowledge_mode: Literal["off", "normal", "strict"] = "normal"
+    confidence: float = Field(default=0.9, ge=0.0, le=1.0)
+    platform: str | None = None
+    query: str | None = None
+    limit: int = Field(default=10, ge=1, le=20)
+    sort: Literal["relevance", "hot", "latest"] = "relevance"
+    reason: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class QualitySuggestion(BaseModel):
+    """单条质检建议；anchor/replacement 支撑片段级逐条采纳（roadmap R3）。"""
+
+    id: str
+    dimension: str
+    title: str
+    reason: str = ""
+    # 锚点：原文中要替换的片段（必须与原文逐字一致）；为空表示整体替换
+    anchor: str = ""
+    # 替换文本：anchor 匹配时替换该片段，否则作为全文替换文本
+    replacement: str = ""
+
+    model_config = {
+        "alias_generator": to_camel,
+        "populate_by_name": True,
+    }
+
+
+QualityDimensionScore = Annotated[int, Field(strict=True, ge=0, le=100)]
+
+
+class QualityDimensionScores(TypedDict):
+    """统一质检的五个必填评分维度。"""
+
+    relevance: QualityDimensionScore
+    information_density: QualityDimensionScore
+    readability: QualityDimensionScore
+    logic_coherence: QualityDimensionScore
+    word_count_compliance: QualityDimensionScore
+
+
+class QualityReport(BaseModel):
+    """质检报告；分数统一为 0..100 整数（roadmap R1 接口决定）。
+
+    suggestions 为简短文字建议（R1 契约）；quality_suggestions 为可逐条采纳的
+    结构化建议（roadmap R3），含 anchor/replacement 片段级替换信息。
+    """
+
+    overall_score: int = Field(strict=True, ge=0, le=100)
+    dimension_scores: QualityDimensionScores
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+    quality_suggestions: list[QualitySuggestion] = Field(default_factory=list)
+    rewrite_instruction: str | None = None
+    summary: str = ""
+
+    model_config = {
+        "alias_generator": to_camel,
+        "populate_by_name": True,
+    }
+
+
+class TopicEvaluation(BaseModel):
+    """选题评估；字段固定为 worth_score/reason/competition_level/user_match/suggestion。"""
+
+    worth_score: int = Field(ge=0, le=100)
+    reason: str
+    competition_level: Literal["low", "medium", "high"]
+    user_match: int = Field(ge=0, le=100)
+    suggestion: str
+
+    model_config = {"populate_by_name": True}
+
+
+class MemoryExtraction(BaseModel):
+    """单条记忆抽取条目；memory_type 对齐 memory_service.VALID_TYPES（含 implicit）。"""
+
+    memory_type: Literal["explicit", "implicit", "work_pattern"] = "explicit"
+    content: str
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+    model_config = {"populate_by_name": True}
+
+
+class ConversationSummary(BaseModel):
+    """对话滚动摘要；唯一键为 (chat_id, branch_root_message_id)，供 R4 使用。"""
+
+    summary: str
+    covered_message_ids: list[str] = Field(default_factory=list)
+    last_covered_message_id: str | None = None
+    version: int = 1
+
+    model_config = {"populate_by_name": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Chat Agent State DTO
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -167,8 +289,8 @@ class ChatResponsePayload(BaseModel):
 class SelectionDTO(BaseModel):
     """编辑器文字选区；用于局部润色请求。"""
 
-    from_pos: int = Field(alias="from")
-    to_pos: int = Field(alias="to")
+    from_pos: int = Field(alias="fromPos")
+    to_pos: int = Field(alias="toPos")
     text: str  # 当前选中的原始文字（用于后端校验位置是否仍匹配）
 
     model_config = {"populate_by_name": True}
@@ -177,7 +299,7 @@ class SelectionDTO(BaseModel):
 class InlineRefineRequest(BaseModel):
     """局部润色请求体；前端提交选区、指令和乐观锁版本号。"""
 
-    expected_lock_version: int
+    expected_lock_version: int = Field(alias="expectedLockVersion")
     selection: SelectionDTO
     instruction: str
 
@@ -193,6 +315,12 @@ class VersionSummaryDTO(BaseModel):
     instruction: str | None = None
     provider: str | None = None
     model: str | None = None
+    outline_operation_id: str | None = None
+    content_summary: str
+    outline_version_number: int | None = None
+    outline_status: str | None = None
+    outline_sections: list[dict[str, Any]] = Field(default_factory=list)
+    quality_review: dict[str, Any] | None = None
     created_at: datetime
 
     model_config = {
@@ -231,4 +359,3 @@ class DocumentStateDTO(BaseModel):
         "alias_generator": to_camel,
         "populate_by_name": True,
     }
-

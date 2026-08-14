@@ -56,3 +56,12 @@ export async function apiPut<T>(url: string, body: unknown): Promise<T> {
   return unwrap<T>(response);
 }
 
+export async function apiUpload<T>(url: string, formData: FormData): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
+  return unwrap<T>(response);
+}
+
+

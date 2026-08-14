@@ -180,25 +180,3 @@ class ZhihuSearchResponse(BaseModel):
 
     paging: dict[str, Any] = Field(default_factory=dict)
     data: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class HotlistItem(BaseModel):
-    """表示知乎热榜单条条目；定义成模型是为了把官方热榜响应和前端展示模型隔离。"""
-
-    rank: int = 0
-    title: str
-    url: str
-    thumbnail_url: str = Field(default="", alias="thumbnailUrl")
-    summary: str = ""
-    heat: str = ""
-
-    model_config = {"populate_by_name": True}
-
-
-class HotlistResponse(BaseModel):
-    """表示热榜接口返回结构；定义成模型是为了统一前后端字段约定。"""
-
-    items: list[HotlistItem]
-    fetched_at: str = Field(alias="fetchedAt")
-
-    model_config = {"populate_by_name": True}

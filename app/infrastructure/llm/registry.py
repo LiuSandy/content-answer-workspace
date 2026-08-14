@@ -26,6 +26,13 @@ class LLMProviderRegistry:
             )
         return self._providers[key]
 
+    def get_structured_methods(self, key: str) -> list[str]:
+        """返回 provider 声明的结构化输出能力（roadmap R1）。"""
+        provider = self.get(key)
+        return list(
+            getattr(provider, "structured_methods", ["json_mode", "generic_parse"])
+        )
+
     def list_keys(self) -> list[str]:
         return list(self._providers.keys())
 

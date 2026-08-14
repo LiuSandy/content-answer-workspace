@@ -42,8 +42,23 @@ class AnswerDocument(Base):
     current_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("answer_versions.id", ondelete="SET NULL"), nullable=True
     )
+    # 当前选中的大纲快照。恢复文章历史版本时同步切换到该版本所用大纲。
+    current_outline_operation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "ai_operations.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_answer_documents_current_outline_operation",
+        ),
+        nullable=True,
+    )
     # 乐观锁版本号，从 1 开始
     lock_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # R10 发布状态：draft → ready → published
+    publish_status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    publish_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 预留多用户扩展
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -69,10 +84,19 @@ class AnswerDocument(Base):
         uselist=False,
     )
     ai_operations: Mapped[list[AIOperation]] = relationship(
-        "AIOperation", back_populates="document", cascade="all, delete-orphan"
+        "AIOperation",
+        back_populates="document",
+        foreign_keys="AIOperation.document_id",
+        cascade="all, delete-orphan",
     )
 
-    __table_args__ = (Index("ix_answer_documents_source_item_id", "source_item_id"),)
+    __table_args__ = (
+        Index("ix_answer_documents_source_item_id", "source_item_id"),
+        Index(
+            "ix_answer_documents_current_outline_operation_id",
+            "current_outline_operation_id",
+        ),
+    )
 
 
 class AnswerVersion(Base):
@@ -106,6 +130,10 @@ class AnswerVersion(Base):
     restored_from_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("answer_versions.id", ondelete="SET NULL"), nullable=True
     )
+    # 生成该文章版本时采用的大纲快照。
+    outline_operation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_operations.id", ondelete="SET NULL"), nullable=True
+    )
     # Prompt 溯源信息
     prompt_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -127,6 +155,7 @@ class AnswerVersion(Base):
         # 同一文档内版本号唯一
         UniqueConstraint("document_id", "version_number", name="uq_answer_versions_doc_num"),
         Index("ix_answer_versions_document_id", "document_id"),
+        Index("ix_answer_versions_outline_operation_id", "outline_operation_id"),
     )
 
 
@@ -152,6 +181,8 @@ class AIOperation(Base):
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     model_parameters: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     input_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # 结构化报告（质检、选题评估等）写输出字段，不占用输入字段
+    output_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # 成功后关联生成的版本
     result_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("answer_versions.id", ondelete="SET NULL"), nullable=True
@@ -168,7 +199,7 @@ class AIOperation(Base):
 
     # 关系
     document: Mapped[AnswerDocument | None] = relationship(
-        "AnswerDocument", back_populates="ai_operations"
+        "AnswerDocument", back_populates="ai_operations", foreign_keys=[document_id]
     )
 
     __table_args__ = (

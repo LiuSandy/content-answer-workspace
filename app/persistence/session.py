@@ -55,6 +55,17 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+def reset_engine() -> None:
+    """重置全局 engine 与 session 工厂；仅供测试隔离使用。
+
+    asyncpg engine 会绑定创建时的 event loop，测试各自新建 loop 时
+    复用旧 engine 会报 "attached to a different loop"，故需重置。
+    """
+    global _engine, _session_factory
+    _engine = None
+    _session_factory = None
+
+
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI 依赖注入用 session 生成器；每个请求获得独立 session，请求结束后自动关闭。"""
     factory = get_session_factory()

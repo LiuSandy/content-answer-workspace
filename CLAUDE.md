@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 uv sync                                        # 安装依赖
-uv run python -m app.server                    # 启动后端 http://127.0.0.1:3000
+uv run python -m app.server                    # 启动后端 http://127.0.0.1:8000
 uv run pytest tests/                           # 运行所有测试
 uv run pytest tests/test_answer_service.py -v  # 运行单个测试文件
 ```
@@ -30,7 +30,7 @@ bun run build      # 构建到 frontend/dist（由 FastAPI 托管）
 bun run typecheck  # tsc --noEmit（修改 .ts/.tsx 后必须通过）
 ```
 
-前端 dev 模式下 `/api/*` 已通过 Vite 代理转发到后端 `http://127.0.0.1:3000`。
+前端 dev 模式下 `/api/*` 已通过 Vite 代理转发到后端 `http://127.0.0.1:8000`。
 
 ### 添加 shadcn/ui 组件
 

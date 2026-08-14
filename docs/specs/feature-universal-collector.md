@@ -21,7 +21,6 @@ HTML 解析逻辑高度耦合平台结构，平台一改版就失效。扩展成
 |------|---------|
 | `app/domain/ports.py` | `CollectorPort` 接口定义，保留不变 |
 | `app/infrastructure/collectors/zhihu_collector.py` | 知乎 Web 爬虫，继续作为实现 |
-| `app/infrastructure/collectors/zhihu_official_collector.py` | 知乎官方 API，继续作为实现 |
 | `app/infrastructure/collectors/factory.py` | `CollectorFactory`，扩展注册逻辑 |
 | `app/application/workflow_service.py` | `WorkflowService.collect()`，调用方不变 |
 
@@ -39,7 +38,6 @@ CollectorFactory.create(platform, source)
   ┌─────────────────────────────────┐
   │  已有实现（保留）                │
   │  ZhihuCollector                 │
-  │  ZhihuOfficialCollector         │
   └─────────────────────────────────┘
         ↓ 新平台走这里
   ┌─────────────────────────────────┐
@@ -165,7 +163,6 @@ def create(cls, platform: str | None, source: str = "auto") -> CollectorPort:
 ## 不受影响的现有功能
 
 - 知乎 web 爬虫（`ZhihuCollector`）：逻辑完全保留
-- 知乎官方 API（`ZhihuOfficialCollector`）：逻辑完全保留
 - `WorkflowService.collect()`：调用签名不变
 - 前端所有采集相关 API：`/api/workflow/collect` 接口不变
 

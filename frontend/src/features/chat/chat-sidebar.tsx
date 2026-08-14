@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import { apiGet, apiPost, apiDelete, apiPut } from "@/lib/api";
 import { useChatStore } from "@/store/chat-store";
+import { useAlertDialog } from "@/hooks/use-alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +27,7 @@ export function ChatSidebar() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { currentChatId, setCurrentChatId } = useChatStore();
+  const { confirm } = useAlertDialog();
 
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -201,9 +203,14 @@ export function ChatSidebar() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  if (confirm("确定要删除此对话吗？")) {
+                                  const confirmed = await confirm({
+                                    description: "确定要删除此对话吗？",
+                                    variant: "destructive",
+                                    confirmText: "删除",
+                                  });
+                                  if (confirmed) {
                                     deleteMutation.mutate(chat.chatId);
                                   }
                                 }}

@@ -5,16 +5,22 @@ export type SSECallbacks = {
 
 /**
  * 通过 POST 请求流式读取 SSE 数据。
+ *
+ * 支持传入 AbortSignal：调用方（如聊天面板）在切换会话或卸载时必须
+ * 中断流，否则读取循环会继续向已失效的组件状态写入数据。
+ * 中断产生的 AbortError 静默返回，不触发 onError。
  */
 export async function streamPost(
   url: string,
   body: unknown,
   callbacks: SSECallbacks,
+  signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok || !response.body) {
@@ -52,7 +58,8 @@ export async function streamPost(
 
     if (!eventName && dataLines.length === 0) return;
 
-    const rawData = dataLines.join("");
+    // SSE 规范要求多行 data 用换行拼接，空串拼接会破坏含换行的负载
+    const rawData = dataLines.join("\n");
     let parsedData = rawData;
     try {
       parsedData = JSON.parse(rawData);
@@ -84,6 +91,10 @@ export async function streamPost(
       handleEventBlock(buffer);
     }
   } catch (err) {
+    // 主动中断不是错误：静默返回，避免误报给用户
+    if (err instanceof DOMException && err.name === "AbortError") {
+      return;
+    }
     const error = err instanceof Error ? err : new Error(String(err));
     callbacks.onError?.(error);
     throw error;

@@ -11,6 +11,20 @@ from pydantic import BaseModel, Field
 
 from ...application.document_service import DocumentService
 from ...application.version_service import VersionService
+from ...application.outline_service import OutlineService, OutlineError
+from ...application.quality_service import (
+    ReviewContext,
+    evaluate_content,
+    persist_creation_review,
+)
+from ...application.writer_service import (
+    WriterRunCapture,
+    finalize_deferred_writer_run,
+)
+from ...application.workflows.creation_review import (
+    CreationReviewOutcome,
+    run_creation_review,
+)
 from ...domain.dto import InlineRefineRequest, SelectionDTO
 from ...persistence.session import get_db_session, get_session_factory
 from ...persistence.models.content import SourceItem
@@ -18,11 +32,62 @@ from ...workflows.answer_generation import generate_answer_workflow
 from ...workflows.inline_refinement import inline_refinement_workflow
 from ...workflows.full_rewrite import full_rewrite_workflow
 from ..sse_utils import sse_named_event, make_sse_response
-from ...errors import DocumentConflictError
+from ...errors import AppError, DocumentConflictError, LLMOutputError
+from ...observability.context import bind_log_context, reset_log_context, set_log_context
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["documents"])
+
+
+async def _rewrite_creation_draft(content: str, instruction: str) -> str:
+    """按评审指令重写内存草稿，不创建 AnswerVersion。"""
+    from ...application.agent.adapters import DeepSeekLLMAdapter
+
+    return await DeepSeekLLMAdapter().refine(
+        instruction="保留已正确内容，只修复评审指出的问题。\n" + instruction,
+        current_answer=content,
+    )
+
+
+def _creation_review_metadata(outcome: CreationReviewOutcome) -> dict[str, Any]:
+    report = outcome.final_report
+    return {
+        "creationReview": {
+            "reviewStatus": "failed" if outcome.review_failed else "completed",
+            "iterations": outcome.iterations,
+            "passed": outcome.passed,
+            "selectedIteration": outcome.selected_iteration,
+            "finalReport": (
+                report.model_dump(mode="json", by_alias=True) if report else None
+            ),
+            "rounds": [
+                {
+                    "iteration": row.iteration,
+                    "overallScore": row.report.overall_score,
+                    "passed": row.report.overall_score >= 75,
+                }
+                for row in outcome.rounds
+            ],
+            "errorMessage": outcome.error_message,
+        }
+    }
+
+
+def _final_review_summary(outcome: CreationReviewOutcome) -> dict[str, Any]:
+    return _creation_review_metadata(outcome)["creationReview"]
+
+
+def _run_failed_event(exc: Exception, fallback_message: str) -> str:
+    """将工作流异常转换为 run.failed 事件负载。
+
+    AppError 及其子类的 message 是特意写给用户看的业务提示（如选区不匹配、
+    锁版本冲突），可以安全透出；其他未预期异常只暴露通用文案，避免把内部
+    堆栈信息泄露给前端。
+    """
+    if isinstance(exc, AppError):
+        return sse_named_event("run.failed", {"errorCode": exc.error_code, "message": str(exc)})
+    return sse_named_event("run.failed", {"errorCode": "internal_error", "message": fallback_message})
 
 
 class UpdateDocumentRequest(BaseModel):
@@ -55,6 +120,20 @@ class CreateCheckpointRequest(BaseModel):
 class RestoreVersionRequest(BaseModel):
     expected_lock_version: int = Field(alias="expectedLockVersion")
     
+    model_config = {"populate_by_name": True}
+
+
+class QualityReviewRequest(BaseModel):
+    version_id: uuid.UUID | None = Field(None, alias="versionId")
+
+    model_config = {"populate_by_name": True}
+
+
+class QualityAdoptRequest(BaseModel):
+    report_id: str = Field(alias="reportId")
+    suggestion_id: str = Field(alias="suggestionId")
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+
     model_config = {"populate_by_name": True}
 
 
@@ -139,8 +218,9 @@ async def create_checkpoint(
                 {"ok": False, "error": {"code": "document_conflict", "message": str(e)}},
                 status_code=409,
             )
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        except Exception:
+            logger.exception("Document version operation failed")
+            return JSONResponse({"ok": False, "error": "操作失败，请稍后重试"}, status_code=400)
     return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
 
 
@@ -167,8 +247,94 @@ async def restore_version(
                 {"ok": False, "error": {"code": "document_conflict", "message": str(e)}},
                 status_code=409,
             )
-        except Exception as e:
-            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        except Exception:
+            logger.exception("Document version operation failed")
+            return JSONResponse({"ok": False, "error": "操作失败，请稍后重试"}, status_code=400)
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+# ── 质检与逐条采纳（roadmap R3） ──────────────────────────────────────────────
+
+
+@router.post("/api/documents/{document_id}/quality/review")
+async def review_document_quality(
+    document_id: uuid.UUID,
+    req: QualityReviewRequest,
+) -> JSONResponse:
+    """对文档当前内容执行一次质检，返回报告与 reportId。"""
+    from ...application.quality_service import QualityService, QualityReviewError
+
+    async for session in get_db_session():
+        service = QualityService(session)
+        try:
+            result = await service.review(document_id, version_id=req.version_id)
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "data": {
+                        "reportId": result.report_id,
+                        "sourceVersionId": result.source_version_id,
+                        "report": result.report.model_dump(mode="json", by_alias=True),
+                    },
+                }
+            )
+        except QualityReviewError as e:
+            return JSONResponse({"ok": False, "error": {"message": str(e)}}, status_code=400)
+        except LLMOutputError as e:
+            return JSONResponse(
+                {"ok": False, "error": {"code": e.error_code, "message": str(e)}},
+                status_code=502,
+            )
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+@router.get("/api/documents/{document_id}/quality/reviews")
+async def list_quality_reviews(document_id: uuid.UUID) -> JSONResponse:
+    """返回某文档的自动创作报告，并兼容历史手动质检报告。"""
+    from ...application.quality_service import QualityService
+
+    async for session in get_db_session():
+        service = QualityService(session)
+        rows = await service.list_creation_reviews(document_id)
+        return JSONResponse({"ok": True, "data": rows})
+    return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
+
+
+@router.post("/api/documents/{document_id}/quality/adopt")
+async def adopt_quality_suggestion(
+    document_id: uuid.UUID,
+    req: QualityAdoptRequest,
+) -> JSONResponse:
+    """逐条采纳质检建议，生成 inline_refinement 新版本并回填 quality_adopt 溯源。"""
+    from ...application.quality_service import QualityService, QualityReviewError
+
+    async for session in get_db_session():
+        service = QualityService(session)
+        try:
+            await service.adopt_suggestion(
+                document_id=document_id,
+                report_id=req.report_id,
+                suggestion_id=req.suggestion_id,
+                expected_lock_version=req.expected_lock_version,
+            )
+            doc_service = DocumentService(session)
+            state = await doc_service.get_document_state(document_id)
+            return JSONResponse({"ok": True, "data": state.model_dump(mode="json", by_alias=True)})
+        except DocumentConflictError as e:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "document_conflict",
+                        "message": str(e),
+                        "expected": e.expected,
+                        "actual": e.actual,
+                    },
+                },
+                status_code=409,
+            )
+        except QualityReviewError as e:
+            return JSONResponse({"ok": False, "error": {"message": str(e)}}, status_code=400)
     return JSONResponse({"ok": False, "error": "Internal database error"}, status_code=500)
 
 
@@ -187,7 +353,7 @@ async def generate_answer_stream(
         async with session_factory() as session:
             source_item = await session.get(SourceItem, source_item_id)
             if not source_item:
-                yield sse_named_event("run.failed", {"error_code": "not_found", "message": "Source item not found"})
+                yield sse_named_event("run.failed", {"errorCode": "not_found", "message": "未找到对应的帖子"})
                 return
             
             doc_service = DocumentService(session)
@@ -196,10 +362,17 @@ async def generate_answer_stream(
             platform = source_item.platform
             title = source_item.title
             content = source_item.content
+            current_outline = await OutlineService(session).get_current(doc_id)
+            outline_sections = current_outline.outline if current_outline else None
+            outline_operation_id = (
+                uuid.UUID(current_outline.operation_id) if current_outline else None
+            )
 
         run_id = str(uuid.uuid4())
+        log_token = set_log_context(run_id=run_id, document_id=str(doc_id))
         yield sse_named_event("run.started", {"runId": run_id, "documentId": str(doc_id)})
 
+        capture = WriterRunCapture()
         try:
             # 2. 调用 workflow
             async with session_factory() as session:
@@ -214,18 +387,92 @@ async def generate_answer_stream(
                     style_rules=req.style_rules,
                     word_count=req.word_count,
                     instruction=req.instruction,
+                    capture=capture,
+                    outline=outline_sections,
+                    outline_operation_id=outline_operation_id,
                 ):
                     yield sse_named_event("document.delta", {"delta": chunk})
 
-                # 3. 结束后拉取最新状态并发送 completed 事件
-                doc_service = DocumentService(session)
-                state = await doc_service.get_document_state(doc_id)
-                yield sse_named_event("document.completed", state.model_dump(mode="json", by_alias=True))
+                outcome: CreationReviewOutcome | None = None
+                async for review_event in run_creation_review(
+                    initial_content=capture.content,
+                    context=ReviewContext(
+                        question=title,
+                        style_rules=req.style_rules,
+                        target_word_count=req.word_count,
+                        iteration=1,
+                    ),
+                    evaluate=evaluate_content,
+                    rewrite=_rewrite_creation_draft,
+                ):
+                    if review_event.outcome is not None:
+                        outcome = review_event.outcome
+                    else:
+                        yield sse_named_event(review_event.name, review_event.data)
+
+                if outcome is None:
+                    raise RuntimeError("creation review completed without an outcome")
+                if capture.operation_id is None:
+                    raise RuntimeError("deferred writer run has no operation id")
+
+                version = await finalize_deferred_writer_run(
+                    session,
+                    capture,
+                    outcome.final_content,
+                    req.expected_lock_version,
+                    output_metadata=_creation_review_metadata(outcome),
+                )
+                try:
+                    await persist_creation_review(
+                        session,
+                        document_id=doc_id,
+                        version_id=version.id,
+                        operation_id=capture.operation_id,
+                        outcome=outcome,
+                    )
+                except Exception as audit_error:
+                    # 正式版本与完整报告已由 finalize 提交。可索引分数只是
+                    # 附属审计，写入失败不能把已经成功的创作对客户端报失败。
+                    await session.rollback()
+                    logger.warning(
+                        "Creation review score persistence failed: %s",
+                        audit_error,
+                    )
+                state = await DocumentService(session).get_document_state(doc_id)
+                yield sse_named_event(
+                    "document.completed",
+                    {
+                        **state.model_dump(mode="json", by_alias=True),
+                        "creationReview": _final_review_summary(outcome),
+                    },
+                )
                 yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
-            logger.error("Answer generation stream failed: %s", e)
-            yield sse_named_event("run.failed", {"error_code": "generation_failed", "message": str(e)})
+            with bind_log_context(
+                operation_id=str(capture.operation_id) if capture.operation_id else None
+            ):
+                logger.exception("Answer generation stream failed")
+            if capture.operation_id is not None:
+                try:
+                    from ...persistence.models.documents import AIOperation
+
+                    async with session_factory() as failure_session:
+                        operation = await failure_session.get(
+                            AIOperation, capture.operation_id
+                        )
+                        if operation is not None and operation.status == "running":
+                            operation.status = "failed"
+                            operation.error_code = getattr(
+                                e, "error_code", "creation_review_failed"
+                            )
+                            operation.error_message = str(e)
+                            await failure_session.commit()
+                except Exception:
+                    logger.exception("Failed to persist generation failure status")
+            yield _run_failed_event(e, "生成失败，请稍后重试")
+        finally:
+            reset_log_context(log_token)
 
     return make_sse_response(_event_generator())
 
@@ -240,6 +487,7 @@ async def refine_document_stream(
 
     async def _event_generator() -> AsyncIterator[str]:
         run_id = str(uuid.uuid4())
+        log_token = set_log_context(run_id=run_id, document_id=str(document_id))
         yield sse_named_event("run.started", {"runId": run_id, "documentId": str(document_id)})
 
         try:
@@ -259,8 +507,10 @@ async def refine_document_stream(
                 yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
-            logger.error("Inline refinement stream failed: %s", e)
-            yield sse_named_event("run.failed", {"error_code": "refine_failed", "message": str(e)})
+            logger.exception("Inline refinement stream failed")
+            yield _run_failed_event(e, "精修失败，请稍后重试")
+        finally:
+            reset_log_context(log_token)
 
     return make_sse_response(_event_generator())
 
@@ -275,6 +525,7 @@ async def rewrite_document_stream(
 
     async def _event_generator() -> AsyncIterator[str]:
         run_id = str(uuid.uuid4())
+        log_token = set_log_context(run_id=run_id, document_id=str(document_id))
         yield sse_named_event("run.started", {"runId": run_id, "documentId": str(document_id)})
 
         try:
@@ -296,7 +547,215 @@ async def rewrite_document_stream(
                 yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
-            logger.error("Full rewrite stream failed: %s", e)
-            yield sse_named_event("run.failed", {"error_code": "rewrite_failed", "message": str(e)})
+            logger.exception("Full rewrite stream failed")
+            yield _run_failed_event(e, "重写失败，请稍后重试")
+        finally:
+            reset_log_context(log_token)
 
     return make_sse_response(_event_generator())
+
+
+# ── 质量评分 API（Phase 2 反思循环） ──────────────────────────────────────────
+
+
+@router.get("/api/documents/{document_id}/quality-scores")
+async def get_quality_scores(document_id: uuid.UUID):
+    """返回某文档的全部自评记录，按 iteration 排序。"""
+    from sqlalchemy import select
+    from ...persistence.models.quality_scores import QualityScoreModel
+    from ...persistence.session import get_session_factory
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        stmt = (
+            select(QualityScoreModel)
+            .where(QualityScoreModel.document_id == document_id)
+            .order_by(QualityScoreModel.iteration)
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+
+    return {
+        "ok": True,
+        "data": [
+            {
+                "id": str(r.id),
+                "iteration": r.iteration,
+                "overallScore": r.overall_score,
+                "dimensions": r.dimensions,
+                "weaknessSummary": r.weakness_summary,
+                "refinementInstruction": r.refinement_instruction,
+                "converged": r.converged == "true",
+                "createdAt": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+# ── R6 观点采访与大纲 API ───────────────────────────────────────────────────────
+
+
+class GenerateOutlineRequest(BaseModel):
+    source_item_id: str = Field(alias="sourceItemId")
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    workspace_id: str = Field("default", alias="workspaceId")
+    model_config = {"populate_by_name": True}
+
+
+class UpdateOutlineRequest(BaseModel):
+    sections: list[dict]
+    viewpoint_answers: dict[str, str] | None = Field(None, alias="viewpointAnswers")
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    model_config = {"populate_by_name": True}
+
+
+class ConfirmOutlineRequest(BaseModel):
+    expected_lock_version: int = Field(alias="expectedLockVersion")
+    model_config = {"populate_by_name": True}
+
+
+def _outline_result(data) -> dict:
+    return {
+        "operationId": data.operation_id,
+        "versionNumber": data.version_number,
+        "basedOnOperationId": data.based_on_operation_id,
+        "status": data.status,
+        "viewpointQuestions": data.viewpoint_questions,
+        "outline": data.outline,
+    }
+
+
+@router.post("/api/documents/{document_id}/outline/generate")
+async def generate_outline(document_id: uuid.UUID, req: GenerateOutlineRequest):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        try:
+            result = await svc.generate(
+                document_id,
+                uuid.UUID(req.source_item_id),
+                req.workspace_id,
+                req.expected_lock_version,
+            )
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as e:
+            mapping = {"not_found": 404, "already_confirmed": 409}
+            return JSONResponse(
+                {"ok": False, "error": e.message},
+                status_code=mapping.get(e.code, 400),
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"},
+                status_code=409,
+            )
+
+
+@router.get("/api/documents/{document_id}/outline/current")
+async def get_current_outline(document_id: uuid.UUID):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        result = await svc.get_current(document_id)
+        if not result:
+            return JSONResponse({"ok": True, "data": None})
+        return JSONResponse({"ok": True, "data": _outline_result(result)})
+
+
+@router.get("/api/documents/{document_id}/outline/versions")
+async def list_outline_versions(document_id: uuid.UUID):
+    async for session in get_db_session():
+        results = await OutlineService(session).list_versions(document_id)
+        return JSONResponse(
+            {"ok": True, "data": [_outline_result(result) for result in results]}
+        )
+
+
+@router.post(
+    "/api/documents/{document_id}/outline/versions/{operation_id}/activate"
+)
+async def activate_outline_version(
+    document_id: uuid.UUID,
+    operation_id: uuid.UUID,
+    req: ConfirmOutlineRequest,
+):
+    async for session in get_db_session():
+        try:
+            result = await OutlineService(session).activate(
+                document_id, operation_id, req.expected_lock_version
+            )
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as error:
+            return JSONResponse(
+                {"ok": False, "error": error.message}, status_code=404
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"}, status_code=409
+            )
+
+
+@router.put("/api/documents/{document_id}/outline/update")
+async def update_outline(document_id: uuid.UUID, req: UpdateOutlineRequest):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        try:
+            result = await svc.update(
+                document_id,
+                req.sections,
+                req.viewpoint_answers,
+                req.expected_lock_version,
+            )
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as e:
+            return JSONResponse(
+                {"ok": False, "error": e.message},
+                status_code=404 if e.code == "not_found" else 400,
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"},
+                status_code=409,
+            )
+
+
+@router.post("/api/documents/{document_id}/outline/regenerate")
+async def regenerate_outline(document_id: uuid.UUID, req: GenerateOutlineRequest):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        try:
+            result = await svc.regenerate(
+                document_id,
+                uuid.UUID(req.source_item_id),
+                req.workspace_id,
+                req.expected_lock_version,
+            )
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as e:
+            return JSONResponse(
+                {"ok": False, "error": e.message},
+                status_code=404 if e.code == "not_found" else 400,
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"},
+                status_code=409,
+            )
+
+
+@router.post("/api/documents/{document_id}/outline/confirm")
+async def confirm_outline(document_id: uuid.UUID, req: ConfirmOutlineRequest):
+    async for session in get_db_session():
+        svc = OutlineService(session)
+        try:
+            result = await svc.confirm(document_id, req.expected_lock_version)
+            return JSONResponse({"ok": True, "data": _outline_result(result)})
+        except OutlineError as e:
+            mapping = {"not_found": 404, "already_confirmed": 409}
+            return JSONResponse(
+                {"ok": False, "error": e.message},
+                status_code=mapping.get(e.code, 400),
+            )
+        except DocumentConflictError:
+            return JSONResponse(
+                {"ok": False, "error": "Lock version conflict"},
+                status_code=409,
+            )
