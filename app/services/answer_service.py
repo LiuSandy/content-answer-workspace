@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from openai import OpenAI
 
-from app.infrastructure.llm.clients.deepseek_client import DeepSeekAnswerGenerator
+from app.services.llm.answer_generator import AnswerGenerationService
 from app.api.schemas.workflow import QuestionItem
 from .image_service import GeneratedImagePayload, ImageGenerationService
 
-_answer_generator = DeepSeekAnswerGenerator()
+_answer_generator = AnswerGenerationService()
 _image_generation_service = ImageGenerationService()
 
 

@@ -280,14 +280,21 @@ export function ChatPanel() {
 
     // ── 发送消息 ──
     const handleSendMessage = async (e?: React.FormEvent, overrideContent?: string, overrideParentId?: string | null) => {
+        // 由表单 submit 事件触发时阻止浏览器默认刷新；编辑重发等程序调用可以不传 e。
         if (e) e.preventDefault();
+
+        // 编辑旧消息时优先使用 overrideContent，普通发送则读取当前输入框，并去掉首尾空白。
         const content = (overrideContent !== undefined ? overrideContent : inputText).trim();
+
+        // 空消息不发送；正在流式生成时也拒绝重复提交，避免同一界面并发两条 SSE 流。
         if (!content || isStreaming) return;
 
+        // 普通发送后立即清空输入框；编辑重发不操作输入框内容。
         if (overrideContent === undefined) {
             setInputText("");
         }
 
+        // 初始化本轮流式交互状态：显示发送中，并清理上一轮的文本、来源、错误和 RAG 展示数据。
         setIsStreaming(true);
         setStreamingText("");
         setAgentStatus("发送中...");
@@ -295,19 +302,25 @@ export function ChatPanel() {
         setStreamingError(null);
         setRagSources(null);
         setRagFallback(null);
+
         // 新一轮对话：清掉上一次的 Agent 协作卡片，避免旧状态残留
         setMultiAgentResult(null);
         setActiveTaskPlanId(null);
 
+        // 复用当前会话；如果用户尚未进入任何会话，先在后端创建 Chat，再继续发送消息。
         let activeChatId = currentChatId;
         if (!activeChatId) {
             try {
+                // API 返回真实 chatId，后续的消息、SSE 和缓存都以该 ID 关联。
                 const newChat = await apiPost<{ chatId: string; title: string }>("/api/chats", {title: "新对话"});
                 activeChatId = newChat.chatId;
+
+                // 同步全局会话状态和浏览器路由，并使会话侧边栏重新拉取数据。
                 setCurrentChatId(activeChatId);
                 navigate(`/chat/${activeChatId}`);
                 queryClient.invalidateQueries({queryKey: ["chats"]});
             } catch (err) {
+                // Chat 创建失败时没有可用的 chatId，因此终止本轮发送并恢复非流式状态。
                 console.error("创建会话失败:", err);
                 setStreamingError("初始化会话失败，请重试");
                 setIsStreaming(false);
@@ -315,13 +328,14 @@ export function ChatPanel() {
             }
         }
 
-        // 确定父级消息 ID
+        // 确定消息树的父节点：编辑重发时使用指定父节点创建兄弟分支，普通提问则接在当前活跃叶子后。
         const parentMessageId = overrideParentId !== undefined ? overrideParentId : activeLeafMessageId;
 
-        // 乐观更新：立即追加用户消息到列表
+        // 乐观更新 React Query 缓存：在后端返回真实消息前，先让用户输入立即显示在界面上。
         queryClient.setQueryData<Message[]>(["messages", activeChatId], (prev = []) => [
             ...prev,
             {
+                // 临时 ID 只用于本地渲染；SSE 结束后 refreshAfterStream 会用数据库中的真实消息替换它。
                 messageId: "temp-user-msg",
                 role: "user",
                 messageType: "text",
@@ -332,9 +346,10 @@ export function ChatPanel() {
             },
         ]);
 
-        // 立即更新 activeLeafMessageId 为 temp-user-msg，确保 getActivePathAndInit 能够将其追踪并渲染上屏
+        // 将临时消息设为当前叶子，使 getActivePathAndInit 沿父指针回溯时能把它纳入当前分支。
         setActiveLeafMessageId("temp-user-msg");
 
+        // 为本轮 SSE 请求创建独立的取消信号；切换会话或组件卸载时会通过 abortRef 中断旧流。
         const controller = new AbortController();
         abortRef.current = { chatId: activeChatId, controller };
 

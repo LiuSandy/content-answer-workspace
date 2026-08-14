@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from app.config.runtime import get_workflow_config, load_env_file
-from app.infrastructure.llm.clients.deepseek_client import DeepSeekAnswerGenerator
+from app.services.llm.answer_generator import AnswerGenerationService
 from app.api.schemas.workflow import RegeneratePayload
 from ..services.image_service import GeneratedImagePayload, ImageGenerationService
 from .workflow_service import normalize_platform
@@ -77,7 +77,7 @@ class GenerationJobService:
         self.retention = timedelta(minutes=retention_minutes)
         self.max_jobs = max_jobs
         self.autostart = autostart
-        self._answer_generator = answer_generator or DeepSeekAnswerGenerator()
+        self._answer_generator = answer_generator or AnswerGenerationService()
         self._image_service = image_service or ImageGenerationService()
         self._jobs: dict[str, GenerationJob] = {}
         self._active_by_item_id: dict[str, str] = {}
