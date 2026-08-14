@@ -1,43 +1,47 @@
 from __future__ import annotations
 
-import asyncio
 from functools import partial
 
 from langgraph.graph import END, START, StateGraph
 
 from app.services.llm_service import DeepSeekLLMAdapter
+from .nodes import finalize_draft_node, generate_draft_node, prepare_prompt_node
 from .nodes.apply_instruction import apply_instruction_node
 from .nodes.fetch_answer import fetch_answer_node
 from .nodes.save_answer import save_answer_node
 from app.contracts.agent_ports import SessionServicePort
-from app.agents.orchestrator.state import MultiAgentState, SubAgentState
-from app.services.planning_service import _get_planner_llm
+from app.agents.orchestrator.state import MultiAgentState
+from app.agents.writer.state import WriterState
 from app.state import AgentState
 
 
+def build_writer_graph():
+    builder = StateGraph(WriterState)
+    builder.add_node("prepare_prompt", prepare_prompt_node)
+    builder.add_node("generate_draft", generate_draft_node)
+    builder.add_node("finalize_draft", finalize_draft_node)
+    builder.add_edge(START, "prepare_prompt")
+    builder.add_edge("prepare_prompt", "generate_draft")
+    builder.add_edge("generate_draft", "finalize_draft")
+    builder.add_edge("finalize_draft", END)
+    return builder.compile()
+
+
+writer_graph = build_writer_graph()
+
+
 async def writing_agent_node(state: MultiAgentState) -> dict:
-    """根据 Researcher 产出的研究报告生成初稿。"""
-    sub = SubAgentState(name="writing", status="running")
-    state.sub_agent_states["writing"] = sub
-    sub.started_at = asyncio.get_event_loop().time()
-
-    try:
-        llm = _get_planner_llm()
-        prompt = (
-            "你是一位内容写作专家。请基于研究报告生成结构化的初稿。\n\n"
-            f"创作目标：{state.plan.goal}\n\n"
-            f"研究报告：\n{state.research_report or '（无研究报告）'}\n\n"
-            "请输出完整的 Markdown 正文。"
-        )
-        state.draft = await llm.analyze("你是写作子 Agent，只产出初稿正文。", prompt)
-        sub.result = {"draft_length": len(state.draft or "")}
-        sub.status = "done"
-    except Exception as error:
-        sub.status = "failed"
-        sub.error = str(error)
-    finally:
-        sub.completed_at = asyncio.get_event_loop().time()
-
+    """兼容旧调用方式，内部执行已编译的 Writer 子图。"""
+    result = await writer_graph.ainvoke(
+        {
+            "plan": state.plan,
+            "research_report": state.research_report,
+            "draft": state.draft,
+            "sub_agent_states": state.sub_agent_states,
+        }
+    )
+    state.draft = result.get("draft")
+    state.sub_agent_states = result["sub_agent_states"]
     return {"draft": state.draft, "sub_agent_states": state.sub_agent_states}
 
 

@@ -136,7 +136,7 @@ async def test_graph_routes_multi_agent_intent(graph, monkeypatch):
         }
 
     monkeypatch.setattr(
-        "app.agents.orchestrator.graph_exec.run_multi_agent_plan",
+        "app.agents.orchestrator.nodes.execute.run_multi_agent_plan",
         AsyncMock(return_value=FakeMultiResult()),
     )
 

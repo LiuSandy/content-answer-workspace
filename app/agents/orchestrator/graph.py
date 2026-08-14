@@ -1,75 +1,85 @@
-"""Phase 4 功能五：多 Agent 协作框架。
-
-spec 6.2/6.3/6.4：拆分 Orchestrator/Research/Writing/Review/Memory 5 个专职子 Agent，
-LangGraph 子图嵌套 + 共享状态频道传递中间结果 + interrupt/resume 暂停等待用户确认。
-
-子 Agent 状态隔离、单失败不影响其他、ResearchAgent 并发 > 3（spec 6.6）。
-"""
+"""多 Agent 协作的 Orchestrator LangGraph 父图。"""
 from __future__ import annotations
 
-import asyncio
-from app.agents.memory.graph import memory_agent_node
-from app.agents.researcher.graph import research_agent_node
-from app.agents.reviewer.graph import review_agent_node
-from app.agents.writer.graph import writing_agent_node
-from app.agents.orchestrator.state import MultiAgentState, SubAgentState
-from app.services.planning_service import generate_plan
+from langgraph.graph import END, START, StateGraph
+
+from app.agents.orchestrator.nodes import (
+    assign_tasks_node,
+    finalize_node,
+    generate_plan_node,
+    route_after_assignment,
+    run_memory_node,
+)
+from app.agents.orchestrator.state import MultiAgentGraphState, MultiAgentState
+from app.agents.researcher.graph import researcher_graph
+from app.agents.reviewer.graph import reviewer_graph
+from app.agents.writer.graph import writer_graph
 
 
-# ── Orchestrator ──────────────────────────────────────────────────────────────
+def build_orchestrator_graph():
+    builder = StateGraph(MultiAgentGraphState)
+    builder.add_node("generate_plan", generate_plan_node)
+    builder.add_node("assign_tasks", assign_tasks_node)
+    builder.add_node("researcher", researcher_graph)
+    builder.add_node("writer", writer_graph)
+    builder.add_node("reviewer", reviewer_graph)
+    builder.add_node("memory", run_memory_node)
+    builder.add_node("finalize", finalize_node)
+    builder.add_edge(START, "generate_plan")
+    builder.add_edge("generate_plan", "assign_tasks")
+    builder.add_conditional_edges(
+        "assign_tasks",
+        route_after_assignment,
+        {"researcher": "researcher", "end": END},
+    )
+    builder.add_edge("researcher", "writer")
+    builder.add_edge("writer", "reviewer")
+    builder.add_edge("reviewer", "memory")
+    builder.add_edge("memory", "finalize")
+    builder.add_edge("finalize", END)
+    return builder.compile()
+
+
+orchestrator_graph = build_orchestrator_graph()
 
 
 async def orchestrator_node(state: MultiAgentState) -> dict:
-    """OrchestratorAgent：拆解目标、分配子任务；不做工具调用，只调度。"""
-    sub = SubAgentState(name="orchestrator", status="running")
-    state.sub_agent_states["orchestrator"] = sub
-    sub.started_at = asyncio.get_event_loop().time()
+    """兼容旧的单步 Orchestrator 调用方式。"""
+    result = assign_tasks_node(
+        {"plan": state.plan, "sub_agent_states": state.sub_agent_states}
+    )
+    state.sub_agent_states = result["sub_agent_states"]
+    return result
 
-    try:
-        # plan 已由上层传入；此处负责验证并触发子任务
-        if not state.plan.tasks:
-            raise ValueError("空 TaskPlan")
-        sub.result = {
-            "total_tasks": len(state.plan.tasks),
-            "task_ids": [t.task_id for t in state.plan.tasks],
+
+async def run_multi_agent_plan(
+    goal: str,
+    workspace_id: str = "default",
+) -> MultiAgentState:
+    """执行编译后的多 Agent 父图，并返回兼容状态对象。"""
+    result = await orchestrator_graph.ainvoke(
+        {
+            "goal": goal,
+            "workspace_id": workspace_id,
+            "sub_agent_states": {},
+            "interrupted": False,
         }
-        sub.status = "done"
-    except Exception as e:
-        sub.status = "failed"
-        sub.error = str(e)
-    finally:
-        sub.completed_at = asyncio.get_event_loop().time()
+    )
+    return MultiAgentState(
+        plan=result["plan"],
+        sub_agent_states=result.get("sub_agent_states") or {},
+        research_report=result.get("research_report"),
+        draft=result.get("draft"),
+        final_output=result.get("final_output"),
+        quality_score=result.get("quality_score"),
+        interrupted=result.get("interrupted", False),
+        interrupt_reason=result.get("interrupt_reason"),
+    )
 
-    return {"sub_agent_states": state.sub_agent_states}
 
-
-# ── 主协调图组装 ──────────────────────────────────────────────────────────────
-
-
-async def run_multi_agent_plan(goal: str, workspace_id: str = "default") -> MultiAgentState:
-    """执行完整多 Agent 协作流：planner → research → writing → review → memory。
-
-    spec 6.4 interrupt/resume：在 orchestrator 分配完子任务后可暂停等待用户确认。
-    第一版默认不暂停（自动执行到底），可以通过参数控制。
-    """
-    plan = await generate_plan(goal)
-    state = MultiAgentState(plan=plan)
-
-    # 1. Orchestrator 分配
-    await orchestrator_node(state)
-    if state.sub_agent_states["orchestrator"].status == "failed":
-        return state
-
-    # 2. ResearchAgent 并行采集
-    await research_agent_node(state)
-
-    # 3. WritingAgent 生成初稿
-    await writing_agent_node(state)
-
-    # 4. ReviewAgent 自评修正
-    await review_agent_node(state)
-
-    # 5. MemoryAgent 沉淀记忆
-    await memory_agent_node(state)
-
-    return state
+__all__ = [
+    "build_orchestrator_graph",
+    "orchestrator_graph",
+    "orchestrator_node",
+    "run_multi_agent_plan",
+]
