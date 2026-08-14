@@ -55,20 +55,25 @@ async def run_multi_agent(req: RunMultiAgentRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"multi-agent run failed: {e}")
 
-    subs = state.get("sub_agent_states", {})
+    subs = state.sub_agent_states
+    status = (
+        "failed"
+        if any(sub.status == "failed" for sub in subs.values())
+        else "done"
+    )
     return {
         "ok": True,
         "data": {
-            "status": state.get("status"),
+            "status": status,
             "agents": [
                 {
                     "name": name,
-                    "status": sub.get("status"),
-                    "message": sub.get("message"),
+                    "status": sub.status,
+                    "message": sub.error,
                 }
                 for name, sub in subs.items()
             ],
-            "finalContent": state.get("final_content"),
+            "finalContent": state.final_output or state.draft,
         },
     }
 

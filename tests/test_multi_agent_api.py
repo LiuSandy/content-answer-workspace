@@ -6,6 +6,8 @@ from unittest.mock import patch
 import pytest
 
 from app.server import app
+from app.agents.orchestrator.state import MultiAgentState, SubAgentState
+from app.services.planning_service import TaskPlan
 
 
 def _make_client():
@@ -15,20 +17,20 @@ def _make_client():
     return AsyncClient(transport=transport, base_url="http://test")
 
 
-def _fake_state(agents_status: dict[str, str]) -> dict:
+def _fake_state(agents_status: dict[str, str]) -> MultiAgentState:
     subs = {
-        name: {
-            "status": status,
-            "message": f"{name} done",
-            "result": f"result-of-{name}",
-        }
+        name: SubAgentState(
+            name=name,
+            status=status,
+            result=f"result-of-{name}",
+        )
         for name, status in agents_status.items()
     }
-    return {
-        "status": "done" if all(s == "done" for s in agents_status.values()) else "failed",
-        "sub_agent_states": subs,
-        "final_content": "final-content",
-    }
+    return MultiAgentState(
+        plan=TaskPlan(plan_id="p1", goal="目标", tasks=[]),
+        sub_agent_states=subs,
+        final_output="final-content",
+    )
 
 
 @pytest.mark.asyncio
@@ -51,6 +53,41 @@ async def test_run_multi_agent_success(mock_run):
     assert data["status"] == "done"
     assert len(data["agents"]) == 5
     assert data["finalContent"] == "final-content"
+
+
+@pytest.mark.asyncio
+@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
+async def test_run_multi_agent_accepts_real_orchestrator_state(mock_run):
+    mock_run.return_value = MultiAgentState(
+        plan=TaskPlan(plan_id="p1", goal="目标", tasks=[]),
+        sub_agent_states={
+            "orchestrator": SubAgentState(
+                name="orchestrator",
+                status="done",
+                result={"total_tasks": 0},
+            ),
+            "writing": SubAgentState(
+                name="writing",
+                status="done",
+                result={"chars": 5},
+            ),
+        },
+        draft="初稿",
+        final_output="最终内容",
+    )
+
+    async with _make_client() as client:
+        res = await client.post("/api/multi-agent/run", json={"goal": "目标"})
+
+    assert res.status_code == 200
+    assert res.json()["data"] == {
+        "status": "done",
+        "agents": [
+            {"name": "orchestrator", "status": "done", "message": None},
+            {"name": "writing", "status": "done", "message": None},
+        ],
+        "finalContent": "最终内容",
+    }
 
 
 @pytest.mark.asyncio
@@ -110,4 +147,3 @@ async def test_interrupt_resume_flow():
         res = await client.post("/api/multi-agent/{}/resume".format("some-run-id"))
         assert res.status_code == 200
         assert res.json()["data"]["status"] == "resumed"
-

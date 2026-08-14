@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from app.services.planning_service import TaskPlan
 
@@ -35,3 +35,18 @@ class MultiAgentState:
     quality_score: float | None = None
     interrupted: bool = False
     interrupt_reason: str | None = None
+
+
+class MultiAgentGraphState(TypedDict, total=False):
+    """父图与子图之间共享的协作状态。"""
+
+    goal: str
+    workspace_id: str
+    plan: TaskPlan
+    sub_agent_states: dict[SubAgentName, SubAgentState]
+    research_report: str | None
+    draft: str | None
+    final_output: str | None
+    quality_score: float | None
+    interrupted: bool
+    interrupt_reason: str | None
