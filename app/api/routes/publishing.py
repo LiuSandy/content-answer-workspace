@@ -7,9 +7,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from ...persistence.session import get_session_factory
-from ...persistence.models.documents import AnswerDocument
-from ...persistence.models.publish_metrics import PublishMetricsModel
+from app.infrastructure.database.session import get_session_factory
+from app.infrastructure.database.models.documents import AnswerDocument
+from app.infrastructure.database.models.publish_metrics import PublishMetricsModel
 
 router = APIRouter(prefix="/api/publishing", tags=["publishing"])
 
@@ -121,7 +121,7 @@ async def delete_metrics(document_id: uuid.UUID, metric_id: uuid.UUID):
 
 @router.post("/documents/{document_id}/analyze")
 async def analyze_publish_performance(document_id: uuid.UUID):
-    from ...application.publish_analyst_service import PublishAnalystService
+    from app.services.publish_analyst_service import PublishAnalystService
 
     factory = get_session_factory()
     async with factory() as session:

@@ -1,6 +1,6 @@
 import uuid
 import pytest
-from app.persistence.models.knowledge import (
+from app.infrastructure.database.models.knowledge import (
     KnowledgeDocumentModel,
     KnowledgeChunkModel,
     RetrievalTraceModel,

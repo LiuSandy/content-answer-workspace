@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.persistence import Base
-from app.persistence.models.documents import AIOperation
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.documents import AIOperation
 
 
 @compiles(JSONB, "sqlite")

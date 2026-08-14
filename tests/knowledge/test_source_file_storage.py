@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.infrastructure.knowledge.source_files import SourceFileStorage
+from app.infrastructure.files.source_files import SourceFileStorage
 
 
 class _Upload:

@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ...application.memory_service import (
+from app.services.memory.service import (
     list_memories,
     delete_memory,
     clear_all_memories,

@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
-from app.application.quality_service import ReviewContext
-from app.application.workflows.creation_review import run_creation_review
-from app.domain.dto import QualityReport
-from app.errors import LLMOutputError
+from app.services.quality_service import ReviewContext
+from app.services.creation_review_service import run_creation_review
+from app.contracts.dto import QualityReport
+from app.contracts.errors import LLMOutputError
 
 
 def report(score: int, instruction: str = "继续定向修改") -> QualityReport:

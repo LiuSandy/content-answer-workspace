@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from ..infrastructure.llm.deepseek_client import DeepSeekTopicExpander
-from ..models import Topic
+from app.infrastructure.llm.clients.deepseek_client import DeepSeekTopicExpander
+from app.api.schemas.workflow import Topic
 from .zhihu_service import build_keyword_hints, unique_by
 
 _topic_expander = DeepSeekTopicExpander()

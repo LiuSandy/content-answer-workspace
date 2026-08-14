@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # 导入所有模型确保 metadata 完整（autogenerate 依赖此步骤）
-from app.persistence import Base  # noqa: E402
-from app.persistence.models import *  # noqa: F401, F403, E402
+from app.infrastructure.database import Base  # noqa: E402
+from app.infrastructure.database.models import *  # noqa: F401, F403, E402
 
 # Alembic Config 对象
 config = context.config

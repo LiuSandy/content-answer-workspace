@@ -11,28 +11,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.knowledge import KnowledgeDocumentStatus, SourceType, KnowledgeScope
-from app.application.knowledge.document_service import DocumentService
-from app.application.knowledge.indexing_service import IndexingService
-from app.application.knowledge.trace_service import TraceService
-from app.infrastructure.knowledge.storage import KnowledgeStorage
-from app.infrastructure.knowledge.ssrf import SSRFError, fetch_url_safely
-from app.infrastructure.knowledge.parsers import (
+from app.contracts.knowledge import KnowledgeDocumentStatus, SourceType, KnowledgeScope
+from app.services.rag.document_service import DocumentService
+from app.services.rag.indexing_service import IndexingService
+from app.services.rag.trace_service import TraceService
+from app.infrastructure.database.repositories.knowledge_storage import KnowledgeStorage
+from app.infrastructure.files.ssrf import SSRFError, fetch_url_safely
+from app.infrastructure.files.parsers import (
     HtmlCleanerParser,
     MinerUCloudParser,
     ParsedMarkdown,
     _estimate_pdf_confidence,
 )
-from app.core.config import get_knowledge_settings, is_truthy
-from app.persistence.session import get_db_session, get_session_factory
-from app.application.knowledge.ingestion_service import (
+from app.config.runtime import get_knowledge_settings, is_truthy
+from app.infrastructure.database.session import get_db_session, get_session_factory
+from app.services.rag.ingestion_service import (
     SourceIngestionService,
     source_file_to_dict,
     wake_ingestion_runtime,
 )
-from app.infrastructure.knowledge.source_files import SourceFileStorage
-from app.infrastructure.knowledge.pdf_pages import PdfPageWorkspace
-from app.persistence.models.knowledge import KnowledgeIngestionJobModel, KnowledgeSourceFileModel
+from app.infrastructure.files.source_files import SourceFileStorage
+from app.infrastructure.files.pdf_pages import PdfPageWorkspace
+from app.infrastructure.database.models.knowledge import KnowledgeIngestionJobModel, KnowledgeSourceFileModel
 
 router = APIRouter(prefix="/api", tags=["knowledge"])
 
@@ -566,8 +566,8 @@ async def test_knowledge_retrieval(
     payload: TestSearchRequest,
     session: AsyncSession = Depends(get_db_session)
 ):
-    from app.application.knowledge.retrieval_service import KnowledgeRetrievalService, RetrievalRequest
-    from app.domain.knowledge import KnowledgeScope
+    from app.services.rag.retrieval_service import KnowledgeRetrievalService, RetrievalRequest
+    from app.contracts.knowledge import KnowledgeScope
 
     settings = get_knowledge_settings()
     scope = KnowledgeScope(workspace_id=payload.workspace_id, owner_id=payload.owner_id)

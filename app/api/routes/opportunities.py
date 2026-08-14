@@ -11,8 +11,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...persistence.session import get_db_session, get_session_factory
-from ...application.opportunity_service import OpportunityService
+from app.infrastructure.database.session import get_db_session, get_session_factory
+from app.services.opportunity_service import OpportunityService
 
 router = APIRouter(prefix="/api/opportunities", tags=["opportunities"])
 
@@ -62,7 +62,7 @@ async def list_opportunities(
 @router.post("/{opportunity_id}/start-plan")
 async def start_plan_from_opportunity(opportunity_id: uuid.UUID, workspace_id: str = "default"):
     """一键拉起 TaskPlan：用机会标题作为创作目标交给 TaskPlanner 规划执行（spec 2.5）"""
-    from ...application.task_planner_service import TaskPlannerService
+    from app.services.planning_service import TaskPlannerService
 
     factory = get_session_factory()
     async with factory() as s:
@@ -138,8 +138,8 @@ async def stream_opportunities(workspace_id: str = "default", interval: int = 30
 @router.get("/agent-settings")
 async def get_agent_settings(workspace_id: str = "default"):
     from sqlalchemy import select
-    from ...persistence.models.opportunity_feeds import AgentSettingsModel
-    from ...persistence.session import get_session_factory
+    from app.infrastructure.database.models.opportunity_feeds import AgentSettingsModel
+    from app.infrastructure.database.session import get_session_factory
 
     factory = get_session_factory()
     async with factory() as s:
@@ -163,8 +163,8 @@ async def get_agent_settings(workspace_id: str = "default"):
 @router.put("/agent-settings")
 async def update_agent_settings(req: AgentSettingsRequest):
     from sqlalchemy import select
-    from ...persistence.models.opportunity_feeds import AgentSettingsModel
-    from ...persistence.session import get_session_factory
+    from app.infrastructure.database.models.opportunity_feeds import AgentSettingsModel
+    from app.infrastructure.database.session import get_session_factory
 
     factory = get_session_factory()
     async with factory() as s:
@@ -191,8 +191,8 @@ async def update_agent_settings(req: AgentSettingsRequest):
 
 @router.post("/{opportunity_id}/re-evaluate")
 async def re_evaluate_opportunity(opportunity_id: str):
-    from ...application.topic_analyst_service import TopicAnalystService
-    from ...persistence.session import get_session_factory
+    from app.services.topic_analyst_service import TopicAnalystService
+    from app.infrastructure.database.session import get_session_factory
 
     factory = get_session_factory()
     async with factory() as session:

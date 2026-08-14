@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ...core.config import get_workflow_config, load_env_file
+from app.config.runtime import get_workflow_config, load_env_file
 from ...services.zhihu_service import get_default_topics, get_topic_preview
 
 router = APIRouter(prefix="/api/config", tags=["config"])

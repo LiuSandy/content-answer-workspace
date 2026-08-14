@@ -9,8 +9,8 @@ from typing import Any
 
 from openai import OpenAI
 
-from ..core.config import GENERATED_IMAGES_DIR, get_required_env
-from ..models import QuestionItem
+from app.config.runtime import GENERATED_IMAGES_DIR, get_required_env
+from app.api.schemas.workflow import QuestionItem
 
 
 class GeneratedImagePayload(dict):

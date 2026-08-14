@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.application.workflow_service import WorkflowService
-from app.models import ParseQuestionUrlPayload, QuestionItem, Topic
+from app.services.workflow_service import WorkflowService
+from app.api.schemas.workflow import ParseQuestionUrlPayload, QuestionItem, Topic
 from app.services.zhihu_service import (
     extract_zhihu_question_id,
     extract_zhihu_question_snapshot_from_html,
@@ -254,7 +254,7 @@ class ZhihuImportTests(unittest.IsolatedAsyncioTestCase):
             topic=Topic(id="algo", name="数据结构与算法", keywords=["算法"]),
         )
 
-        with patch("app.application.workflow_service.fetch_zhihu_question_by_url", new=AsyncMock(return_value=imported_item)):
+        with patch("app.services.workflow_service.fetch_zhihu_question_by_url", new=AsyncMock(return_value=imported_item)):
             item = await service.parse_question_url(payload)
 
         self.assertEqual(item.topic, "个人网站 / Web 开发")

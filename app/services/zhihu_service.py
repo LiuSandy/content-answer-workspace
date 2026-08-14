@@ -12,11 +12,11 @@ from typing import Any
 import httpx
 
 from ..config.loader import get_settings
-from ..core.config import COOKIE_PATH_DEFAULT, get_default_topics, get_workflow_config, load_env_file
+from app.config.runtime import COOKIE_PATH_DEFAULT, get_default_topics, get_workflow_config, load_env_file
 from ..infrastructure.collectors.fetchers.playwright_fetcher import PlaywrightFetcher
-from ..models import QuestionItem, Topic, WorkflowResult, ZhihuSearchResponse
+from app.api.schemas.workflow import QuestionItem, Topic, WorkflowResult, ZhihuSearchResponse
 
-TOPIC_HINTS_PATH = Path(__file__).resolve().parent.parent / "core" / "topic_hints.json"
+TOPIC_HINTS_PATH = Path(__file__).resolve().parent.parent / "config" / "defaults" / "topic_hints.json"
 
 
 def unique_by(items: list[Any], key_fn) -> list[Any]:

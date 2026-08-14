@@ -5,7 +5,7 @@ import os
 import re
 from pathlib import Path
 
-from ..core.config import XIAOHONGSHU_COOKIE_PATH_DEFAULT
+from app.config.runtime import XIAOHONGSHU_COOKIE_PATH_DEFAULT
 from .zhihu_service import clean_text, read_optional_file
 
 

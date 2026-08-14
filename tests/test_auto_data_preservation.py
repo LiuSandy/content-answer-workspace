@@ -2,7 +2,7 @@ import os
 import shutil
 from pathlib import Path
 import pytest
-from app.core.db_guard import create_db_snapshot, check_db_health
+from app.infrastructure.database.guard import create_db_snapshot, check_db_health
 from scripts.auto_migrate_db import auto_migrate_if_needed
 
 

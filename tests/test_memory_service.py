@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.application.memory_service import (
+from app.services.memory.service import (
     _parse_extraction_json, extract_memories, retrieve_memories,
     delete_memory, clear_all_memories, MEMORY_RETRIEVAL_TIMEOUT_MS,
     _memory_vector_search_sql,
@@ -37,7 +37,7 @@ def test_parse_extraction_json_skips_empty_content():
 
 
 def test_parse_extraction_json_no_json_raises():
-    from app.errors import LLMOutputError
+    from app.contracts.errors import LLMOutputError
     with pytest.raises(LLMOutputError):
         _parse_extraction_json("纯文本没有 JSON")
 
@@ -48,13 +48,13 @@ async def test_extract_memories_persists(monkeypatch):
     fake_llm.analyze = AsyncMock(
         return_value='[{"memory_type": "explicit", "content": "目标读者是大学生", "confidence": 0.85}]'
     )
-    monkeypatch.setattr("app.application.memory_service._get_memory_llm", lambda: fake_llm)
+    monkeypatch.setattr("app.services.memory.service._get_memory_llm", lambda: fake_llm)
 
     fake_provider = MagicMock()
     fake_provider.dimensions = 8
     fake_provider.embed = AsyncMock(return_value=[[0.1] * 8])
     monkeypatch.setattr(
-        "app.application.memory_service._get_embedding_provider",
+        "app.services.memory.service._get_embedding_provider",
         lambda: fake_provider,
     )
 
@@ -75,7 +75,7 @@ async def test_extract_memories_persists(monkeypatch):
     fake_factory.return_value.__aenter__ = AsyncMock(return_value=fake_session)
     fake_factory.return_value.__aexit__ = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: fake_factory
+        "app.infrastructure.database.session.get_session_factory", lambda: fake_factory
     )
 
     saved = await extract_memories(
@@ -110,12 +110,12 @@ async def test_retrieve_memories_returns_under_timeout(monkeypatch):
     fake_factory.return_value.__aenter__ = AsyncMock(return_value=fake_session)
     fake_factory.return_value.__aexit__ = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: fake_factory
+        "app.infrastructure.database.session.get_session_factory", lambda: fake_factory
     )
     fake_embedder = MagicMock(dimensions=8)
     fake_embedder.embed = AsyncMock(return_value=[[0.1] * 8])
     monkeypatch.setattr(
-        "app.application.memory_service._get_embedding_provider",
+        "app.services.memory.service._get_embedding_provider",
         lambda: fake_embedder,
     )
 
@@ -152,7 +152,7 @@ async def test_retrieve_memories_timeout_returns_empty(monkeypatch):
         yield fake_session
 
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: _slow_factory
+        "app.infrastructure.database.session.get_session_factory", lambda: _slow_factory
     )
 
     snippets = await retrieve_memories("test", "default")
@@ -177,7 +177,7 @@ async def test_delete_memory_not_found(monkeypatch):
     fake_factory.return_value.__aenter__ = AsyncMock(return_value=fake_session)
     fake_factory.return_value.__aexit__ = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: fake_factory
+        "app.infrastructure.database.session.get_session_factory", lambda: fake_factory
     )
 
     ok = await delete_memory("00000000-0000-0000-0000-000000000001", "default")

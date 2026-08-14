@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.infrastructure.knowledge.embedding import (
+from app.infrastructure.embeddings.provider import (
     EmbeddingNotConfiguredError,
     MockEmbeddingProvider,
     get_embedding_provider,
@@ -33,7 +33,7 @@ def test_validate_embeddings_rejects_invalid_provider_output():
 def test_production_factory_rejects_missing_key(monkeypatch):
     settings = MagicMock(embedding_api_key="", embedding_dimensions=1536)
     monkeypatch.setattr(
-        "app.infrastructure.knowledge.embedding.get_knowledge_settings",
+        "app.infrastructure.embeddings.provider.get_knowledge_settings",
         lambda: settings,
     )
     with pytest.raises(EmbeddingNotConfiguredError):
@@ -44,10 +44,10 @@ def test_memory_service_uses_knowledge_embedding_factory(monkeypatch):
     provider = MagicMock(dimensions=1536)
     factory = MagicMock(return_value=provider)
     monkeypatch.setattr(
-        "app.infrastructure.knowledge.embedding.get_embedding_provider", factory
+        "app.infrastructure.embeddings.provider.get_embedding_provider", factory
     )
 
-    from app.application.memory_service import _get_embedding_provider
+    from app.services.memory.service import _get_embedding_provider
 
     assert _get_embedding_provider() is provider
     factory.assert_called_once_with()

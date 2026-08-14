@@ -13,9 +13,9 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.api.routes.documents import router
-from app.persistence import Base
-from app.persistence.models.content import SourceItem
-from app.persistence.models.documents import AnswerDocument
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.content import SourceItem
+from app.infrastructure.database.models.documents import AnswerDocument
 
 
 @compiles(JSONB, "sqlite")
@@ -39,7 +39,7 @@ def _make_app(session_factory) -> FastAPI:
 async def _setup(db, monkeypatch):
     """创建 document + source item，mock LLM + session factory。"""
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: db
+        "app.infrastructure.database.session.get_session_factory", lambda: db
     )
     async with db() as session:
         si = SourceItem(
@@ -61,7 +61,7 @@ async def _setup(db, monkeypatch):
     fake_llm = MagicMock()
     fake_llm.analyze = AsyncMock(return_value=json.dumps(data, ensure_ascii=False))
     monkeypatch.setattr(
-        "app.application.agent.adapters.DeepSeekLLMAdapter", lambda: fake_llm
+        "app.services.llm_service.DeepSeekLLMAdapter", lambda: fake_llm
     )
     return did, sid, lv
 

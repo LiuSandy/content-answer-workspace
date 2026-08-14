@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from app.evaluation.retrieval_dataset import load_retrieval_dataset
-from app.evaluation.run_retrieval_eval import DeterministicBackend, evaluate_cases
+from app.evaluation.datasets.retrieval import load_retrieval_dataset
+from app.evaluation.runners.retrieval import DeterministicBackend, evaluate_cases
 
 
 DATASET = Path("docs/evaluations/private-knowledge-rag.jsonl")

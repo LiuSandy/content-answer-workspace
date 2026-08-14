@@ -12,40 +12,25 @@
 ### 1. 后端结构 (`app/`)
 ```text
 app/
-├── domain/                    # 领域层（纯 Protocols 接口与 Pydantic DTO，不依赖具体实现）
-│   ├── ports.py               # 核心协议定义 (ContentSource, LLMProvider, TaskDispatcher)
-│   └── dto.py                 # 数据传输契约 (SourceItemDTO, ChatResponsePayload, SelectionDTO 等)
-├── persistence/               # 基础设施：持久化存储层 (SQLAlchemy 2.0)
-│   ├── session.py             # 异步数据库 session 连接池
-│   └── models/                # 9 张业务主外键关联表 (chats, messages, source_items, documents 等)
-├── prompts/                   # 基础设施：提示词加载器
-│   ├── registry.py            # PromptRegistry 单例（Jinja2 变量渲染与 includes 共享片段组装）
-│   └── schemas.py             # Prompt YAML Schema 校验
-├── infrastructure/            # 基础设施：外部服务适配器实现
-│   ├── llm/                   # DeepSeek LLM Provider 实现与 Registry 动态路由
-│   ├── sources/               # 多平台内容源适配器与 Registry (zhihu, xiaohongshu, universal)
-│   └── zhihu/                 # 历史遗留知乎官方 API 客户端
-├── workflows/                 # 业务应用层：核心优化流
-│   ├── answer_generation.py   # AI 流式生成回答工作流
-│   ├── inline_refinement.py   # AI 选区局部流式润色工作流
-│   └── full_rewrite.py        # AI 全文流式重写工作流
-├── application/               # 业务应用层：核心服务与 Agent
-│   ├── chat_service.py        # 对话创建、消息持久化、去重内容关联服务
-│   ├── document_service.py    # 乐观并发锁 (Optimistic Lock) 文档编辑更新服务
-│   ├── version_service.py     # 历史版本手动打卡与恢复服务
-│   └── agent/                 # LangGraph 对话 Agent (preprocess, route_intent, chat, tool_nodes)
-├── api/                       # REST API 接口路由层
-│   └── routes/                # 挂载 /api/chats, /api/documents, /api/config, /api/settings 等端点
-├── errors.py                  # 业务系统统一异常层 (AppError, DocumentConflictError 等)
-└── server.py                  # FastAPI 主程序入口，挂载静态文件托管与全局 exception_handler
+├── server.py                  # FastAPI 主程序入口
+├── graph.py                   # 多 Agent 系统顶层 Graph 入口
+├── state.py                   # 系统共享 State
+├── context.py                 # Graph 运行时上下文与输入组装
+├── api/                       # API 路由、Schema 与流式响应
+├── agents/                    # 独立 Agent：chat、orchestrator、researcher、writer、reviewer、memory
+│   └── _shared/               # Agent 公共工具、Prompt 与运行支持，不是独立 Agent
+├── services/                  # 业务逻辑与用例服务
+├── infrastructure/           # 数据库、采集器、文件、可观测性及外部能力
+│   └── llm/clients/           # 大模型底层客户端，与其他基础设施客户端隔离
+├── contracts/                # 跨层 DTO、Port 与业务错误契约
+├── prompts/                   # Prompt 加载、校验与渲染基础设施
+├── config/                    # 运行配置及默认配置文件
+└── evaluation/                # 评测数据集、指标与运行器
 ```
 
-### 2. 外部模板结构 (`prompts/`)
-所有的 AI 提示词脱离 Python 硬编码，全部外置到根目录的 YAML 格式配置文件中：
-- `prompts/model_profiles.yml`：配置默认、创新、推理等不同规格的模型参数。
-- `prompts/shared/`：存放如 `style_rules.yml` 共享写作风格片段。
-- `prompts/chat/`：意图路由分类器与系统初始引导词。
-- `prompts/writing/` / `prompts/refinement/`：回答生成、润色和重写的模板。
+### 2. Agent Prompt 结构 (`app/agents/`)
+每个 Agent 的 YAML Prompt 放在自己的 `prompts/` 目录；公共 Prompt 和模型配置放在
+`app/agents/_shared/prompts/`。
 
 ### 3. 前端结构 (`frontend/`)
 ```text

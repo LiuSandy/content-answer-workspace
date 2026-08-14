@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.infrastructure.llm.deepseek_client import DeepSeekAnswerGenerator
+from app.infrastructure.llm.clients.deepseek_client import DeepSeekAnswerGenerator
 
 
 def _fake_completion(content: str | None) -> MagicMock:
@@ -22,7 +22,7 @@ class DeepSeekChatMethodTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(generator, "get_client", return_value=fake_client),
-            patch("app.infrastructure.llm.deepseek_client.get_required_env", return_value="model-x"),
+            patch("app.infrastructure.llm.clients.deepseek_client.get_required_env", return_value="model-x"),
         ):
             messages = [
                 {"role": "system", "content": "你是内容策略助手"},
@@ -40,7 +40,7 @@ class DeepSeekChatMethodTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(generator, "get_client", return_value=fake_client),
-            patch("app.infrastructure.llm.deepseek_client.get_required_env", return_value="model-x"),
+            patch("app.infrastructure.llm.clients.deepseek_client.get_required_env", return_value="model-x"),
         ):
             with self.assertRaises(ValueError):
                 await generator.chat([{"role": "user", "content": "hi"}])

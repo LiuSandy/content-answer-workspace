@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.application.memory_extractor import run_memory_extraction, ExtractionResult
-from app.application.memory_service import (
+from app.services.memory.extraction import run_memory_extraction, ExtractionResult
+from app.services.memory.service import (
     create_memory,
     confirm_memory,
     reject_memory,
@@ -26,8 +26,8 @@ from app.application.memory_service import (
     clear_all_memories,
     retrieve_memories,
 )
-from app.persistence import Base
-from app.persistence.models.user_memories import UserMemoryModel
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.user_memories import UserMemoryModel
 
 
 @compiles(JSONB, "sqlite")
@@ -123,14 +123,14 @@ async def test_extraction_sets_status_per_type(monkeypatch):
     db, engine = await _make_db()
 
     monkeypatch.setattr(
-        "app.application.memory_extractor._get_embedding_provider",
+        "app.services.memory.extraction._get_embedding_provider",
         lambda: _FakeEmbedder(),
     )
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: db
+        "app.infrastructure.database.session.get_session_factory", lambda: db
     )
 
-    from app.application.memory_extractor import _extract_once
+    from app.services.memory.extraction import _extract_once
     llm = _FakeLLM()
     embedder = _FakeEmbedder()
     _, saved, _ = await _extract_once(llm, embedder, [{"role":"user","content":"hi"}], "rk-test-1", "default")
@@ -147,17 +147,17 @@ async def test_idempotency_key_prevents_duplicate(monkeypatch):
     """同一 idempotency_key 再次运行不重复落库。"""
     db, engine = await _make_db()
     monkeypatch.setattr(
-        "app.application.memory_extractor._get_embedding_provider",
+        "app.services.memory.extraction._get_embedding_provider",
         lambda: _FakeEmbedder(),
     )
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: db
+        "app.infrastructure.database.session.get_session_factory", lambda: db
     )
 
     llm = _FakeLLM()
     embedder = _FakeEmbedder()
 
-    from app.application.memory_extractor import _extract_once
+    from app.services.memory.extraction import _extract_once
     _, saved1, _ = await _extract_once(
         llm, embedder, [{"role":"user","content":"x"}], "run-dedup", "default"
     )
@@ -177,11 +177,11 @@ async def test_run_memory_extraction_skips_on_inprocess_dup(monkeypatch):
     """进程内幂等：第一次成功，第二次直接 skipped。"""
     db, engine = await _make_db()
     monkeypatch.setattr(
-        "app.application.memory_extractor._get_embedding_provider",
+        "app.services.memory.extraction._get_embedding_provider",
         lambda: _FakeEmbedder(),
     )
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: db
+        "app.infrastructure.database.session.get_session_factory", lambda: db
     )
 
     r1 = await run_memory_extraction(
@@ -209,7 +209,7 @@ async def test_retrieve_only_returns_active(monkeypatch):
     db, engine = await _make_db()
     fake_factory = db
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: fake_factory
+        "app.infrastructure.database.session.get_session_factory", lambda: fake_factory
     )
 
     async with db() as session:
@@ -238,7 +238,7 @@ async def test_retrieve_only_returns_active(monkeypatch):
 async def test_update_memory_content_re_embeds(monkeypatch):
     db, engine = await _make_db()
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: db
+        "app.infrastructure.database.session.get_session_factory", lambda: db
     )
 
     memory_id = None
@@ -252,7 +252,7 @@ async def test_update_memory_content_re_embeds(monkeypatch):
     fake_embedder = _FakeEmbedder()
     fake_embedder.embed = AsyncMock(return_value=[[0.9]*8])
     monkeypatch.setattr(
-        "app.application.memory_service._get_embedding_provider", lambda: fake_embedder
+        "app.services.memory.service._get_embedding_provider", lambda: fake_embedder
     )
 
     updated = await update_memory_content(memory_id, "default", "新内容")
@@ -272,7 +272,7 @@ async def test_update_memory_content_re_embeds(monkeypatch):
 async def test_confirm_and_reject_transitions(monkeypatch):
     db, engine = await _make_db()
     monkeypatch.setattr(
-        "app.persistence.session.get_session_factory", lambda: db
+        "app.infrastructure.database.session.get_session_factory", lambda: db
     )
 
     async with db() as session:

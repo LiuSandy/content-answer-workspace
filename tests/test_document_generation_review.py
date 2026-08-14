@@ -13,12 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 
 from app.api.routes import documents as documents_route
-from app.domain.dto import QualityReport
-from app.errors import LLMOutputError
-from app.persistence import Base
-from app.persistence.models.content import SourceItem
-from app.persistence.models.documents import AIOperation, AnswerDocument, AnswerVersion
-from app.persistence.models.quality_scores import QualityScoreModel
+from app.contracts.dto import QualityReport
+from app.contracts.errors import LLMOutputError
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.content import SourceItem
+from app.infrastructure.database.models.documents import AIOperation, AnswerDocument, AnswerVersion
+from app.infrastructure.database.models.quality_scores import QualityScoreModel
 
 
 @compiles(JSONB, "sqlite")

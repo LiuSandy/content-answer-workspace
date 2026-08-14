@@ -24,14 +24,14 @@ from .api.routes.task_plans import router as task_plans_router
 from .api.routes.memories import router as memories_router
 from .api.routes.multi_agent import router as multi_agent_router
 from .api.routes.publishing import router as publishing_router
-from .application.agent.graphs.conversation import build_conversation_graph
+from .graph import build_conversation_graph
 from .config.loader import warmup as warmup_config
-from .core.config import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
+from app.config.runtime import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
 from sqlalchemy.exc import DBAPIError
-from .errors import AppError, DocumentConflictError
+from app.contracts.errors import AppError, DocumentConflictError
 from .prompts.registry import warmup as warmup_prompts
-from .observability.logging import configure_logging, shutdown_logging
-from .observability.middleware import RequestLoggingMiddleware
+from app.infrastructure.observability.logging import configure_logging, shutdown_logging
+from app.infrastructure.observability.middleware import RequestLoggingMiddleware
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIST_DIR = ROOT_DIR / "frontend" / "dist"
@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
     # 自动无感平滑迁移检测与自愈快照护航
     try:
         from scripts.auto_migrate_db import auto_migrate_if_needed
-        from app.core.db_guard import create_db_snapshot
+        from app.infrastructure.database.guard import create_db_snapshot
         auto_migrate_if_needed()
         create_db_snapshot()
     except Exception as e:
@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
 
     # 尝试连通性测试
     try:
-        from .persistence.session import get_engine
+        from app.infrastructure.database.session import get_engine
         from sqlalchemy import text
         async with get_engine().connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -64,21 +64,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logging.warning(f"Database pre-flight check warning (PostgreSQL container might be offline): {e}")
 
-    # 初始化 Prompt Registry，直接指向项目根目录下的 prompts 目录
-    prompts_dir = ROOT_DIR / "prompts"
+    # 初始化 Prompt Registry，递归扫描各 Agent 的 prompts 目录
+    prompts_dir = ROOT_DIR / "app" / "agents"
     warmup_prompts(prompts_dir, freeze=True)
 
     from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
     serde = JsonPlusSerializer(allowed_msgpack_modules=[
-        ("app.domain.dto", "CollectionRequest"),
-        ("app.domain.dto", "ChatResponsePayload"),
-        ("app.domain.dto", "AgentError"),
-        ("app.domain.dto", "ToolResult"),
-        ("app.domain.dto", "SourceItemDTO"),
-        "app.domain.dto",
-        ("app.application.knowledge.retrieval_service", "RetrievalResult"),
-        ("app.application.knowledge.retrieval_service", "RetrievalRequest"),
-        ("app.application.agent.state", "ChatAgentState"),
+        ("app.contracts.dto", "CollectionRequest"),
+        ("app.contracts.dto", "ChatResponsePayload"),
+        ("app.contracts.dto", "AgentError"),
+        ("app.contracts.dto", "ToolResult"),
+        ("app.contracts.dto", "SourceItemDTO"),
+        "app.contracts.dto",
+        ("app.services.rag.retrieval_service", "RetrievalResult"),
+        ("app.services.rag.retrieval_service", "RetrievalRequest"),
+        ("app.state", "ChatAgentState"),
         "asyncpg.pgproto.pgproto",
     ])
     CONVERSATION_CHECKPOINT_DB.parent.mkdir(parents=True, exist_ok=True)
@@ -86,13 +86,13 @@ async def lifespan(app: FastAPI):
         checkpointer.serde = serde
         app.state.conversation_graph = build_conversation_graph(checkpointer)
         # Agent 运行期依赖：每 chat 并发锁 + 可注入的 session 工厂（测试可替换）
-        from .application.agent.scheduling import ChatRuntime
-        from .persistence.session import get_session_factory
+        from app.agents._shared.runtime import ChatRuntime
+        from app.infrastructure.database.session import get_session_factory
         app.state.chat_runtime = ChatRuntime()
         app.state.session_factory = get_session_factory()
 
         try:
-            from .application.knowledge.ingestion_service import start_ingestion_runtime
+            from .services.rag.ingestion_service import start_ingestion_runtime
             app.state.ingestion_runtime = await start_ingestion_runtime(app.state.session_factory)
         except Exception as e:
             logging.warning(f"Knowledge ingestion startup warning (non-critical): {e}")
@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
         yield
 
         try:
-            from .application.knowledge.ingestion_service import stop_ingestion_runtime
+            from .services.rag.ingestion_service import stop_ingestion_runtime
             await stop_ingestion_runtime()
         except Exception:
             pass
@@ -121,7 +121,7 @@ async def lifespan(app: FastAPI):
 
         # 释放 DB 连接池，避免 asyncpg 在 uvicorn cancel scope 下残留连接报 CancelledError
         try:
-            from .persistence.session import get_engine, reset_engine
+            from app.infrastructure.database.session import get_engine, reset_engine
             engine = get_engine()
             await engine.dispose()
             reset_engine()

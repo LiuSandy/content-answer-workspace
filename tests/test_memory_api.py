@@ -11,8 +11,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.api.routes.memories import router
-from app.persistence import Base
-from app.persistence.models.user_memories import UserMemoryModel
+from app.infrastructure.database import Base
+from app.infrastructure.database.models.user_memories import UserMemoryModel
 
 
 @compiles(JSONB, "sqlite")
@@ -30,7 +30,7 @@ async def _make_db() -> tuple[async_sessionmaker[AsyncSession], object]:
 def _make_app(session_factory) -> FastAPI:
     app = FastAPI()
     app.include_router(router)
-    from app.persistence.session import get_session_factory
+    from app.infrastructure.database.session import get_session_factory
     app.state.session_factory = session_factory
     return app
 
@@ -39,7 +39,7 @@ def _make_app(session_factory) -> FastAPI:
 def mock_app():
     """重置全局 factory；测试通过 app.state.session_factory 注入会话工厂。"""
     from unittest.mock import MagicMock
-    from app.persistence import session as sess_mod
+    from app.infrastructure.database import session as sess_mod
     orig = getattr(sess_mod, "get_session_factory", None)
     fake = MagicMock()
     sess_mod.get_session_factory = fake
@@ -51,7 +51,7 @@ def mock_app():
 @pytest.mark.asyncio
 async def test_create_memory_returns_active(monkeypatch):
     db, engine = await _make_db()
-    monkeypatch.setattr("app.persistence.session.get_session_factory", lambda: db)
+    monkeypatch.setattr("app.infrastructure.database.session.get_session_factory", lambda: db)
     app = _make_app(db)
 
     transport = ASGITransport(app=app)
@@ -74,7 +74,7 @@ async def test_create_memory_returns_active(monkeypatch):
 @pytest.mark.asyncio
 async def test_confirm_memory(monkeypatch):
     db, engine = await _make_db()
-    monkeypatch.setattr("app.persistence.session.get_session_factory", lambda: db)
+    monkeypatch.setattr("app.infrastructure.database.session.get_session_factory", lambda: db)
 
     mid = None
     async with db() as session:
@@ -97,7 +97,7 @@ async def test_confirm_memory(monkeypatch):
 @pytest.mark.asyncio
 async def test_reject_memory(monkeypatch):
     db, engine = await _make_db()
-    monkeypatch.setattr("app.persistence.session.get_session_factory", lambda: db)
+    monkeypatch.setattr("app.infrastructure.database.session.get_session_factory", lambda: db)
 
     mid = None
     async with db() as session:
@@ -120,7 +120,7 @@ async def test_reject_memory(monkeypatch):
 @pytest.mark.asyncio
 async def test_list_includes_status_and_evidence(monkeypatch):
     db, engine = await _make_db()
-    monkeypatch.setattr("app.persistence.session.get_session_factory", lambda: db)
+    monkeypatch.setattr("app.infrastructure.database.session.get_session_factory", lambda: db)
 
     async with db() as session:
         mem = UserMemoryModel(id=uuid.uuid4(), workspace_id="default", memory_type="explicit",
@@ -142,7 +142,7 @@ async def test_list_includes_status_and_evidence(monkeypatch):
 @pytest.mark.asyncio
 async def test_confirm_nonexistent_returns_404(monkeypatch):
     db, engine = await _make_db()
-    monkeypatch.setattr("app.persistence.session.get_session_factory", lambda: db)
+    monkeypatch.setattr("app.infrastructure.database.session.get_session_factory", lambda: db)
     app = _make_app(db)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:

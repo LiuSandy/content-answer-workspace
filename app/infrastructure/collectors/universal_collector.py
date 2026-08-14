@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 from typing import Sequence
 
-from ...domain.ports import CollectorPort
-from ...models import QuestionItem, Topic, WorkflowConfig
+from app.contracts.ports import CollectorPort
+from app.api.schemas.workflow import QuestionItem, Topic, WorkflowConfig
 from .extractors.llm_extractor import LLMExtractor
 from .fetchers.http_fetcher import HttpFetcher
 from .html_cleaner import HtmlCleaner

@@ -9,7 +9,7 @@ from typing import Any, AsyncIterator
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, Field
 
-from ..sse_utils import sse_named_event, make_sse_response
+from app.api.streaming.sse import sse_named_event, make_sse_response
 
 router = APIRouter(prefix="/api/multi-agent", tags=["multi-agent"])
 
@@ -48,7 +48,7 @@ def _status_payload(run_id: str, state: dict | None) -> dict:
 @router.post("/run")
 async def run_multi_agent(req: RunMultiAgentRequest):
     """同步执行多 Agent 协作流，返回最终结果。用于简单测试 / 脚本调用。"""
-    from app.application.agent.nodes.multi_agent import run_multi_agent_plan
+    from app.agents.orchestrator.graph import run_multi_agent_plan
 
     try:
         state = await run_multi_agent_plan(req.goal, req.workspace_id)

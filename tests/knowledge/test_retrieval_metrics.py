@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from app.evaluation.retrieval_dataset import load_retrieval_dataset
-from app.evaluation.retrieval_metrics import (
+from app.evaluation.datasets.retrieval import load_retrieval_dataset
+from app.evaluation.metrics.retrieval import (
     citation_accuracy,
     ndcg_at_k,
     recall_at_k,

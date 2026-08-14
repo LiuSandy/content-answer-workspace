@@ -6,13 +6,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.application.agent.nodes.multi_agent import (
-    MultiAgentState, SubAgentState,
-    orchestrator_node, research_agent_node, writing_agent_node, review_agent_node, memory_agent_node,
-    run_multi_agent_plan,
-)
-from app.application.task_planner_service import SubTask, TaskPlan
-from app.domain.dto import QualityReport
+from app.agents.memory.graph import memory_agent_node
+from app.agents.orchestrator.graph import orchestrator_node, run_multi_agent_plan
+from app.agents.orchestrator.state import MultiAgentState, SubAgentState
+from app.agents.researcher.graph import research_agent_node
+from app.agents.reviewer.graph import review_agent_node
+from app.agents.writer.graph import writing_agent_node
+from app.services.planning_service import SubTask, TaskPlan
+from app.contracts.dto import QualityReport
 
 
 def _mock_plan() -> TaskPlan:
@@ -50,7 +51,7 @@ async def test_writing_agent_produces_draft(monkeypatch):
     fake_llm = MagicMock()
     fake_llm.analyze = AsyncMock(return_value="# 初稿\n\n正文内容...")
     monkeypatch.setattr(
-        "app.application.agent.nodes.multi_agent._get_planner_llm",
+        "app.agents.writer.graph._get_planner_llm",
         lambda: fake_llm,
     )
     state = MultiAgentState(plan=_mock_plan(), research_report="研究报告内容")
@@ -64,7 +65,7 @@ async def test_writing_agent_produces_draft(monkeypatch):
 async def test_review_agent_failure_does_not_block_final_output(monkeypatch):
     """spec 6.6 #2：单子 Agent 失败不影响其他。ReviewAgent 失败时初稿作终稿。"""
     monkeypatch.setattr(
-        "app.application.agent.nodes.multi_agent.evaluate_content",
+        "app.agents.reviewer.graph.evaluate_content",
         AsyncMock(side_effect=RuntimeError("review failed")),
     )
     state = MultiAgentState(plan=_mock_plan(), draft="这是初稿")
@@ -79,7 +80,7 @@ async def test_review_agent_failure_does_not_block_final_output(monkeypatch):
 async def test_memory_agent_failure_isolated(monkeypatch):
     """MemoryAgent 失败不影响整体协作状态。"""
     monkeypatch.setattr(
-        "app.application.memory_service.extract_memories",
+        "app.services.memory.service.extract_memories",
         AsyncMock(side_effect=RuntimeError("memory store down")),
     )
     state = MultiAgentState(plan=_mock_plan(), final_output="final")
@@ -111,11 +112,11 @@ async def test_research_agent_concurrent_calls_gt_3(monkeypatch):
         return f"result-{subtask.task_id}"
 
     monkeypatch.setattr(
-        "app.application.task_planner_service.execute_subtask",
+        "app.services.planning_service.execute_subtask",
         fake_execute,
     )
     monkeypatch.setattr(
-        "app.application.task_planner_service._get_planner_llm",
+        "app.services.planning_service._get_planner_llm",
         lambda: MagicMock(),
     )
 
@@ -135,18 +136,18 @@ async def test_run_multi_agent_plan_end_to_end(monkeypatch):
     fake_llm = MagicMock()
     fake_llm.analyze = AsyncMock(return_value="初稿内容")
     monkeypatch.setattr(
-        "app.application.agent.nodes.multi_agent._get_planner_llm",
+        "app.agents.writer.graph._get_planner_llm",
         lambda: fake_llm,
     )
     monkeypatch.setattr(
-        "app.application.agent.nodes.multi_agent.generate_plan",
+        "app.agents.orchestrator.graph.generate_plan",
         AsyncMock(return_value=_mock_plan()),
     )
     # mock execute_task_plan 避免真实 LLM
     async def fake_exec(plan):
         return {t.task_id: f"r-{t.task_id}" for t in plan.tasks}
     monkeypatch.setattr(
-        "app.application.task_planner_service.execute_task_plan",
+        "app.services.planning_service.execute_task_plan",
         fake_exec,
     )
     # mock 统一创作评审，首轮达标时不会触发重写
@@ -165,12 +166,12 @@ async def test_run_multi_agent_plan_end_to_end(monkeypatch):
             summary="已达标",
         )
     monkeypatch.setattr(
-        "app.application.agent.nodes.multi_agent.evaluate_content",
+        "app.agents.reviewer.graph.evaluate_content",
         fake_evaluate,
     )
     # mock memory
     monkeypatch.setattr(
-        "app.application.memory_service.extract_memories",
+        "app.services.memory.service.extract_memories",
         AsyncMock(return_value=[]),
     )
 

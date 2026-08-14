@@ -4,8 +4,8 @@ import asyncio
 from typing import Sequence
 
 from ...config.loader import get_settings
-from ...domain.ports import CollectorPort
-from ...models import QuestionItem, Topic, WorkflowConfig
+from app.contracts.ports import CollectorPort
+from app.api.schemas.workflow import QuestionItem, Topic, WorkflowConfig
 from ...services.xiaohongshu_service import (
     ensure_usable_xiaohongshu_page,
     ensure_xiaohongshu_cookie,

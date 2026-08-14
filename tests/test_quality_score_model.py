@@ -11,8 +11,8 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
-from app.persistence.models.quality_scores import QualityScoreModel
-from app.persistence.session import get_session_factory
+from app.infrastructure.database.models.quality_scores import QualityScoreModel
+from app.infrastructure.database.session import get_session_factory
 
 
 def test_quality_score_model_fields():

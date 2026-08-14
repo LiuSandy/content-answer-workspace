@@ -6,8 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ..core.config import OUTPUT_DIR
-from ..models import SessionPayload, WorkflowResult
+from app.config.runtime import OUTPUT_DIR
+from app.api.schemas.workflow import SessionPayload, WorkflowResult
 
 SESSIONS_DIR = OUTPUT_DIR / "sessions"
 

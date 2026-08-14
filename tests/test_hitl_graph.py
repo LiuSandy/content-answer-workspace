@@ -12,7 +12,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
-from app.application.agent.graphs.conversation import build_chat_agent_graph
+from app.agents.chat.graph import build_chat_agent_graph
 
 
 def _tool_msg(content: str) -> ToolMessage:
@@ -30,14 +30,14 @@ def graph(monkeypatch):
     fake_registry = MagicMock()
     fake_registry.get.return_value = fake_provider
     monkeypatch.setattr(
-        "app.application.agent.nodes.route_intent.llm_provider_registry", fake_registry
+        "app.agents.chat.nodes.route_intent.llm_provider_registry", fake_registry
     )
     monkeypatch.setattr(
-        "app.application.agent.nodes.route_intent.prompt_registry",
+        "app.agents.chat.nodes.route_intent.prompt_registry",
         MagicMock(render=MagicMock(return_value=fake_rendered)),
     )
     monkeypatch.setattr(
-        "app.application.memory_service.retrieve_memories", AsyncMock(return_value=[])
+        "app.services.memory.service.retrieve_memories", AsyncMock(return_value=[])
     )
     return build_chat_agent_graph(MemorySaver())
 
@@ -96,7 +96,7 @@ async def test_graph_native_interrupt_resumes_without_repeating_tool(graph, monk
             # 第二次调用：直接回复
             return AIMessage(content="done")
 
-    from app.application.agent.nodes import chat_node as chat_mod
+    from app.agents.chat.nodes import chat as chat_mod
     monkeypatch.setattr(chat_mod, "_get_chat_llm", lambda: FakeLLM())
     monkeypatch.setattr(chat_mod, "_llm", FakeLLM(), raising=False)
 
@@ -107,7 +107,7 @@ async def test_graph_native_interrupt_resumes_without_repeating_tool(graph, monk
         tool_calls["n"] += 1
         return yaml_payload
     monkeypatch.setattr(
-        "app.application.agent.tools.xiaohongshu_tool._run",
+        "app.agents.researcher.tools.xiaohongshu_tool._run",
         fake_run,
     )
 
@@ -138,7 +138,7 @@ async def test_graph_normal_chat_no_hitl(graph, monkeypatch):
             calls["n"] += 1
             return AIMessage(content="普通回答")
 
-    from app.application.agent.nodes import chat_node as chat_mod
+    from app.agents.chat.nodes import chat as chat_mod
     monkeypatch.setattr(chat_mod, "_get_chat_llm", lambda: FakeLLM())
     monkeypatch.setattr(chat_mod, "_llm", FakeLLM(), raising=False)
 

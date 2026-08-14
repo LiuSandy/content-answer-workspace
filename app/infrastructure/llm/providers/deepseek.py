@@ -7,7 +7,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from ....domain.dto import LLMMessage, LLMRequest, LLMResponse, LLMStreamEvent
+from app.contracts.dto import LLMMessage, LLMRequest, LLMResponse, LLMStreamEvent
 
 
 class DeepSeekProvider:
