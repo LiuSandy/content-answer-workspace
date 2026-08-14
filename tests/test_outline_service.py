@@ -6,6 +6,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
@@ -25,6 +26,20 @@ def _c(type_, compiler, **kw):
 
 async def _make_db():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    return async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession), engine
+
+
+async def _make_fk_db():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _enable_foreign_keys(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     return async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession), engine
@@ -74,6 +89,25 @@ async def test_generate_produces_viewpoint_and_outline(monkeypatch):
         assert result.viewpoint_questions == ["偏好什么风格？"]
         assert len(result.outline) == 1
         assert result.outline[0]["heading"] == "开场"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_generate_persists_operation_before_linking_document(monkeypatch):
+    db, engine = await _make_fk_db()
+    doc_id, si_id, lv = await _setup_doc(db)
+    fake_llm = _mock_outline_llm()
+    monkeypatch.setattr("app.services.llm_service.DeepSeekLLMAdapter", lambda: fake_llm)
+
+    async with db() as session:
+        result = await OutlineService(session).generate(doc_id, si_id, "default", lv)
+        operation_id = uuid.UUID(result.operation_id)
+        document = await session.get(AnswerDocument, doc_id)
+        operation = await session.get(AIOperation, operation_id)
+
+        assert operation is not None
+        assert document.current_outline_operation_id == operation_id
 
     await engine.dispose()
 
