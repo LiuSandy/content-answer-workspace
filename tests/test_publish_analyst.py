@@ -73,7 +73,7 @@ async def test_sufficient_data_generates_report(monkeypatch):
     llm = MagicMock()
     llm.analyze = AsyncMock(return_value="表现良好，建议继续深耕该话题。")
     monkeypatch.setattr(
-        "app.services.llm_service.DeepSeekLLMAdapter", lambda: llm
+        "app.services.llm_service.LLMServiceAdapter", lambda: llm
     )
 
     db, engine = await _make_db()
@@ -112,7 +112,7 @@ async def test_llm_failure_still_returns_report(monkeypatch):
     llm = MagicMock()
     llm.analyze = AsyncMock(side_effect=Exception("LLM down"))
     monkeypatch.setattr(
-        "app.services.llm_service.DeepSeekLLMAdapter", lambda: llm
+        "app.services.llm_service.LLMServiceAdapter", lambda: llm
     )
 
     db, engine = await _make_db()

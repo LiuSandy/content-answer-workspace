@@ -73,7 +73,7 @@ async def route_intent_node(state: ChatAgentState) -> dict:
             user_message=message,
             extracted_urls=str(urls),
         )
-        provider = llm_provider_registry.get("deepseek")
+        provider = llm_provider_registry.get_default()
         structured = await generate_structured(
             provider=provider,
             request=rendered.to_llm_request(),

@@ -4,7 +4,7 @@ from functools import partial
 
 from langgraph.graph import END, START, StateGraph
 
-from app.services.llm_service import DeepSeekLLMAdapter
+from app.services.llm_service import LLMServiceAdapter
 from .nodes import finalize_draft_node, generate_draft_node, prepare_prompt_node
 from .nodes.apply_instruction import apply_instruction_node
 from .nodes.fetch_answer import fetch_answer_node
@@ -47,7 +47,7 @@ async def writing_agent_node(state: MultiAgentState) -> dict:
 
 def build_refinement_graph(session_svc: SessionServicePort):
     """构建回答精修 Graph；每次请求创建新实例，绑定请求级 session adapter。"""
-    llm = DeepSeekLLMAdapter()
+    llm = LLMServiceAdapter()
 
     graph: StateGraph = StateGraph(AgentState)
     graph.add_node("fetch_answer", partial(fetch_answer_node, session_svc=session_svc))

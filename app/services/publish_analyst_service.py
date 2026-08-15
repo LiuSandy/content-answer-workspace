@@ -88,7 +88,7 @@ class PublishAnalystService:
 
     async def _llm_analyze(self, title: str, summary: dict) -> str:
         from ..prompts.registry import prompt_registry
-        from app.services.llm_service import DeepSeekLLMAdapter
+        from app.services.llm_service import LLMServiceAdapter
 
         rendered = prompt_registry.render(
             "analysis.publish_performance",
@@ -98,7 +98,7 @@ class PublishAnalystService:
             engagement=str(summary["engagementRate"]),
             days=str(summary["daysTracked"]),
         )
-        llm = DeepSeekLLMAdapter()
+        llm = LLMServiceAdapter()
         raw = await llm.analyze(
             rendered.messages[0].content if rendered.messages else "",
             rendered.messages[1].content if len(rendered.messages) > 1 else "",

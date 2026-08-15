@@ -1,19 +1,11 @@
 from __future__ import annotations
 
-from openai import OpenAI
-
 from app.services.llm.answer_generator import AnswerGenerationService
 from app.api.schemas.workflow import QuestionItem
 from .image_service import GeneratedImagePayload, ImageGenerationService
 
 _answer_generator = AnswerGenerationService()
 _image_generation_service = ImageGenerationService()
-
-
-def get_openai_client() -> OpenAI:
-    """返回 DeepSeek 的 OpenAI 兼容客户端；这样旧函数名可以兼容现有导入同时复用新适配器。"""
-
-    return _answer_generator.get_client()
 
 
 async def generate_answer(

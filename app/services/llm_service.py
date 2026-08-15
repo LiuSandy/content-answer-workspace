@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import os
-
 from pydantic import BaseModel
 
 from app.contracts.dto import LLMMessage, LLMRequest, StructuredResult
 from app.services.llm.answer_generator import AnswerGenerationService
 
 
-class DeepSeekLLMAdapter:
+class LLMServiceAdapter:
     """将统一回答生成服务适配为历史 LLMClientPort。"""
 
     def __init__(self) -> None:
@@ -47,13 +45,13 @@ class DeepSeekLLMAdapter:
         from app.infrastructure.llm.registry import llm_provider_registry
         from app.services.llm.structured_output import generate_structured as _run
 
-        provider = llm_provider_registry.get("deepseek")
+        provider = llm_provider_registry.get_default()
         request = LLMRequest(
             messages=[
                 LLMMessage(role="system", content=system_prompt),
                 LLMMessage(role="user", content=user_prompt),
             ],
-            model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro"),
+            model=provider.default_model,
             temperature=0.1,
             max_tokens=4096,
         )

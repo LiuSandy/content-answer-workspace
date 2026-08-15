@@ -366,8 +366,8 @@ class OutlineService:
         system_prompt = msgs[0].content if msgs else ""
         user_prompt = msgs[1].content if len(msgs) > 1 else ""
 
-        from app.services.llm_service import DeepSeekLLMAdapter
-        llm = DeepSeekLLMAdapter()
+        from app.services.llm_service import LLMServiceAdapter
+        llm = LLMServiceAdapter()
         raw = await llm.analyze(system_prompt, user_prompt)
         result = self._parse_outline_json(raw)
         return result.get("viewpointQuestions"), result.get("outline") or []

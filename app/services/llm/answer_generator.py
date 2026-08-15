@@ -4,7 +4,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from app.api.schemas.workflow import QuestionItem
-from app.config.runtime import get_required_env
 from app.contracts.dto import LLMMessage, LLMRequest
 from app.contracts.ports import AnswerGeneratorPort, LLMProvider
 from app.infrastructure.llm.registry import llm_provider_registry
@@ -30,7 +29,7 @@ class AnswerGenerationService(AnswerGeneratorPort):
     ) -> LLMRequest:
         return LLMRequest(
             messages=messages,
-            model=model or get_required_env("DEEPSEEK_MODEL"),
+            model=model or self._get_provider().default_model,
             temperature=temperature,
             max_tokens=max_tokens,
         )

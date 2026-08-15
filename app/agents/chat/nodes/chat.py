@@ -1,26 +1,21 @@
 """普通对话节点：进行普通多轮对话。"""
 from __future__ import annotations
 
-import os
+from typing import Any
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_openai import ChatOpenAI
 
 from ....prompts.registry import prompt_registry
+from app.infrastructure.llm.langchain import get_chat_model
 from app.services.context.composer import ContextComposer, SimpleContextProfile
 from app.state import ChatAgentState
 
 from app.agents._shared.tools import ALL_TOOLS
 
 
-def _get_chat_llm() -> ChatOpenAI:
-    llm = ChatOpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip().rstrip("/"),
-        model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro"),
-        streaming=True,
-    )
-    # 绑定对话中支持的工具
-    return llm.bind_tools(ALL_TOOLS)
+def _get_chat_llm() -> Any:
+    """获取统一模型，并在 Chat Agent 边界绑定本节点需要的工具。"""
+    return get_chat_model().bind_tools(ALL_TOOLS)
 
 
 def _resolve_context_profile() -> SimpleContextProfile:
@@ -137,14 +132,8 @@ def _bound_messages(raw_messages: list, system_content: str, summary: str | None
     return [SystemMessage(content=system_content)] + final, meta
 
 
-_llm: ChatOpenAI | None = None
-
-
-async def chat_node(state: ChatAgentState) -> dict:
-    global _llm
-    if _llm is None:
-        _llm = _get_chat_llm()
-
+async def chat_node(state: ChatAgentState, *, llm: Any | None = None) -> dict:
+    llm = llm or _get_chat_llm()
     # 从 Prompt Registry 加载系统 Prompt
     try:
         rendered = prompt_registry.render("chat.system")
@@ -178,5 +167,5 @@ async def chat_node(state: ChatAgentState) -> dict:
         )
 
     messages, composer_meta = _bound_messages(list(state.get("messages", [])), system_content, branch_summary)
-    response = await _llm.ainvoke(messages)
+    response = await llm.ainvoke(messages)
     return {"messages": [response], "composer_meta": composer_meta}

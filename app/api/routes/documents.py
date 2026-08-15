@@ -42,9 +42,9 @@ router = APIRouter(prefix="", tags=["documents"])
 
 async def _rewrite_creation_draft(content: str, instruction: str) -> str:
     """按评审指令重写内存草稿，不创建 AnswerVersion。"""
-    from app.services.llm_service import DeepSeekLLMAdapter
+    from app.services.llm_service import LLMServiceAdapter
 
-    return await DeepSeekLLMAdapter().refine(
+    return await LLMServiceAdapter().refine(
         instruction="保留已正确内容，只修复评审指出的问题。\n" + instruction,
         current_answer=content,
     )

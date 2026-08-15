@@ -80,7 +80,7 @@ async def run_writer_stream(
     if defer_version and capture is None:
         raise ValueError("capture is required when defer_version=True")
 
-    provider = llm_provider_registry.get("deepseek")
+    provider = llm_provider_registry.get_default()
 
     system_text = next(
         (m.content for m in rendered.to_llm_request().messages if m.role == "system"),

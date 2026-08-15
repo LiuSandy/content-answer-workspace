@@ -11,7 +11,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.services.llm_service import DeepSeekLLMAdapter
+from app.services.llm_service import LLMServiceAdapter
 from app.contracts.dto import (
     ConversationSummary,
     IntentRoute,
@@ -41,6 +41,8 @@ class _Resp:
 
 class _FakeProvider:
     """顺序返回内容的 fake provider；耗尽后返回空串。"""
+
+    default_model = "deepseek-test"
 
     def __init__(self, contents: list[str]) -> None:
         self._contents = list(contents)
@@ -358,7 +360,7 @@ def test_deepseek_profiles_do_not_assume_native_json_schema():
         )
 
 
-# ── DeepSeekLLMAdapter 公共入口 ──────────────────────────────────────────
+# ── LLMServiceAdapter 公共入口 ──────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_adapter_generate_structured_returns_metadata(monkeypatch):
@@ -370,7 +372,7 @@ async def test_adapter_generate_structured_returns_metadata(monkeypatch):
     ])
     monkeypatch.setattr(llm_provider_registry, "get", lambda key: provider)
 
-    adapter = DeepSeekLLMAdapter()
+    adapter = LLMServiceAdapter()
     result = await adapter.generate_structured(
         schema=IntentRoute,
         system_prompt="sys",

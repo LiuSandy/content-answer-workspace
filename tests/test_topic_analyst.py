@@ -49,7 +49,7 @@ async def test_evaluate_top_n_scores_opportunities(monkeypatch):
 
     llm = _mock_llm()
     monkeypatch.setattr(
-        "app.services.llm_service.DeepSeekLLMAdapter", lambda: llm
+        "app.services.llm_service.LLMServiceAdapter", lambda: llm
     )
     monkeypatch.setattr(
         "app.services.topic_analyst_service.TopicAnalystService._get_active_memories",
@@ -81,7 +81,7 @@ async def test_evaluate_failure_preserves_rule_score(monkeypatch):
     llm = MagicMock()
     llm.generate_structured = AsyncMock(side_effect=Exception("LLM down"))
     monkeypatch.setattr(
-        "app.services.llm_service.DeepSeekLLMAdapter", lambda: llm
+        "app.services.llm_service.LLMServiceAdapter", lambda: llm
     )
     monkeypatch.setattr(
         "app.services.topic_analyst_service.TopicAnalystService._get_active_memories",
