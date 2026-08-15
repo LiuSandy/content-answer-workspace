@@ -92,7 +92,7 @@ class TopicAnalystService:
         self, title: str, tags: list[str], memories: list[dict]
     ) -> tuple[float, str, str]:
         from ..prompts.registry import prompt_registry
-        from app.services.llm_service import DeepSeekLLMAdapter
+        from app.services.llm_service import LLMServiceAdapter
 
         mem_list = "\n".join(
             f"- {m.get('content')}" for m in memories[:5]
@@ -104,7 +104,7 @@ class TopicAnalystService:
             interest_tags=json.dumps(tags, ensure_ascii=False),
             user_memories=mem_list,
         )
-        llm = DeepSeekLLMAdapter()
+        llm = LLMServiceAdapter()
         raw = await llm.generate_structured(
             rendered.to_llm_request(),
         ) or ""

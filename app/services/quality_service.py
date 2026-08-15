@@ -37,9 +37,9 @@ if TYPE_CHECKING:
 
 def _get_llm():
     """延迟导入避免循环引用；测试可 monkeypatch 本函数注入 mock。"""
-    from app.services.llm_service import DeepSeekLLMAdapter
+    from app.services.llm_service import LLMServiceAdapter
 
-    return DeepSeekLLMAdapter()
+    return LLMServiceAdapter()
 
 
 class QualityReviewError(Exception):

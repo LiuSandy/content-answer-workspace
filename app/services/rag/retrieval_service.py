@@ -175,7 +175,7 @@ class KnowledgeRetrievalService:
         """
         try:
             rendered = prompt_registry.render("knowledge.query_rewrite", query=query)
-            provider = llm_provider_registry.get("deepseek")
+            provider = llm_provider_registry.get_default()
             request = LLMRequest(
                 messages=rendered.messages,
                 model=rendered.model,

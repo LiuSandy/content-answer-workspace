@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 
-from app.config.runtime import get_required_env
 from app.contracts.dto import LLMMessage, LLMRequest
 from app.contracts.ports import LLMProvider
 from app.infrastructure.llm.registry import llm_provider_registry
@@ -19,11 +18,12 @@ class LLMExtractor:
         return self._provider or llm_provider_registry.get_default()
 
     async def extract(self, text: str, prompt: str) -> list[dict[str, str]]:
+        provider = self._get_provider()
         system = "你只返回 JSON 数组，不要任何额外说明。数组为空时返回 []。"
         user = f"{prompt}\n\n---\n{text}"
-        response = await self._get_provider().generate(
+        response = await provider.generate(
             LLMRequest(
-                model=get_required_env("DEEPSEEK_MODEL"),
+                model=provider.default_model,
                 messages=[
                     LLMMessage(role="system", content=system),
                     LLMMessage(role="user", content=user),

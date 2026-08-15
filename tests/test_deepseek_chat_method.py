@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from app.contracts.dto import LLMResponse
 from app.services.llm.answer_generator import AnswerGenerationService
@@ -12,17 +12,17 @@ class DeepSeekChatMethodTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_chat_passes_messages_through_and_returns_content(self) -> None:
         provider = MagicMock()
+        provider.default_model = "model-x"
         provider.generate = AsyncMock(
             return_value=LLMResponse(content="你好，我能帮你梳理选题思路。")
         )
         generator = AnswerGenerationService(provider=provider)
 
-        with patch("app.services.llm.answer_generator.get_required_env", return_value="model-x"):
-            messages = [
-                {"role": "system", "content": "你是内容策略助手"},
-                {"role": "user", "content": "帮我想几个选题"},
-            ]
-            reply = await generator.chat(messages)
+        messages = [
+            {"role": "system", "content": "你是内容策略助手"},
+            {"role": "user", "content": "帮我想几个选题"},
+        ]
+        reply = await generator.chat(messages)
 
         self.assertEqual(reply, "你好，我能帮你梳理选题思路。")
         request = provider.generate.await_args.args[0]
@@ -31,12 +31,12 @@ class DeepSeekChatMethodTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_chat_raises_when_content_empty(self) -> None:
         provider = MagicMock()
+        provider.default_model = "model-x"
         provider.generate = AsyncMock(return_value=LLMResponse(content=""))
         generator = AnswerGenerationService(provider=provider)
 
-        with patch("app.services.llm.answer_generator.get_required_env", return_value="model-x"):
-            with self.assertRaises(ValueError):
-                await generator.chat([{"role": "user", "content": "hi"}])
+        with self.assertRaises(ValueError):
+            await generator.chat([{"role": "user", "content": "hi"}])
 
 
 if __name__ == "__main__":

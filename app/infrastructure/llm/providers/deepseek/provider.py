@@ -7,6 +7,7 @@ from typing import Any
 from app.contracts.dto import LLMMessage, LLMRequest, LLMResponse, LLMStreamEvent
 
 from .client import DeepSeekClient
+from .settings import DeepSeekSettings, load_deepseek_settings
 
 
 class DeepSeekProvider:
@@ -20,8 +21,27 @@ class DeepSeekProvider:
         api_key: str | None = None,
         base_url: str | None = None,
         client: DeepSeekClient | None = None,
+        settings: DeepSeekSettings | None = None,
     ) -> None:
-        self._client = client or DeepSeekClient(api_key=api_key, base_url=base_url)
+        self._settings = settings or load_deepseek_settings()
+        self._client = client or DeepSeekClient(
+            api_key=api_key,
+            base_url=base_url,
+            settings=self._settings,
+        )
+
+    @property
+    def default_model(self) -> str:
+        return self._settings.model
+
+    def model_for(self, purpose: str | None = None) -> str:
+        if purpose == "topic_expansion":
+            return self._settings.topic_expansion_model
+        return self._settings.model
+
+    def get_langchain_chat_model(self) -> Any:
+        """Return the reusable unbound LangChain model."""
+        return self._client.get_langchain_chat_model()
 
     def _to_openai_messages(self, messages: list[LLMMessage]) -> list[dict[str, Any]]:
         return [{"role": message.role, "content": message.content} for message in messages]

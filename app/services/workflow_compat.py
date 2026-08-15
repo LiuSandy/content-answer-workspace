@@ -14,7 +14,7 @@ from app.config.runtime import (
     load_env_file,
     parse_positive_int,
 )
-from .answer_service import generate_answer, get_openai_client
+from .answer_service import generate_answer
 from .session_service import read_latest_session, save_workflow_result
 from .zhihu_service import (
     build_keyword_hints,

@@ -68,6 +68,7 @@ class LLMProvider(Protocol):
     """
 
     key: str  # 供应商唯一标识，如 "deepseek" / "openai"
+    default_model: str
 
     # 声明结构化输出能力（roadmap R1）：不支持原生 json_schema 的兼容端点
     # 不得声明它；结构化生成从声明的最高优先级方法开始，不做异常探测。
@@ -81,9 +82,13 @@ class LLMProvider(Protocol):
         """流式生成回复；适用于聊天和长文本生成场景。"""
         ...
 
+    def model_for(self, purpose: str | None = None) -> str:
+        """返回默认模型，或指定用途的模型覆盖。"""
+        ...
+
 
 class StructuredGenerationPort(Protocol):
-    """结构化输出公共入口；实现类（DeepSeekLLMAdapter）供质检/选题/记忆/摘要共用。
+    """结构化输出公共入口；实现类（LLMServiceAdapter）供质检/选题/记忆/摘要共用。
 
     调用方拿到 StructuredResult 后，把 method_used/attempts/degradation_reason
     审计到各自 AIOperation.model_parameters。
@@ -164,4 +169,3 @@ class EmbeddingProviderPort(Protocol):
 class RerankerProviderPort(Protocol):
     """Reranker 重排序端口。"""
     async def rerank(self, query: str, documents: list[str]) -> list[float]: ...
-

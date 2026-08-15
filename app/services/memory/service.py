@@ -55,8 +55,8 @@ def _memory_vector_search_sql():
 
 
 def _get_memory_llm():
-    from app.services.llm_service import DeepSeekLLMAdapter
-    return DeepSeekLLMAdapter()
+    from app.services.llm_service import LLMServiceAdapter
+    return LLMServiceAdapter()
 
 
 def _get_embedding_provider():

@@ -61,7 +61,7 @@ async def _setup(db, monkeypatch):
     fake_llm = MagicMock()
     fake_llm.analyze = AsyncMock(return_value=json.dumps(data, ensure_ascii=False))
     monkeypatch.setattr(
-        "app.services.llm_service.DeepSeekLLMAdapter", lambda: fake_llm
+        "app.services.llm_service.LLMServiceAdapter", lambda: fake_llm
     )
     return did, sid, lv
 

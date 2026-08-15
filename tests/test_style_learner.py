@@ -51,7 +51,7 @@ async def test_learn_style_ai_to_manual(monkeypatch):
         {"content": "偏好短句", "confidence": 0.85},
     ]))
     monkeypatch.setattr(
-        "app.services.llm_service.DeepSeekLLMAdapter",
+        "app.services.llm_service.LLMServiceAdapter",
         lambda: llm,
     )
 
@@ -96,7 +96,7 @@ async def test_idempotent_skip(monkeypatch):
     llm = MagicMock()
     llm.analyze = AsyncMock(return_value=json.dumps([{"content": "风格A"}]))
     monkeypatch.setattr(
-        "app.services.llm_service.DeepSeekLLMAdapter",
+        "app.services.llm_service.LLMServiceAdapter",
         lambda: llm,
     )
 

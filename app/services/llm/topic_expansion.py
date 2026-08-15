@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 
 from app.api.schemas.workflow import Topic
-from app.config.runtime import get_required_env
 from app.contracts.dto import LLMMessage, LLMRequest
 from app.contracts.ports import LLMProvider, TopicExpanderPort
 from app.infrastructure.llm.registry import llm_provider_registry
@@ -22,10 +20,8 @@ class TopicExpansionService(TopicExpanderPort):
         return self._provider or llm_provider_registry.get_default()
 
     async def expand_topic(self, topic: Topic, limit: int = 6) -> list[str]:
-        model = (
-            os.getenv("DEEPSEEK_TOPIC_EXPANSION_MODEL", "").strip()
-            or get_required_env("DEEPSEEK_MODEL")
-        )
+        provider = self._get_provider()
+        model = provider.model_for("topic_expansion")
         seed_keywords = "、".join(
             keyword for keyword in topic.keywords if keyword.strip()
         ) or "无"
@@ -44,7 +40,7 @@ class TopicExpansionService(TopicExpanderPort):
                 f"已有关键词：{seed_keywords}",
             ]
         )
-        response = await self._get_provider().generate(
+        response = await provider.generate(
             LLMRequest(
                 model=model,
                 messages=[

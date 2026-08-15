@@ -95,13 +95,13 @@ def _diff_text(before: str, after: str) -> str:
 
 async def _extract_rules(diff_text: str) -> list[dict]:
     from ...prompts.registry import prompt_registry
-    from app.services.llm_service import DeepSeekLLMAdapter
+    from app.services.llm_service import LLMServiceAdapter
 
     rendered = prompt_registry.render(
         "analysis.style_rules",
         diff_text=diff_text,
     )
-    llm = DeepSeekLLMAdapter()
+    llm = LLMServiceAdapter()
     raw = await llm.analyze(
         rendered.messages[0].content,
         rendered.messages[1].content if len(rendered.messages) > 1 else "",

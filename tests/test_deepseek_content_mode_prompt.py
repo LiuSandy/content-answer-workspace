@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from app.api.schemas.workflow import QuestionItem
 from app.contracts.dto import LLMResponse
@@ -28,11 +28,11 @@ class DeepSeekContentModePromptTests(unittest.IsolatedAsyncioTestCase):
             contentMode="imitate",
         )
         provider = MagicMock()
+        provider.default_model = "model-x"
         provider.generate = AsyncMock(return_value=LLMResponse(content="生成的笔记"))
         generator = AnswerGenerationService(provider=provider)
 
-        with patch("app.services.llm.answer_generator.get_required_env", return_value="model-x"):
-            await generator.generate_answer(item, "活泼", "", "system", "generation")
+        await generator.generate_answer(item, "活泼", "", "system", "generation")
 
         request = provider.generate.await_args.args[0]
         sent_prompt = request.messages[1].content
@@ -42,11 +42,11 @@ class DeepSeekContentModePromptTests(unittest.IsolatedAsyncioTestCase):
     async def test_generate_answer_keeps_existing_answer_prompt_by_default(self) -> None:
         item = QuestionItem(id="2", title="知乎问题示例", url="https://www.zhihu.com/question/2", topic="测试")
         provider = MagicMock()
+        provider.default_model = "model-x"
         provider.generate = AsyncMock(return_value=LLMResponse(content="生成的回答"))
         generator = AnswerGenerationService(provider=provider)
 
-        with patch("app.services.llm.answer_generator.get_required_env", return_value="model-x"):
-            await generator.generate_answer(item, "简洁", "", "system", "generation")
+        await generator.generate_answer(item, "简洁", "", "system", "generation")
 
         request = provider.generate.await_args.args[0]
         sent_prompt = request.messages[1].content
@@ -62,11 +62,11 @@ class DeepSeekContentModePromptTests(unittest.IsolatedAsyncioTestCase):
             contentMode="imitate",
         )
         provider = MagicMock()
+        provider.default_model = "model-x"
         provider.generate = AsyncMock(return_value=LLMResponse(content="润色后的笔记"))
         generator = AnswerGenerationService(provider=provider)
 
-        with patch("app.services.llm.answer_generator.get_required_env", return_value="model-x"):
-            await generator.polish_answer(item, "草稿内容", "活泼", "", "system", "generation")
+        await generator.polish_answer(item, "草稿内容", "活泼", "", "system", "generation")
 
         request = provider.generate.await_args.args[0]
         sent_prompt = request.messages[1].content

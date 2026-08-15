@@ -101,8 +101,8 @@ def _validate_dag(tasks: list[SubTask], task_ids: set[str]) -> None:
 
 
 def _get_planner_llm():
-    from app.services.llm_service import DeepSeekLLMAdapter
-    return DeepSeekLLMAdapter()
+    from app.services.llm_service import LLMServiceAdapter
+    return LLMServiceAdapter()
 
 
 async def generate_plan(goal: str) -> TaskPlan:
