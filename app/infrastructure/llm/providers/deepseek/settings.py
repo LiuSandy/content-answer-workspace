@@ -18,11 +18,20 @@ class DeepSeekSettings:
 
     @classmethod
     def from_env(cls) -> "DeepSeekSettings":
+        api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+        if not api_key:
+            try:
+                from app.config.runtime import load_env_file
+                load_env_file()
+                api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+            except Exception:
+                pass
+
         model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro").strip()
         if not model:
             model = "deepseek-v4-pro"
         return cls(
-            api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+            api_key=api_key,
             base_url=(
                 os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
                 .strip()
@@ -42,4 +51,9 @@ def load_deepseek_settings() -> DeepSeekSettings:
     runtime lifecycle, while tests may construct isolated providers with
     different environment values.
     """
+    try:
+        from app.config.runtime import load_env_file
+        load_env_file()
+    except Exception:
+        pass
     return DeepSeekSettings.from_env()

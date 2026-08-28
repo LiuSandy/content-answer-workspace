@@ -6,6 +6,10 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+# 确保在导入任何业务路由、Agent 图或单例模块之前最优先加载 .env，
+# 保证所有模块在 import 时即可拿到完整环境变量
+from app.config.runtime import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
+load_env_file()
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
@@ -24,9 +28,8 @@ from .api.routes.task_plans import router as task_plans_router
 from .api.routes.memories import router as memories_router
 from .api.routes.multi_agent import router as multi_agent_router
 from .api.routes.publishing import router as publishing_router
-from .graph import build_conversation_graph
+from .graph import build_chat_agent_graph, writer_graph
 from .config.loader import warmup as warmup_config
-from app.config.runtime import GENERATED_IMAGES_DIR, OUTPUT_DIR, load_env_file
 from sqlalchemy.exc import DBAPIError
 from app.contracts.errors import AppError, DocumentConflictError
 from .prompts.registry import warmup as warmup_prompts
@@ -84,7 +87,11 @@ async def lifespan(app: FastAPI):
     CONVERSATION_CHECKPOINT_DB.parent.mkdir(parents=True, exist_ok=True)
     async with AsyncSqliteSaver.from_conn_string(str(CONVERSATION_CHECKPOINT_DB)) as checkpointer:
         checkpointer.serde = serde
-        app.state.conversation_graph = build_conversation_graph(checkpointer)
+        app.state.writer_graph = writer_graph
+        app.state.conversation_graph = build_chat_agent_graph(
+            checkpointer,
+            writer_graph=app.state.writer_graph,
+        )
         # Agent 运行期依赖：每 chat 并发锁 + 可注入的 session 工厂（测试可替换）
         from app.agents._shared.runtime import ChatRuntime
         from app.infrastructure.database.session import get_session_factory
