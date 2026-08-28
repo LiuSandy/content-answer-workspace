@@ -10,6 +10,7 @@ from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.streaming.sse import sse_named_event, make_sse_response
+from app.agents.writer.runtime import run_writer_plan
 
 router = APIRouter(prefix="/api/multi-agent", tags=["multi-agent"])
 
@@ -48,10 +49,8 @@ def _status_payload(run_id: str, state: dict | None) -> dict:
 @router.post("/run")
 async def run_multi_agent(req: RunMultiAgentRequest):
     """同步执行多 Agent 协作流，返回最终结果。用于简单测试 / 脚本调用。"""
-    from app.agents.orchestrator.graph import run_multi_agent_plan
-
     try:
-        state = await run_multi_agent_plan(req.goal, req.workspace_id)
+        state = await run_writer_plan(req.goal, req.workspace_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"multi-agent run failed: {e}")
 

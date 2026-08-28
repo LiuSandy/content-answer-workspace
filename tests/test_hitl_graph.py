@@ -107,7 +107,7 @@ async def test_graph_native_interrupt_resumes_without_repeating_tool(graph, monk
         tool_calls["n"] += 1
         return yaml_payload
     monkeypatch.setattr(
-        "app.agents.researcher.tools.xiaohongshu_tool._run",
+        "app.agents._shared.tools.xiaohongshu_tool._run",
         fake_run,
     )
 

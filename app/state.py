@@ -15,6 +15,10 @@ class ChatAgentState(TypedDict):
     user_message_id: str
     user_message: str
 
+    # ── Guard（所有业务节点之前执行）
+    guard_blocked: bool | None
+    guard_reason: str | None
+
     # ── 决策数据（节点间传递）
     messages: Annotated[list, add_messages]
     intent: Literal["chat", "parse_url", "collect", "task_plan", "multi_agent"] | None

@@ -179,7 +179,7 @@ async def test_generation_reviews_before_single_final_version(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_three_failed_rounds_persist_highest_not_latest(monkeypatch):
+async def test_twenty_failed_rounds_persist_highest_not_latest(monkeypatch):
     db, engine = await _make_db()
     source_id, document_id, lock_version = await _setup(db)
     events = await _post_generate(
@@ -187,8 +187,8 @@ async def test_three_failed_rounds_persist_highest_not_latest(monkeypatch):
         db,
         source_id,
         lock_version,
-        reports=[_report(70), _report(74), _report(71)],
-        rewrites={"draft-1": "draft-2", "draft-2": "draft-3"},
+        reports=[_report(70), _report(74), *[_report(71) for _ in range(18)]],
+        rewrites={f"draft-{i}": f"draft-{i + 1}" for i in range(1, 20)},
     )
 
     completed = next(data for name, data in events if name == "document.completed")

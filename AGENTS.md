@@ -1,24 +1,30 @@
 # AGENTS.md
 
-本文件是 Codex 在本仓库工作的快速指南。详细开发流程见
-`docs/development-workflow.md`。
+本文件是 AI 助手在本仓库工作的快速指南。代码库的完整分析（栈、结构、架构、
+集成、测试、风险）见 `docs/codebase/`。
 
 ## 项目概述
 
-本地内容工作台：从知乎、小红书等平台采集或导入问题，通过 LLM
-生成回答，在前端编辑、保存，并支持 Agent 对话、热榜分析和设置管理。
+本地内容工作台（Chat-first Agent 架构）：从知乎、小红书等平台采集或导入问题，
+通过多 Agent 协作生成回答，在前端 Tiptap 编辑器中编辑、保存，并支持对话分支、
+人工选择（HITL）、私有知识库 RAG、长期记忆和设置管理。
 
 技术栈：
 
-- 后端：Python 3.11+、FastAPI、uv、Pydantic v2、LangGraph、OpenAI-compatible LLM client
-- 前端：React 19、TypeScript、Vite、Tailwind CSS v4、Zustand、TanStack Query、React Router、bun
+- 后端：Python 3.11+、FastAPI、uv、Pydantic v2、SQLAlchemy 2.0 + Alembic、
+  PostgreSQL 16（ParadeDB 镜像，含 pgvector）、LangGraph、
+  DeepSeek（OpenAI 兼容，默认 provider）
+- 前端：React 19、TypeScript、Vite、Tailwind CSS v4（postcss 方案）、
+  Zustand、TanStack Query、React Router、Tiptap 3、bun
 
 ## 常用命令
 
 后端：
 
 ```bash
+docker-compose up -d            # 启动 PostgreSQL（首次必须）
 uv sync
+uv run alembic upgrade head     # 迁移（server 启动时也会自动迁移）
 uv run python -m app.server
 uv run pytest tests/
 ```
@@ -29,61 +35,84 @@ uv run pytest tests/
 bun install
 bun run dev
 bun run typecheck
+bun run test                    # bun:test 单元测试
 bun run build
 ```
 
 运行地址：
 
 - 后端：`http://127.0.0.1:8000`
-- 前端：`http://127.0.0.1:5173`
+- 前端：`http://127.0.0.1:5173`（路由：`/`、`/chat/:chatId`、`/knowledge`、`/settings`）
 - Vite dev server 会把 `/api/*` 代理到后端
 
 修改 `.ts` / `.tsx` 后至少运行 `bun run typecheck`。修改后端业务逻辑后优先运行相关
-`uv run pytest tests/<file>.py -v`。
+`uv run pytest tests/<file>.py -v`。多数 API 测试需要本地 PostgreSQL 在运行
+（`docker-compose up -d`）。
 
 ## 关键结构
 
 ```text
 app/
-├── server.py                  # FastAPI 入口、路由挂载、静态文件托管
-├── graph.py / state.py / context.py
-├── api/                       # routes、schemas、streaming
-├── agents/                    # 六个独立 Agent 及 _shared 公共能力
-├── services/                  # 平台、回答、会话、RAG、设置、热榜等业务服务
-├── infrastructure/            # database、collectors、llm、files、observability
-└── contracts/                 # DTO、Port、业务错误
+├── server.py                  # FastAPI 入口：路由挂载、静态托管、lifespan
+│                              # （自动迁移、SQLite checkpointer、scheduler、RAG ingestion）
+├── graph.py                   # re-export 门面；真实图在 agents/chat 与 agents/orchestrator
+├── context.py                 # 分支 checkpoint 续跑的输入组装
+├── cli.py                     # 命令行入口
+├── api/                       # routes/（11 个路由模块）、schemas/、streaming/sse.py
+├── agents/                    # chat、orchestrator、researcher、writer、reviewer、memory
+│                              # + _shared/（工具、安全、SSE 封装、共享 prompt）
+│                              # 除 memory（legacy 节点）外均为编译的 LangGraph 子图
+├── services/                  # workflow、answer、document、outline、quality、planning 等
+│                              # 用例编排 + rag/ memory/ llm/ context/ 子包
+├── infrastructure/            # database、collectors、llm（registry + providers/deepseek）、
+│                              # files、embeddings、rerankers、observability、scheduler
+├── contracts/                 # dto.py、ports.py（Protocol Port）、errors.py
+├── prompts/                   # Prompt 加载、校验与渲染
+├── evaluation/                # 检索评测 datasets/metrics/runners
+└── config/                    # loader、runtime、defaults/
 
 frontend/src/
-├── app/App.tsx
-├── features/workspace/        # 导入、采集、热榜、聊天、共享 workspace UI
-├── features/workbench/        # 工作台页面
+├── app/                       # App.tsx（路由）、providers.tsx（QueryClient 等）
+├── features/chat/             # 主工作区：三栏布局、Tiptap 编辑器、大纲、质检、版本
+├── features/knowledge/        # 知识库页与检索调试
 ├── features/settings/         # 设置页
-├── store/                     # workspace-store、workbench-store
+├── store/chat-store.ts        # 唯一 Zustand store
+├── lib/                       # api.ts（REST 信封封装）、sse.ts（流式客户端）
 ├── types/workflow.ts
-└── components/ui/
+└── components/ui/             # shadcn/ui 组件库
 ```
 
 ## 架构约定
 
 - 路由保持轻薄；采集、导入、生成、润色等编排放在 `WorkflowService` 或对应服务层。
-- Pydantic 模型使用 `alias="camelCase"` 和 `populate_by_name=True`；返回前端时使用 `model_dump(by_alias=True)`。
-- 新增后端字段时同步更新 `app/api/schemas/workflow.py`、`frontend/src/types/workflow.ts` 和相关测试。
-- API 响应保持 `{"ok": true, "data": ...}`；异常由后端统一包装为 `{"ok": false, "error": ...}`。
-- 不要在前端组件里直接写业务 `fetch`；通过 `workflow-api.ts`、settings API 或 feature 专属 API 层调用。
+- Pydantic 模型使用 `alias="camelCase"` 和 `populate_by_name=True`；返回前端时使用
+  `model_dump(by_alias=True)`。
+- 新增后端字段时同步更新 `app/api/schemas/workflow.py`、`frontend/src/types/workflow.ts`
+  和相关测试。
+- API 响应保持 `{"ok": true, "data": ...}`；异常由后端统一包装为
+  `{"ok": false, "error": ...}`。
+- 不要在前端组件里直接写业务 `fetch`；通过 `lib/api.ts`、`lib/sse.ts` 或
+  feature 专属 API 层（如 `settings-api.ts`）调用。
+- LLM 统一经 `app/infrastructure/llm/registry.py` 获取，默认 provider 为 deepseek
+  （`DEEPSEEK_*` 环境变量，见 `.env.example`）；不要在业务代码里直接构造 LLM 客户端。
+- Agent 子图失败只更新各自 `SubAgentState`，不抛到 orchestrator 父图；
+  不要吞掉 `asyncio.CancelledError`。
 
 ## 前端状态流
 
-Workspace 页面：
+服务端状态（会话列表、知识库、设置等）走 TanStack Query：
 
 ```text
-workflow-api.ts → use-workspace.ts → workspace-store.ts → workspace-shell.tsx
+feature API 层（settings-api.ts / knowledge-api.ts / quality-review-api.ts 等）
+  → feature hooks（use-settings.ts / use-knowledge.ts 等）
+  → 组件
 ```
 
-`useWorkspace()` 不是完整 store。`saveState`、`statusMessage`、`topicDraft` 等只存在于
-`useWorkspaceStore()`；需要这些字段的组件必须直接读 store。
+当前会话的轻量 UI 状态只在 `store/chat-store.ts`（`currentChatId`、
+`selectedSourceItemId`、`activeLeafMessageId`）。
 
-Workbench 页面使用独立的 `workbench-store.ts`。不要把工作台专属状态塞进
-`workspace-store.ts`。
+流式响应统一走 `lib/sse.ts` 的 `streamPost()`，SSE 事件由
+`app/api/streaming/sse.py` 产生。
 
 ## 平台扩展
 
@@ -106,9 +135,11 @@ Workbench 页面使用独立的 `workbench-store.ts`。不要把工作台专属�
 
 ## 文件与安全
 
-- 不提交 `.env`、cookie、SQLite checkpoint、生成图片、输出会话和缓存目录。
-- 可提交的默认配置在 `app/config/`；密钥只写 `.env.example` 的占位说明。
-- 回答配图输出到 `generated-images/`，Agent checkpoint 位于 `output/agent_checkpoints.sqlite`。
+- 不提交 `.env`、cookie（`.secrets/`、`.data/`）、SQLite checkpoint、生成图片、
+  输出会话和缓存目录。
+- 可提交的默认配置在 `app/config/defaults/`；密钥只写 `.env.example` 的占位说明。
+- 回答配图输出到 `generated-images/`，Agent checkpoint 位于
+  `output/agent_checkpoints.sqlite`，文件型会话位于 `output/sessions/`。
 
 ## 测试提示
 
@@ -116,8 +147,12 @@ Workbench 页面使用独立的 `workbench-store.ts`。不要把工作台专属�
 
 - URL 导入/知乎：`tests/test_zhihu_import.py`
 - 回答生成：`tests/test_answer_service.py`
-- 会话：`tests/test_session_service.py`
-- Agent：`tests/test_agent_chat_node.py`、`tests/test_conversation_graph.py`
+- 对话图/分支：`tests/test_conversation_graph_branches.py`、`tests/test_chat_branching.py`、
+  `tests/test_chat_checkpoint_resume.py`
+- Agent/多 Agent/HITL：`tests/test_multi_agent_graph.py`、`tests/test_hitl_graph.py`
 - 小红书/采集：`tests/test_xiaohongshu_collector.py`、`tests/test_playwright_fetcher.py`
+- LLM provider：`tests/test_llm_provider_architecture.py`、`tests/test_structured_output.py`
+- 知识库/RAG：`tests/knowledge/`；长期记忆：`tests/test_memory_service.py`
 
-有网络、真实 cookie、真实 LLM 依赖的路径尽量 mock 或小范围验证。无法完整验证时，在最终回复里说明原因。
+有网络、真实 cookie、真实 LLM 依赖的路径尽量 mock 或小范围验证。无法完整验证时，
+在最终回复里说明原因。

@@ -28,6 +28,30 @@ _VALID_MODES = {"off", "normal", "strict"}
 _MIN_CONFIDENCE = 0.6
 
 
+def _preprocess_intent_input(state: ChatAgentState) -> dict:
+    """在意图识别入口统一清理本轮状态并提取确定性信号。"""
+    message = state.get("user_message", "").strip()
+    return {
+        "extracted_urls": extract_urls(message),
+        "intent": None,
+        "intent_confidence": None,
+        "intent_reason": None,
+        "intent_platform": None,
+        "intent_query": None,
+        "intent_limit": None,
+        "intent_sort": None,
+        "platform_collect_result": None,
+        "tool_result": None,
+        "error": None,
+        "response_payload": None,
+        "collection_request": None,
+        "applied_memories": [],
+        "hitl_pending": False,
+        "hitl_choice": None,
+        "hitl_selection": state.get("hitl_selection"),
+    }
+
+
 def _default_result(message: str, existing_mode: str | None) -> dict:
     """保守兜底：默认普通对话。"""
     mode = existing_mode if existing_mode in _VALID_MODES else "normal"
@@ -43,7 +67,7 @@ def _default_result(message: str, existing_mode: str | None) -> dict:
     }
 
 
-async def route_intent_node(state: ChatAgentState) -> dict:
+async def _detect_intent(state: ChatAgentState) -> dict:
     message = state.get("user_message", "")
     existing_mode = state.get("knowledge_mode")
     if existing_mode not in _VALID_MODES:
@@ -67,7 +91,7 @@ async def route_intent_node(state: ChatAgentState) -> dict:
 
     # ── L1 LLM 层（规则未命中） ────────────────────────────────────────────
     try:
-        urls = extract_urls(message)
+        urls = state.get("extracted_urls") or []
         rendered = prompt_registry.render(
             "chat.intent_router",
             user_message=message,
@@ -140,3 +164,13 @@ async def route_intent_node(state: ChatAgentState) -> dict:
     except Exception as e:
         logger.warning("Intent routing failed, defaulting to chat: %s", e)
         return _default_result(message, existing_mode)
+
+
+async def route_intent_node(state: ChatAgentState) -> dict:
+    """完成输入预处理并识别意图，作为 Chat Graph 的单一意图入口。"""
+    preprocessed = _preprocess_intent_input(state)
+    routed = await _detect_intent({**state, **preprocessed})
+    return {**preprocessed, **routed}
+
+
+__all__ = ["route_intent_node"]

@@ -44,7 +44,22 @@ def graph(monkeypatch):
     monkeypatch.setattr(
         "app.services.memory.service.retrieve_memories", AsyncMock(return_value=[])
     )
-    return build_chat_agent_graph(MemorySaver())
+    fake_writer = MagicMock()
+    fake_writer.ainvoke = AsyncMock(
+        return_value={
+            "plan": SimpleNamespace(
+                plan_id="p1",
+                tasks=[SimpleNamespace(task_id=f"t{i}") for i in range(5)],
+            ),
+            "final_output": "多Agent最终成稿",
+            "draft": None,
+            "sub_agent_states": {
+                name: SimpleNamespace(status="done", error=None, result="ok")
+                for name in ("orchestrator", "research", "writing", "review", "memory")
+            },
+        }
+    )
+    return build_chat_agent_graph(MemorySaver(), writer_graph=fake_writer)
 
 
 def _base_state(message: str) -> dict:
@@ -76,9 +91,6 @@ def _base_state(message: str) -> dict:
 @pytest.mark.asyncio
 async def test_graph_routes_task_plan_intent(graph, monkeypatch):
     """route_intent 判定 task_plan 时，自动路由到 task_plan 节点执行。"""
-    from app.agents.orchestrator.nodes.task_plan import task_plan_node
-    from app.services.planning_service import TaskPlan, SubTask
-
     # mock route_intent LLM 返回 task_plan
     from app.agents.chat.nodes import route_intent as ri_mod
     fake_rendered = MagicMock()
@@ -90,19 +102,6 @@ async def test_graph_routes_task_plan_intent(graph, monkeypatch):
     fake_registry = MagicMock()
     fake_registry.get.return_value = fake_provider
     monkeypatch.setattr(ri_mod, "llm_provider_registry", fake_registry)
-
-    async def fake_gen(goal):
-        return TaskPlan(plan_id="p1", goal=goal, tasks=[SubTask("s1", "write", "w", [])])
-
-    async def fake_exec(plan):
-        return {"s1": "最终成稿"}
-
-    monkeypatch.setattr(
-        "app.agents.orchestrator.nodes.task_plan.generate_plan", fake_gen
-    )
-    monkeypatch.setattr(
-        "app.agents.orchestrator.nodes.task_plan.execute_task_plan", fake_exec
-    )
 
     final = await graph.ainvoke(
         _base_state("写一篇关于 RAG 的回答"),
@@ -126,19 +125,6 @@ async def test_graph_routes_multi_agent_intent(graph, monkeypatch):
     fake_registry = MagicMock()
     fake_registry.get.return_value = fake_provider
     monkeypatch.setattr(ri_mod, "llm_provider_registry", fake_registry)
-
-    class FakeMultiResult:
-        final_output = "多Agent最终成稿"
-        draft = None
-        sub_agent_states = {
-            name: SimpleNamespace(status="done", error=None, result="ok")
-            for name in ("orchestrator", "research", "writing", "review", "memory")
-        }
-
-    monkeypatch.setattr(
-        "app.agents.orchestrator.nodes.execute.run_multi_agent_plan",
-        AsyncMock(return_value=FakeMultiResult()),
-    )
 
     final = await graph.ainvoke(
         _base_state("调研并输出一份 AI Agent 行业分析报告"),

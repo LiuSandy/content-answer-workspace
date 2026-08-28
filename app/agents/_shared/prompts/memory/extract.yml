@@ -18,10 +18,14 @@ messages:
     - implicit：从行为推断的偏好（如用户反复修改某类写法）
     - work_pattern：常用平台组合、生成配置等
 
+    同时给出 memory_scope，表示适用场景，只能是：
+    general / conversation / answer_format / writing_style / audience /
+    platform / source_preference / workflow。
+
     # 输出格式（只输出 JSON 数组，不输出其他文字）
     [
-      {"memory_type": "explicit", "content": "用户偏好幽默风趣的写作风格", "confidence": 0.9},
-      {"memory_type": "explicit", "content": "目标读者是大学生", "confidence": 0.85}
+      {"memory_type": "explicit", "memory_scope": "writing_style", "content": "用户偏好幽默风趣的写作风格", "confidence": 0.9},
+      {"memory_type": "explicit", "memory_scope": "audience", "content": "目标读者是大学生", "confidence": 0.85}
     ]
 
     # 规则

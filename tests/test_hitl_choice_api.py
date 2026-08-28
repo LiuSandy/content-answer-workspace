@@ -2,7 +2,7 @@
 
 覆盖：POST /api/chats/{chat_id}/choices 保存选择消息并以
 hitl_selection/hitl_choice.context 恢复续跑（新 thread_id）；校验非法输入；
-每 chat 并发最多 1 次；preprocess 不清空续跑选择。
+每 chat 并发最多 1 次；意图入口不清空续跑选择。
 """
 from __future__ import annotations
 
@@ -183,21 +183,23 @@ async def test_per_chat_run_lock_serializes_runs():
 
 
 @pytest.mark.asyncio
-async def test_preprocess_keeps_hitl_selection():
-    """续跑轮 preprocess 不清空 hitl_selection，只重置本轮 pending/choice。"""
-    from app.agents.chat.nodes.preprocess import preprocess_node
+async def test_route_intent_keeps_hitl_selection():
+    """续跑轮意图入口不清空 hitl_selection，只重置本轮 pending/choice。"""
+    from app.agents.chat.nodes.route_intent import route_intent_node
 
-    result = await preprocess_node(
+    result = await route_intent_node(
         {
-            "user_message": "use_found",
+            "user_message": "请解析 https://example.com/article",
             "hitl_selection": "use_found",
             "hitl_pending": True,
             "hitl_choice": {"context": {}},
+            "applied_memories": [{"content": "上一轮记忆"}],
         }
     )
     assert result["hitl_selection"] == "use_found"
     assert result["hitl_pending"] is False
     assert result["hitl_choice"] is None
+    assert result["applied_memories"] == []
 
 
 @pytest.mark.asyncio

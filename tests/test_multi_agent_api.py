@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from app.server import app
-from app.agents.orchestrator.state import MultiAgentState, SubAgentState
+from app.agents.writer.state import MultiAgentState, SubAgentState
 from app.services.planning_service import TaskPlan
 
 
@@ -34,7 +34,7 @@ def _fake_state(agents_status: dict[str, str]) -> MultiAgentState:
 
 
 @pytest.mark.asyncio
-@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
+@patch("app.api.routes.multi_agent.run_writer_plan")
 async def test_run_multi_agent_success(mock_run):
     mock_run.return_value = _fake_state({
         "orchestrator": "done",
@@ -56,7 +56,7 @@ async def test_run_multi_agent_success(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
+@patch("app.api.routes.multi_agent.run_writer_plan")
 async def test_run_multi_agent_accepts_real_orchestrator_state(mock_run):
     mock_run.return_value = MultiAgentState(
         plan=TaskPlan(plan_id="p1", goal="目标", tasks=[]),
@@ -91,7 +91,7 @@ async def test_run_multi_agent_accepts_real_orchestrator_state(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
+@patch("app.api.routes.multi_agent.run_writer_plan")
 async def test_run_multi_agent_has_required_agents(mock_run):
     mock_run.return_value = _fake_state({
         "orchestrator": "done",
@@ -108,7 +108,7 @@ async def test_run_multi_agent_has_required_agents(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
+@patch("app.api.routes.multi_agent.run_writer_plan")
 async def test_run_multi_agent_failure_is_isolated(mock_run):
     mock_run.return_value = _fake_state({
         "orchestrator": "done",
@@ -127,7 +127,7 @@ async def test_run_multi_agent_failure_is_isolated(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.agents.orchestrator.graph.run_multi_agent_plan")
+@patch("app.api.routes.multi_agent.run_writer_plan")
 async def test_run_multi_agent_internal_error(mock_run):
     mock_run.side_effect = RuntimeError("boom")
     async with _make_client() as client:

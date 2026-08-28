@@ -4,6 +4,8 @@
 都调用 make_knowledge_decision，不各自内嵌判断逻辑。
 """
 
+from app.state import ChatAgentState
+
 # 纯寒暄/客套语：这类消息检索知识库纯属浪费（每次检索含多次 LLM 调用）
 _CHITCHAT_PHRASES = {
     "你好", "您好", "嗨", "哈喽", "在吗", "谢谢", "谢啦", "多谢",
@@ -34,3 +36,15 @@ def make_knowledge_decision(query: str, mode: str = "normal") -> tuple[bool, str
         return False, "Query too short to benefit from retrieval."
 
     return True, "Substantive query, retrieval enabled in normal mode."
+
+
+async def knowledge_decision_node(state: ChatAgentState) -> dict:
+    """将知识检索决策写回 Chat Graph 状态。"""
+    needed, reason = make_knowledge_decision(
+        state.get("user_message", ""),
+        state.get("knowledge_mode", "normal"),
+    )
+    return {"rag_decision": needed, "decision_reason": reason}
+
+
+__all__ = ["knowledge_decision_node", "make_knowledge_decision"]

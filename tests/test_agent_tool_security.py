@@ -54,7 +54,7 @@ def test_security_rejects_non_http_scheme():
 @pytest.mark.asyncio
 async def test_web_fetch_tool_refuses_internal_url_without_network():
     """web_fetch 对内网 URL 直接拒绝，不发起网络请求。"""
-    from app.agents.researcher.tools.web_fetch import web_fetch
+    from app.agents._shared.tools.web_fetch import web_fetch
 
     result = await web_fetch.ainvoke({"url": "http://127.0.0.1:8080/admin"})
     assert "拒绝" in result or "forbidden" in result.lower() or "SSRF" in result

@@ -1,25 +1,19 @@
-"""Agent 工具注册入口；启动时读取 agent_reach_config.json，按平台开关动态追加工具到 ALL_TOOLS。
-
-安全边界（spec §12）：任意代码执行工具 code_interpreter 默认不注册，仅当配置
-code_interpreter.enabled=true 时才加入；未启用平台不注册。
-"""
+"""共享工具注册入口，按配置启用可选平台工具。"""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from app.agents.researcher.tools import zhihu_tool
-from app.agents.researcher.tools import xiaohongshu_tool
-from app.agents.researcher.tools.crawl4ai_tool import crawl4ai_fetch
-from app.agents.researcher.tools.firecrawl_tool import firecrawl_scrape
-from app.agents.researcher.tools.news_search import news_search
-from app.agents.researcher.tools.web_fetch import web_fetch
-from app.agents.researcher.tools.web_search import web_search
-from app.agents.researcher.tools.zhihu_tool import zhihu_search
-
+from . import xiaohongshu_tool, zhihu_tool
 from .calculator import calculator
+from .crawl4ai_tool import crawl4ai_fetch
 from .datetime_tool import get_current_datetime
+from .firecrawl_tool import firecrawl_scrape
+from .news_search import news_search
+from .web_fetch import web_fetch
+from .web_search import web_search
+from .zhihu_tool import zhihu_search
 
 _BASE_TOOLS = [
     get_current_datetime,
@@ -31,19 +25,23 @@ _BASE_TOOLS = [
     zhihu_search,
 ]
 
-_AGENT_REACH_CONFIG = Path(__file__).resolve().parent.parent.parent.parent.parent / ".data" / "agent_reach_config.json"
+_AGENT_REACH_CONFIG = (
+    Path(__file__).resolve().parent.parent.parent.parent.parent
+    / ".data"
+    / "agent_reach_config.json"
+)
 
 
 def _load_platform_tool_map() -> dict:
-    """懒加载各平台工具模块；避免在未启用时导入对应依赖。"""
-    from app.agents.researcher.tools.bilibili_tool import bilibili_hot, bilibili_search, bilibili_video
-    from app.agents.researcher.tools.github_tool import github_repo_info, github_search_repos
-    from app.agents.researcher.tools.reddit_tool import reddit_hot, reddit_read, reddit_search, reddit_subreddit
-    from app.agents.researcher.tools.rss_tool import rss_fetch
-    from app.agents.researcher.tools.twitter_tool import twitter_feed, twitter_read, twitter_search, twitter_user_posts
-    from app.agents.researcher.tools.v2ex_tool import v2ex_hot, v2ex_node
-    from app.agents.researcher.tools.xiaohongshu_tool import xiaohongshu_feed, xiaohongshu_note, xiaohongshu_search
-    from app.agents.researcher.tools.youtube_tool import youtube_fetch
+    """懒加载可选平台工具，避免未启用平台引入额外依赖。"""
+    from .bilibili_tool import bilibili_hot, bilibili_search, bilibili_video
+    from .github_tool import github_repo_info, github_search_repos
+    from .reddit_tool import reddit_hot, reddit_read, reddit_search, reddit_subreddit
+    from .rss_tool import rss_fetch
+    from .twitter_tool import twitter_feed, twitter_read, twitter_search, twitter_user_posts
+    from .v2ex_tool import v2ex_hot, v2ex_node
+    from .xiaohongshu_tool import xiaohongshu_feed, xiaohongshu_note, xiaohongshu_search
+    from .youtube_tool import youtube_fetch
 
     return {
         "bilibili": [bilibili_search, bilibili_hot, bilibili_video],
@@ -58,16 +56,12 @@ def _load_platform_tool_map() -> dict:
 
 
 def _build_all_tools() -> list:
-    """在进程启动时读取配置，构建完整工具列表；配置文件不存在时只用基础工具。
-
-    code_interpreter（任意代码执行）默认关闭，仅当 agent_reach_config.json
-    显式设置 code_interpreter.enabled=true 时才注册（spec §12）。
-    """
+    """构建启用工具列表；任意代码执行工具默认关闭。"""
     tools = list(_BASE_TOOLS)
     try:
         config = json.loads(_AGENT_REACH_CONFIG.read_text(encoding="utf-8"))
         enabled_platforms: list[str] = config.get("enabledPlatforms", [])
-        code_interpreter_enabled: bool = bool(
+        code_interpreter_enabled = bool(
             (config.get("code_interpreter") or {}).get("enabled")
         )
     except (FileNotFoundError, json.JSONDecodeError):
@@ -78,14 +72,17 @@ def _build_all_tools() -> list:
 
         tools.append(code_interpreter)
 
-    if not enabled_platforms:
-        return tools
-
     platform_tool_map = _load_platform_tool_map()
     for platform in enabled_platforms:
         tools.extend(platform_tool_map.get(platform, []))
-
     return tools
 
 
 ALL_TOOLS = _build_all_tools()
+
+__all__ = [
+    "ALL_TOOLS",
+    "firecrawl_scrape",
+    "xiaohongshu_tool",
+    "zhihu_tool",
+]

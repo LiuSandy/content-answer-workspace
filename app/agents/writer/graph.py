@@ -1,62 +1,80 @@
-from __future__ import annotations
+"""The project's single Writer graph.
 
-from functools import partial
+Planner, Researcher, Drafter, Reviewer, and Memory are ordinary business nodes
+over one shared state. No node in this graph compiles another graph.
+"""
+from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from app.services.llm_service import LLMServiceAdapter
-from .nodes import finalize_draft_node, generate_draft_node, prepare_prompt_node
-from .nodes.apply_instruction import apply_instruction_node
-from .nodes.fetch_answer import fetch_answer_node
-from .nodes.save_answer import save_answer_node
-from app.contracts.agent_ports import SessionServicePort
-from app.agents.orchestrator.state import MultiAgentState
+from app.agents.writer.nodes.guard import route_after_writer_guard, writer_guard_node
+from app.agents.writer.nodes.document_pipeline import (
+    generate_document_node,
+    inline_refine_document_node,
+    rewrite_document_node,
+    route_writer_operation,
+)
+from app.agents.writer.nodes.memory_retriever import writer_memory_retriever_node
+from app.agents.writer.nodes.pipeline import (
+    finalize_writer_node,
+    research_node,
+    review_node,
+    write_node,
+    writer_memory_node,
+)
+from app.agents.writer.nodes.planner import assign_node, plan_node, route_after_assignment
 from app.agents.writer.state import WriterState
-from app.state import AgentState
 
 
 def build_writer_graph():
     builder = StateGraph(WriterState)
-    builder.add_node("prepare_prompt", prepare_prompt_node)
-    builder.add_node("generate_draft", generate_draft_node)
-    builder.add_node("finalize_draft", finalize_draft_node)
-    builder.add_edge(START, "prepare_prompt")
-    builder.add_edge("prepare_prompt", "generate_draft")
-    builder.add_edge("generate_draft", "finalize_draft")
-    builder.add_edge("finalize_draft", END)
+    builder.add_node("guard", writer_guard_node)
+    builder.add_node("retrieve_memory", writer_memory_retriever_node)
+    builder.add_node("generate_document", generate_document_node)
+    builder.add_node("inline_refine_document", inline_refine_document_node)
+    builder.add_node("rewrite_document", rewrite_document_node)
+    builder.add_node("generate_plan", plan_node)
+    builder.add_node("assign_tasks", assign_node)
+    builder.add_node("research", research_node)
+    builder.add_node("write", write_node)
+    builder.add_node("review", review_node)
+    builder.add_node("memory", writer_memory_node)
+    builder.add_node("finalize", finalize_writer_node)
+
+    builder.add_edge(START, "guard")
+    builder.add_conditional_edges(
+        "guard",
+        route_after_writer_guard,
+        {"continue": "retrieve_memory", "blocked": END},
+    )
+    builder.add_conditional_edges(
+        "retrieve_memory",
+        route_writer_operation,
+        {
+            "compose": "generate_plan",
+            "generate": "generate_document",
+            "inline_refine": "inline_refine_document",
+            "full_rewrite": "rewrite_document",
+        },
+    )
+    builder.add_edge("generate_plan", "assign_tasks")
+    builder.add_conditional_edges(
+        "assign_tasks",
+        route_after_assignment,
+        {"research": "research", "end": END},
+    )
+    builder.add_edge("research", "write")
+    builder.add_edge("write", "review")
+    builder.add_edge("review", "memory")
+    builder.add_edge("memory", "finalize")
+    builder.add_edge("finalize", END)
+    builder.add_edge("generate_document", END)
+    builder.add_edge("inline_refine_document", END)
+    builder.add_edge("rewrite_document", END)
     return builder.compile()
 
 
 writer_graph = build_writer_graph()
 
 
-async def writing_agent_node(state: MultiAgentState) -> dict:
-    """兼容旧调用方式，内部执行已编译的 Writer 子图。"""
-    result = await writer_graph.ainvoke(
-        {
-            "plan": state.plan,
-            "research_report": state.research_report,
-            "draft": state.draft,
-            "sub_agent_states": state.sub_agent_states,
-        }
-    )
-    state.draft = result.get("draft")
-    state.sub_agent_states = result["sub_agent_states"]
-    return {"draft": state.draft, "sub_agent_states": state.sub_agent_states}
-
-
-def build_refinement_graph(session_svc: SessionServicePort):
-    """构建回答精修 Graph；每次请求创建新实例，绑定请求级 session adapter。"""
-    llm = LLMServiceAdapter()
-
-    graph: StateGraph = StateGraph(AgentState)
-    graph.add_node("fetch_answer", partial(fetch_answer_node, session_svc=session_svc))
-    graph.add_node("apply_instruction", partial(apply_instruction_node, llm=llm))
-    graph.add_node("save_answer", partial(save_answer_node, session_svc=session_svc))
-
-    graph.add_edge(START, "fetch_answer")
-    graph.add_edge("fetch_answer", "apply_instruction")
-    graph.add_edge("apply_instruction", "save_answer")
-    graph.add_edge("save_answer", END)
-
-    return graph.compile()
+__all__ = ["build_writer_graph", "writer_graph"]
