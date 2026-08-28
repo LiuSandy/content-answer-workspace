@@ -11,7 +11,7 @@ from app.contracts.errors import LLMOutputError
 from .quality_service import ReviewContext
 
 QUALITY_THRESHOLD = 75
-MAX_CREATION_ROUNDS = 3
+MAX_CREATION_ROUNDS = 20
 
 ReviewFn = Callable[[str, ReviewContext], Awaitable[QualityReport]]
 RewriteFn = Callable[[str, str], Awaitable[str]]
@@ -57,7 +57,7 @@ async def run_creation_review(
     evaluate: ReviewFn,
     rewrite: RewriteFn,
 ) -> AsyncIterator[CreationReviewEvent]:
-    """Review and selectively rewrite an internal draft up to three times.
+    """Review and selectively rewrite an internal draft up to 20 times.
 
     The generator has no persistence side effects. Only ``LLMOutputError`` is
     converted into a failed outcome; cancellation and programming errors remain

@@ -101,7 +101,7 @@ async def test_second_round_passes_with_previous_review_context():
     ]
     assert rewrite_calls == [("draft-1", "补充论据")]
     rewrite_event = next(event for event in events if event.name == "rewrite.started")
-    assert rewrite_event.data == {"iteration": 2, "maxIterations": 3}
+    assert rewrite_event.data == {"iteration": 2, "maxIterations": 20}
     assert evaluated_contexts[1].iteration == 2
     assert evaluated_contexts[1].previous_review is not None
     assert evaluated_contexts[1].previous_review["overallScore"] == 70
@@ -114,14 +114,15 @@ async def test_second_round_passes_with_previous_review_context():
 
 
 @pytest.mark.asyncio
-async def test_three_failed_rounds_choose_highest_score_and_latest_on_tie():
-    reports = iter([report(70), report(72), report(72)])
+async def test_twenty_failed_rounds_choose_highest_score_and_latest_on_tie():
+    reports = iter([report(70), *[report(72) for _ in range(19)]])
 
     async def evaluate(content: str, review_context: ReviewContext):
         return next(reports)
 
     async def rewrite(content: str, instruction: str):
-        return {"draft-1": "draft-2", "draft-2": "draft-3"}[content]
+        current = int(content.removeprefix("draft-"))
+        return f"draft-{current + 1}"
 
     events = [
         event
@@ -135,12 +136,12 @@ async def test_three_failed_rounds_choose_highest_score_and_latest_on_tie():
     outcome = events[-1].outcome
 
     assert outcome is not None
-    assert outcome.iterations == 3
+    assert outcome.iterations == 20
     assert outcome.passed is False
-    assert outcome.selected_iteration == 3
-    assert outcome.final_content == "draft-3"
+    assert outcome.selected_iteration == 20
+    assert outcome.final_content == "draft-20"
     assert outcome.final_report == report(72)
-    assert [round_.iteration for round_ in outcome.rounds] == [1, 2, 3]
+    assert [round_.iteration for round_ in outcome.rounds] == list(range(1, 21))
 
 
 @pytest.mark.asyncio

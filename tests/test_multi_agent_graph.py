@@ -2,24 +2,22 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.agents.memory.graph import memory_agent_node
-from app.agents.orchestrator.graph import orchestrator_node, run_multi_agent_plan
-from app.agents.orchestrator import graph as orchestrator_graph_module
-from app.agents.orchestrator import state as orchestrator_state
-from app.agents.orchestrator.state import MultiAgentState, SubAgentState
-from app.agents.researcher.graph import research_agent_node
-from app.agents.researcher import graph as researcher_graph_module
-from app.agents.researcher import state as researcher_state
-from app.agents.reviewer.graph import review_agent_node
-from app.agents.reviewer import graph as reviewer_graph_module
-from app.agents.reviewer import state as reviewer_state
-from app.agents.writer.graph import writing_agent_node
 from app.agents.writer import graph as writer_graph_module
 from app.agents.writer import state as writer_state
+from app.agents.writer.nodes.pipeline import (
+    research_node,
+    review_node,
+    write_node,
+    writer_memory_node,
+)
+from app.agents.writer.nodes.planner import assign_node
+from app.agents.writer.runtime import run_writer_plan
+from app.agents.writer.state import MultiAgentState, SubAgentState
 from app.services.planning_service import SubTask, TaskPlan
 from app.contracts.dto import QualityReport
 
@@ -37,75 +35,45 @@ def _mock_plan() -> TaskPlan:
     )
 
 
-def test_agent_private_state_keys_are_not_parent_state_keys():
-    MultiAgentGraphState = getattr(orchestrator_state, "MultiAgentGraphState", None)
-    ResearcherState = getattr(researcher_state, "ResearcherState", None)
+def test_writer_graph_owns_the_full_content_pipeline_state():
     WriterState = getattr(writer_state, "WriterState", None)
-    ReviewerState = getattr(reviewer_state, "ReviewerState", None)
-    assert MultiAgentGraphState is not None
-    assert ResearcherState is not None
     assert WriterState is not None
-    assert ReviewerState is not None
-    assert "research_tasks" in ResearcherState.__annotations__
+    assert "research_tasks" in WriterState.__annotations__
     assert "writing_prompt" in WriterState.__annotations__
-    assert "review_context" in ReviewerState.__annotations__
-    assert "research_tasks" not in MultiAgentGraphState.__annotations__
-    assert "writing_prompt" not in MultiAgentGraphState.__annotations__
-    assert "review_context" not in MultiAgentGraphState.__annotations__
+    assert "review_context" in WriterState.__annotations__
+    assert "operation" in WriterState.__annotations__
+    assert "document_id" in WriterState.__annotations__
 
 
-def test_researcher_is_compiled_graph():
-    graph = getattr(researcher_graph_module, "researcher_graph", None)
-    assert graph is not None
-    assert set(graph.get_graph().nodes) >= {
-        "prepare_tasks", "execute_tasks", "build_report"
-    }
-
-
-def test_writer_is_compiled_graph():
+def test_writer_is_the_only_compiled_content_graph():
     graph = getattr(writer_graph_module, "writer_graph", None)
     assert graph is not None
     assert set(graph.get_graph().nodes) >= {
-        "prepare_prompt", "generate_draft", "finalize_draft"
+        "guard", "generate_plan", "assign_tasks", "research", "write",
+        "review", "memory", "finalize",
     }
 
 
-def test_reviewer_is_compiled_graph():
-    graph = getattr(reviewer_graph_module, "reviewer_graph", None)
-    assert graph is not None
-    assert set(graph.get_graph().nodes) >= {
-        "prepare_review", "run_review", "finalize_review", "preserve_draft"
-    }
-
-
-def test_orchestrator_is_compiled_parent_graph():
-    graph = getattr(orchestrator_graph_module, "orchestrator_graph", None)
-    assert graph is not None
-    assert set(graph.get_graph().nodes) >= {
-        "generate_plan",
-        "assign_tasks",
-        "researcher",
-        "writer",
-        "reviewer",
-        "memory",
-        "finalize",
-    }
+def test_agents_package_has_exactly_two_graph_modules():
+    graph_files = sorted(
+        path.relative_to(path.parents[2]).as_posix()
+        for path in Path(__file__).parents[1].joinpath("app/agents").rglob("graph.py")
+    )
+    assert graph_files == ["agents/chat/graph.py", "agents/writer/graph.py"]
 
 
 @pytest.mark.asyncio
 async def test_orchestrator_assigns_tasks():
-    state = MultiAgentState(plan=_mock_plan())
-    await orchestrator_node(state)
-    sub = state.sub_agent_states["orchestrator"]
+    result = assign_node({"plan": _mock_plan(), "sub_agent_states": {}})
+    sub = result["sub_agent_states"]["orchestrator"]
     assert sub.status == "done"
     assert sub.result["total_tasks"] == 5
 
 
 @pytest.mark.asyncio
 async def test_orchestrator_fails_on_empty_plan():
-    state = MultiAgentState(plan=TaskPlan("p0", "", []))
-    await orchestrator_node(state)
-    sub = state.sub_agent_states["orchestrator"]
+    result = assign_node({"plan": TaskPlan("p0", "", []), "sub_agent_states": {}})
+    sub = result["sub_agent_states"]["orchestrator"]
     assert sub.status == "failed"
 
 
@@ -117,26 +85,31 @@ async def test_writing_agent_produces_draft(monkeypatch):
         "app.agents.writer.nodes.generate_draft._get_planner_llm",
         lambda: fake_llm,
     )
-    state = MultiAgentState(plan=_mock_plan(), research_report="研究报告内容")
-    await writing_agent_node(state)
-    assert state.draft is not None
-    assert "初稿" in state.draft
-    assert state.sub_agent_states["writing"].status == "done"
+    result = await write_node({
+        "plan": _mock_plan(),
+        "research_report": "研究报告内容",
+        "sub_agent_states": {},
+    })
+    assert "初稿" in result["draft"]
+    assert result["sub_agent_states"]["writing"].status == "done"
 
 
 @pytest.mark.asyncio
 async def test_review_agent_failure_does_not_block_final_output(monkeypatch):
     """spec 6.6 #2：单子 Agent 失败不影响其他。ReviewAgent 失败时初稿作终稿。"""
     monkeypatch.setattr(
-        "app.agents.reviewer.nodes.run_review.evaluate_content",
+        "app.agents.writer.nodes.pipeline.evaluate_content",
         AsyncMock(side_effect=RuntimeError("review failed")),
     )
-    state = MultiAgentState(plan=_mock_plan(), draft="这是初稿")
-    await review_agent_node(state)
+    result = await review_node({
+        "plan": _mock_plan(),
+        "draft": "这是初稿",
+        "sub_agent_states": {},
+    })
     # ReviewAgent 失败，但 final_output 保留初稿
-    assert state.final_output == "这是初稿"
-    assert state.sub_agent_states["review"].status == "failed"
-    assert state.sub_agent_states["review"].error is not None
+    assert result["final_output"] == "这是初稿"
+    assert result["sub_agent_states"]["review"].status == "failed"
+    assert result["sub_agent_states"]["review"].error is not None
 
 
 @pytest.mark.asyncio
@@ -146,9 +119,12 @@ async def test_memory_agent_failure_isolated(monkeypatch):
         "app.services.memory.service.extract_memories",
         AsyncMock(side_effect=RuntimeError("memory store down")),
     )
-    state = MultiAgentState(plan=_mock_plan(), final_output="final")
-    await memory_agent_node(state)
-    assert state.sub_agent_states["memory"].status == "failed"
+    result = await writer_memory_node({
+        "plan": _mock_plan(),
+        "final_output": "final",
+        "sub_agent_states": {},
+    })
+    assert result["sub_agent_states"]["memory"].status == "failed"
     # 其他子 Agent 状态不受影响
 
 
@@ -183,9 +159,8 @@ async def test_research_agent_concurrent_calls_gt_3(monkeypatch):
         lambda: MagicMock(),
     )
 
-    state = MultiAgentState(plan=plan)
-    await research_agent_node(state)
-    sub = state.sub_agent_states["research"]
+    result = await research_node({"plan": plan, "sub_agent_states": {}})
+    sub = result["sub_agent_states"]["research"]
     assert sub.status == "done"
     assert sub.result["concurrent_calls"] >= 4
     # s1-s4 同层并行（启动时间差 < 5ms）
@@ -195,11 +170,10 @@ async def test_research_agent_concurrent_calls_gt_3(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_research_agent_with_no_tasks_preserves_legacy_empty_result():
-    state = MultiAgentState(plan=TaskPlan("p0", "x", []))
-    await research_agent_node(state)
-    assert state.research_report == ""
-    assert state.sub_agent_states["research"].status == "done"
-    assert state.sub_agent_states["research"].result is None
+    result = await research_node({"plan": TaskPlan("p0", "x", []), "sub_agent_states": {}})
+    assert result["research_report"] == ""
+    assert result["sub_agent_states"]["research"].status == "done"
+    assert result["sub_agent_states"]["research"].result is None
 
 
 @pytest.mark.asyncio
@@ -208,10 +182,13 @@ async def test_research_agent_failure_preserves_existing_report(monkeypatch):
         "app.services.planning_service.execute_task_plan",
         AsyncMock(side_effect=RuntimeError("search failed")),
     )
-    state = MultiAgentState(plan=_mock_plan(), research_report="existing report")
-    await research_agent_node(state)
-    assert state.research_report == "existing report"
-    assert state.sub_agent_states["research"].status == "failed"
+    result = await research_node({
+        "plan": _mock_plan(),
+        "research_report": "existing report",
+        "sub_agent_states": {},
+    })
+    assert result["research_report"] == "existing report"
+    assert result["sub_agent_states"]["research"].status == "failed"
 
 
 @pytest.mark.asyncio
@@ -220,14 +197,13 @@ async def test_research_agent_failure_preserves_none_report(monkeypatch):
         "app.services.planning_service.execute_task_plan",
         AsyncMock(side_effect=RuntimeError("search failed")),
     )
-    state = MultiAgentState(plan=_mock_plan())
-    await research_agent_node(state)
-    assert state.research_report is None
-    assert state.sub_agent_states["research"].status == "failed"
+    result = await research_node({"plan": _mock_plan(), "sub_agent_states": {}})
+    assert result["research_report"] is None
+    assert result["sub_agent_states"]["research"].status == "failed"
 
 
 @pytest.mark.asyncio
-async def test_run_multi_agent_plan_end_to_end(monkeypatch):
+async def test_run_writer_plan_end_to_end(monkeypatch):
     """端到端：planner → research → writing → review → memory。"""
     fake_llm = MagicMock()
     fake_llm.analyze = AsyncMock(return_value="初稿内容")
@@ -236,7 +212,7 @@ async def test_run_multi_agent_plan_end_to_end(monkeypatch):
         lambda: fake_llm,
     )
     monkeypatch.setattr(
-        "app.agents.orchestrator.nodes.generate_plan.generate_plan",
+        "app.agents.writer.nodes.planner.generate_plan",
         AsyncMock(return_value=_mock_plan()),
     )
     # mock execute_task_plan 避免真实 LLM
@@ -262,7 +238,7 @@ async def test_run_multi_agent_plan_end_to_end(monkeypatch):
             summary="已达标",
         )
     monkeypatch.setattr(
-        "app.agents.reviewer.nodes.run_review.evaluate_content",
+        "app.agents.writer.nodes.pipeline.evaluate_content",
         fake_evaluate,
     )
     # mock memory
@@ -271,7 +247,7 @@ async def test_run_multi_agent_plan_end_to_end(monkeypatch):
         AsyncMock(return_value=[]),
     )
 
-    state = await run_multi_agent_plan("写一篇", workspace_id="default")
+    state = await run_writer_plan("写一篇", workspace_id="default")
     assert state.final_output == "初稿内容"
     assert state.quality_score == 85
     # 全部 5 个子 Agent 状态被记录

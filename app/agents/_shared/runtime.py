@@ -94,6 +94,18 @@ def _normalize_event(event: dict) -> list[tuple[str, dict]]:
             output = {}
         meta_node = metadata.get("langgraph_node")
 
+        if name == "guard" or meta_node == "guard":
+            if output.get("guard_blocked"):
+                messages = output.get("messages") or []
+                for message in reversed(messages):
+                    content = getattr(message, "content", None)
+                    if content:
+                        return [
+                            ("agent.status", {"status": "blocked"}),
+                            ("message.delta", {"delta": content}),
+                        ]
+            return []
+
         if name == "platform_collect" or meta_node == "platform_collect":
             messages = output.get("messages") or []
             for message in reversed(messages):
@@ -132,6 +144,40 @@ def _normalize_event(event: dict) -> list[tuple[str, dict]]:
                     )
                 ]
             return []
+        if name == "writer" or meta_node == "writer":
+            events: list[tuple[str, dict]] = []
+            task_plan = output.get("task_plan_result")
+            if task_plan:
+                events.append(
+                    (
+                        "task_plan.created",
+                        {
+                            "planId": task_plan.get("planId"),
+                            "goal": task_plan.get("goal"),
+                            "status": task_plan.get("status"),
+                            "preview": task_plan.get("preview"),
+                        },
+                    )
+                )
+            multi_agent = output.get("multi_agent_result")
+            if multi_agent:
+                events.append(
+                    (
+                        "multi_agent.status",
+                        {
+                            "status": multi_agent.get("status"),
+                            "agents": multi_agent.get("agents", []),
+                            "finalContent": multi_agent.get("finalContent"),
+                        },
+                    )
+                )
+            messages = output.get("messages") or []
+            for message in reversed(messages):
+                content = getattr(message, "content", None)
+                if content:
+                    events.append(("message.delta", {"delta": content}))
+                    break
+            return events
 
     if kind == "on_chat_model_stream":
         chunk = (event.get("data") or {}).get("chunk")

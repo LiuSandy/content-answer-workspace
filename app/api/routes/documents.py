@@ -8,32 +8,22 @@ from typing import Any, AsyncIterator
 from fastapi import APIRouter, Request, Query, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.services.document_service import DocumentService
 from app.services.version_service import VersionService
 from app.services.outline_service import OutlineService, OutlineError
-from app.services.quality_service import (
-    ReviewContext,
-    evaluate_content,
-    persist_creation_review,
-)
-from app.services.writing_service import (
-    WriterRunCapture,
-    finalize_deferred_writer_run,
-)
-from app.services.creation_review_service import (
-    CreationReviewOutcome,
-    run_creation_review,
-)
+from app.services.quality_service import evaluate_content, persist_creation_review
 from app.contracts.dto import InlineRefineRequest, SelectionDTO
 from app.infrastructure.database.session import get_db_session, get_session_factory
 from app.infrastructure.database.models.content import SourceItem
 from app.agents.writer.nodes.answer_generation import generate_answer_workflow
 from app.agents.writer.nodes.inline_refinement import inline_refinement_workflow
 from app.agents.writer.nodes.full_rewrite import full_rewrite_workflow
+from app.agents.writer.graph import writer_graph
 from app.api.streaming.sse import sse_named_event, make_sse_response
 from app.contracts.errors import AppError, DocumentConflictError, LLMOutputError
-from app.infrastructure.observability.context import bind_log_context, reset_log_context, set_log_context
+from app.infrastructure.observability.context import reset_log_context, set_log_context
 
 logger = logging.getLogger(__name__)
 
@@ -48,34 +38,6 @@ async def _rewrite_creation_draft(content: str, instruction: str) -> str:
         instruction="保留已正确内容，只修复评审指出的问题。\n" + instruction,
         current_answer=content,
     )
-
-
-def _creation_review_metadata(outcome: CreationReviewOutcome) -> dict[str, Any]:
-    report = outcome.final_report
-    return {
-        "creationReview": {
-            "reviewStatus": "failed" if outcome.review_failed else "completed",
-            "iterations": outcome.iterations,
-            "passed": outcome.passed,
-            "selectedIteration": outcome.selected_iteration,
-            "finalReport": (
-                report.model_dump(mode="json", by_alias=True) if report else None
-            ),
-            "rounds": [
-                {
-                    "iteration": row.iteration,
-                    "overallScore": row.report.overall_score,
-                    "passed": row.report.overall_score >= 75,
-                }
-                for row in outcome.rounds
-            ],
-            "errorMessage": outcome.error_message,
-        }
-    }
-
-
-def _final_review_summary(outcome: CreationReviewOutcome) -> dict[str, Any]:
-    return _creation_review_metadata(outcome)["creationReview"]
 
 
 def _run_failed_event(exc: Exception, fallback_message: str) -> str:
@@ -372,104 +334,61 @@ async def generate_answer_stream(
         log_token = set_log_context(run_id=run_id, document_id=str(doc_id))
         yield sse_named_event("run.started", {"runId": run_id, "documentId": str(doc_id)})
 
-        capture = WriterRunCapture()
         try:
-            # 2. 调用 workflow
             async with session_factory() as session:
-                async for chunk in generate_answer_workflow(
-                    session=session,
-                    source_item_id=source_item_id,
-                    document_id=doc_id,
-                    platform=req.platform or platform,
-                    title=title,
-                    content=content,
-                    expected_lock_version=req.expected_lock_version,
-                    style_rules=req.style_rules,
-                    word_count=req.word_count,
-                    instruction=req.instruction,
-                    capture=capture,
-                    outline=outline_sections,
-                    outline_operation_id=outline_operation_id,
-                ):
-                    yield sse_named_event("document.delta", {"delta": chunk})
-
-                outcome: CreationReviewOutcome | None = None
-                async for review_event in run_creation_review(
-                    initial_content=capture.content,
-                    context=ReviewContext(
-                        question=title,
-                        style_rules=req.style_rules,
-                        target_word_count=req.word_count,
-                        iteration=1,
-                    ),
-                    evaluate=evaluate_content,
-                    rewrite=_rewrite_creation_draft,
-                ):
-                    if review_event.outcome is not None:
-                        outcome = review_event.outcome
-                    else:
-                        yield sse_named_event(review_event.name, review_event.data)
-
-                if outcome is None:
-                    raise RuntimeError("creation review completed without an outcome")
-                if capture.operation_id is None:
-                    raise RuntimeError("deferred writer run has no operation id")
-
-                version = await finalize_deferred_writer_run(
-                    session,
-                    capture,
-                    outcome.final_content,
-                    req.expected_lock_version,
-                    output_metadata=_creation_review_metadata(outcome),
-                )
-                try:
-                    await persist_creation_review(
-                        session,
-                        document_id=doc_id,
-                        version_id=version.id,
-                        operation_id=capture.operation_id,
-                        outcome=outcome,
-                    )
-                except Exception as audit_error:
-                    # 正式版本与完整报告已由 finalize 提交。可索引分数只是
-                    # 附属审计，写入失败不能把已经成功的创作对客户端报失败。
-                    await session.rollback()
-                    logger.warning(
-                        "Creation review score persistence failed: %s",
-                        audit_error,
-                    )
-                state = await DocumentService(session).get_document_state(doc_id)
-                yield sse_named_event(
-                    "document.completed",
+                async for graph_event in writer_graph.astream(
                     {
-                        **state.model_dump(mode="json", by_alias=True),
-                        "creationReview": _final_review_summary(outcome),
+                        "operation": "generate",
+                        "direct_stream": True,
+                        "goal": req.instruction or title,
+                        "workspace_id": "default",
+                        "owner_id": "default",
+                        "session": session,
+                        "source_item_id": source_item_id,
+                        "document_id": doc_id,
+                        "platform": req.platform or platform,
+                        "title": title,
+                        "content": content,
+                        "expected_lock_version": req.expected_lock_version,
+                        "style_rules": req.style_rules,
+                        "word_count": req.word_count,
+                        "instruction": req.instruction,
+                        "outline": outline_sections,
+                        "outline_operation_id": outline_operation_id,
+                        "generate_workflow": generate_answer_workflow,
+                        "evaluate_content": evaluate_content,
+                        "persist_creation_review": persist_creation_review,
+                        "rewrite_content": _rewrite_creation_draft,
                     },
-                )
-                yield sse_named_event("run.completed", {"runId": run_id})
+                    stream_mode="custom",
+                ):
+                    yield sse_named_event(graph_event["event"], graph_event["data"])
+            yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
-            with bind_log_context(
-                operation_id=str(capture.operation_id) if capture.operation_id else None
-            ):
-                logger.exception("Answer generation stream failed")
-            if capture.operation_id is not None:
-                try:
-                    from app.infrastructure.database.models.documents import AIOperation
+            logger.exception("Answer generation graph failed")
+            try:
+                from app.infrastructure.database.models.documents import AIOperation
 
-                    async with session_factory() as failure_session:
-                        operation = await failure_session.get(
-                            AIOperation, capture.operation_id
-                        )
-                        if operation is not None and operation.status == "running":
-                            operation.status = "failed"
-                            operation.error_code = getattr(
-                                e, "error_code", "creation_review_failed"
+                async with session_factory() as failure_session:
+                    operation = (
+                        await failure_session.execute(
+                            select(AIOperation)
+                            .where(
+                                AIOperation.document_id == doc_id,
+                                AIOperation.status == "running",
                             )
-                            operation.error_message = str(e)
-                            await failure_session.commit()
-                except Exception:
-                    logger.exception("Failed to persist generation failure status")
+                            .order_by(AIOperation.created_at.desc())
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    if operation is not None:
+                        operation.status = "failed"
+                        operation.error_code = getattr(e, "error_code", "creation_review_failed")
+                        operation.error_message = str(e)
+                        await failure_session.commit()
+            except Exception:
+                logger.exception("Failed to persist Writer graph failure status")
             yield _run_failed_event(e, "生成失败，请稍后重试")
         finally:
             reset_log_context(log_token)
@@ -492,19 +411,24 @@ async def refine_document_stream(
 
         try:
             async with session_factory() as session:
-                async for chunk in inline_refinement_workflow(
-                    session=session,
-                    document_id=document_id,
-                    selection=req.selection,
-                    instruction=req.instruction,
-                    expected_lock_version=req.expected_lock_version,
+                async for graph_event in writer_graph.astream(
+                    {
+                        "operation": "inline_refine",
+                        "direct_stream": True,
+                        "goal": req.instruction,
+                        "workspace_id": "default",
+                        "owner_id": "default",
+                        "session": session,
+                        "document_id": document_id,
+                        "selection": req.selection,
+                        "instruction": req.instruction,
+                        "expected_lock_version": req.expected_lock_version,
+                        "refine_workflow": inline_refinement_workflow,
+                    },
+                    stream_mode="custom",
                 ):
-                    yield sse_named_event("document.delta", {"delta": chunk})
-
-                doc_service = DocumentService(session)
-                state = await doc_service.get_document_state(document_id)
-                yield sse_named_event("document.completed", state.model_dump(mode="json", by_alias=True))
-                yield sse_named_event("run.completed", {"runId": run_id})
+                    yield sse_named_event(graph_event["event"], graph_event["data"])
+            yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
             logger.exception("Inline refinement stream failed")
@@ -530,21 +454,26 @@ async def rewrite_document_stream(
 
         try:
             async with session_factory() as session:
-                async for chunk in full_rewrite_workflow(
-                    session=session,
-                    document_id=document_id,
-                    instruction=req.instruction,
-                    expected_lock_version=req.expected_lock_version,
-                    platform=req.platform,
-                    style_rules=req.style_rules,
-                    word_count=req.word_count,
+                async for graph_event in writer_graph.astream(
+                    {
+                        "operation": "full_rewrite",
+                        "direct_stream": True,
+                        "goal": req.instruction,
+                        "workspace_id": "default",
+                        "owner_id": "default",
+                        "session": session,
+                        "document_id": document_id,
+                        "instruction": req.instruction,
+                        "expected_lock_version": req.expected_lock_version,
+                        "platform": req.platform,
+                        "style_rules": req.style_rules,
+                        "word_count": req.word_count,
+                        "rewrite_workflow": full_rewrite_workflow,
+                    },
+                    stream_mode="custom",
                 ):
-                    yield sse_named_event("document.delta", {"delta": chunk})
-
-                doc_service = DocumentService(session)
-                state = await doc_service.get_document_state(document_id)
-                yield sse_named_event("document.completed", state.model_dump(mode="json", by_alias=True))
-                yield sse_named_event("run.completed", {"runId": run_id})
+                    yield sse_named_event(graph_event["event"], graph_event["data"])
+            yield sse_named_event("run.completed", {"runId": run_id})
 
         except Exception as e:
             logger.exception("Full rewrite stream failed")
@@ -561,7 +490,6 @@ async def rewrite_document_stream(
 @router.get("/api/documents/{document_id}/quality-scores")
 async def get_quality_scores(document_id: uuid.UUID):
     """返回某文档的全部自评记录，按 iteration 排序。"""
-    from sqlalchemy import select
     from app.infrastructure.database.models.quality_scores import QualityScoreModel
     from app.infrastructure.database.session import get_session_factory
 

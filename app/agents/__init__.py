@@ -1,1 +1,1 @@
-"""独立 Agent 包。"""
+"""Two-graph agent package: Chat interaction and Writer content lifecycle."""

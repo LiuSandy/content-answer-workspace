@@ -227,6 +227,16 @@ class MemoryExtraction(BaseModel):
     """单条记忆抽取条目；memory_type 对齐 memory_service.VALID_TYPES（含 implicit）。"""
 
     memory_type: Literal["explicit", "implicit", "work_pattern"] = "explicit"
+    memory_scope: Literal[
+        "general",
+        "conversation",
+        "answer_format",
+        "writing_style",
+        "audience",
+        "platform",
+        "source_preference",
+        "workflow",
+    ] = "general"
     content: str
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)
 

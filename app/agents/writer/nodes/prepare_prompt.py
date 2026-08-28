@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import time
 
-from app.agents.orchestrator.state import SubAgentState
-from app.agents.writer.state import WriterState
+from app.agents.writer.state import SubAgentState, WriterState
 
 
 def prepare_prompt_node(state: WriterState) -> dict:
@@ -12,10 +11,18 @@ def prepare_prompt_node(state: WriterState) -> dict:
     sub = SubAgentState(name="writing", status="running")
     sub.started_at = time.monotonic()
     sub_agent_states["writing"] = sub
+    memories = state.get("applied_memories") or []
+    memory_context = ""
+    if memories:
+        memory_context = "\n\n用户长期创作偏好：\n" + "\n".join(
+            f"- [{memory.get('memory_scope', 'general')}] {memory.get('content', '')}"
+            for memory in memories
+        )
     prompt = (
         "你是一位内容写作专家。请基于研究报告生成结构化的初稿。\n\n"
         f"创作目标：{state['plan'].goal}\n\n"
         f"研究报告：\n{state.get('research_report') or '（无研究报告）'}\n\n"
+        f"{memory_context}\n\n"
         "请输出完整的 Markdown 正文。"
     )
     return {
