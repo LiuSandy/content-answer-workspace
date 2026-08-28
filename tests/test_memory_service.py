@@ -21,6 +21,13 @@ def test_parse_extraction_json_valid_list():
     assert len(items) == 1
     assert items[0]["memory_type"] == "explicit"
     assert items[0]["confidence"] == 0.9
+    assert items[0]["memory_scope"] == "writing_style"
+
+
+def test_parse_extraction_json_accepts_explicit_scope():
+    raw = '[{"memory_type": "explicit", "memory_scope": "audience", "content": "目标读者是大学生"}]'
+    items = _parse_extraction_json(raw)
+    assert items[0]["memory_scope"] == "audience"
 
 
 def test_parse_extraction_json_rejects_invalid_type():
@@ -167,6 +174,8 @@ def test_memory_vector_query_uses_cosine_top_k_and_scope_filters():
     assert "status = 'active'" in sql
     assert "embedding IS NOT NULL" in sql
     assert "LIMIT :top_k" in sql
+    scoped_sql = str(_memory_vector_search_sql(scoped=True))
+    assert "memory_scope = ANY" in scoped_sql
 
 
 @pytest.mark.asyncio

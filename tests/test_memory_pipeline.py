@@ -82,6 +82,8 @@ def test_migration_sql_contains_memory_scope_filter_index_and_dimension_audit():
     sql = _offline_sql()
     assert "vector_dims(embedding) <> 1536" in sql
     assert "ix_user_memories_workspace_status" in sql
+    assert "ix_user_memories_workspace_status_scope" in sql
+    assert "memory_scope" in sql
 
 
 @pytest.mark.slow
@@ -227,6 +229,48 @@ async def test_retrieve_only_returns_active(monkeypatch):
     assert "active-mem" in contents
     assert "pending-mem" not in contents
     assert "rejected-mem" not in contents
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_retrieve_filters_by_memory_scope(monkeypatch):
+    db, engine = await _make_db()
+    monkeypatch.setattr(
+        "app.infrastructure.database.session.get_session_factory", lambda: db
+    )
+
+    async with db() as session:
+        session.add_all(
+            [
+                UserMemoryModel(
+                    id=uuid.uuid4(),
+                    workspace_id="default",
+                    memory_type="explicit",
+                    memory_scope="answer_format",
+                    content="偏好-mem-简洁回答",
+                    status="active",
+                ),
+                UserMemoryModel(
+                    id=uuid.uuid4(),
+                    workspace_id="default",
+                    memory_type="explicit",
+                    memory_scope="platform",
+                    content="偏好-mem-知乎平台",
+                    status="active",
+                ),
+            ]
+        )
+        await session.commit()
+
+    snippets = await retrieve_memories(
+        "偏好-mem",
+        "default",
+        top_k=10,
+        scopes={"answer_format"},
+    )
+    assert [snippet.memory_scope for snippet in snippets] == ["answer_format"]
+    assert [snippet.content for snippet in snippets] == ["偏好-mem-简洁回答"]
 
     await engine.dispose()
 

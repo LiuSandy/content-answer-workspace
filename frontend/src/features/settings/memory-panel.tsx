@@ -22,6 +22,7 @@ import {
 export interface UserMemoryDTO {
   id: string;
   memoryType: "explicit" | "implicit" | "work_pattern";
+  memoryScope: string;
   content: string;
   confidence: number;
   source?: string | null;

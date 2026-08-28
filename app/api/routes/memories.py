@@ -23,6 +23,7 @@ def _serialize(m):
     return {
         "id": str(m.id),
         "memoryType": m.memory_type,
+        "memoryScope": m.memory_scope,
         "content": m.content,
         "confidence": m.confidence,
         "source": m.source,
@@ -63,6 +64,7 @@ async def clear_all_user_memories(workspace_id: str = "default"):
 class CreateMemoryRequest(BaseModel):
     content: str
     memoryType: str = Field("explicit", alias="memoryType")
+    memoryScope: str = Field("general", alias="memoryScope")
     confidence: float = 0.8
     evidence: str | None = None
     workspaceId: str = Field("default", alias="workspaceId")
@@ -78,6 +80,7 @@ async def create_user_memory(req: CreateMemoryRequest):
     mem = await create_memory(
         workspace_id=str(req.workspaceId),
         memory_type=mt,
+        memory_scope=req.memoryScope,
         content=str(req.content),
         confidence=req.confidence,
         evidence=req.evidence,

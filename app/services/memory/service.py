@@ -21,10 +21,30 @@ from app.infrastructure.database.models.user_memories import UserMemoryModel
 logger = logging.getLogger(__name__)
 
 MemoryType = Literal["explicit", "implicit", "work_pattern"]
+MemoryScope = Literal[
+    "general",
+    "conversation",
+    "answer_format",
+    "writing_style",
+    "audience",
+    "platform",
+    "source_preference",
+    "workflow",
+]
 # spec 3.6：单次记忆检索耗时 ≤ 200ms
 MEMORY_RETRIEVAL_TIMEOUT_MS = 200
 
 VALID_TYPES = {"explicit", "implicit", "work_pattern"}
+VALID_SCOPES = {
+    "general",
+    "conversation",
+    "answer_format",
+    "writing_style",
+    "audience",
+    "platform",
+    "source_preference",
+    "workflow",
+}
 
 
 @dataclass
@@ -33,21 +53,28 @@ class MemorySnippet:
 
     id: str
     memory_type: str
+    memory_scope: str
     content: str
     confidence: float
     rank_score: float = 0.0
 
 
-def _memory_vector_search_sql():
+def _memory_vector_search_sql(scoped: bool = False):
     """生产长期记忆 cosine Top-K 查询；参数始终通过 SQLAlchemy 绑定。"""
+    scope_filter = (
+        "AND memory_scope = ANY(CAST(:memory_scopes AS text[]))"
+        if scoped
+        else ""
+    )
     return text(
-        """
-        SELECT id::text AS id, memory_type, content, confidence,
+        f"""
+        SELECT id::text AS id, memory_type, memory_scope, content, confidence,
                1 - (embedding <=> CAST(:query_vec AS vector)) AS rank_score
         FROM user_memories
         WHERE workspace_id = :workspace_id
           AND status = 'active'
           AND embedding IS NOT NULL
+          {scope_filter}
         ORDER BY embedding <=> CAST(:query_vec AS vector)
         LIMIT :top_k
         """
@@ -90,13 +117,37 @@ def _parse_extraction_json(content: str) -> list[dict[str, Any]]:
         content_text = (item.get("content") or "").strip()
         if not content_text:
             continue
+        scope = item.get("memory_scope")
+        if scope not in VALID_SCOPES:
+            scope = _infer_memory_scope(content_text, mt)
         cleaned.append({
             "memory_type": mt,
+            "memory_scope": scope,
             "content": content_text,
             "confidence": float(item.get("confidence", 0.8)),
             "evidence": item.get("evidence"),
         })
     return cleaned
+
+
+def _infer_memory_scope(content: str, memory_type: str) -> str:
+    """兼容旧抽取结果；新 Prompt 会直接返回 memory_scope。"""
+    normalized = content.lower()
+    if any(word in normalized for word in ("目标读者", "受众", "读者群")):
+        return "audience"
+    if any(word in normalized for word in ("风格", "语气", "文风", "措辞")):
+        return "writing_style"
+    if any(word in normalized for word in ("格式", "篇幅", "字数", "简洁", "详细")):
+        return "answer_format"
+    if any(word in normalized for word in ("知乎", "小红书", "b站", "平台")):
+        return "platform"
+    if any(word in normalized for word in ("来源", "信源", "引用")):
+        return "source_preference"
+    if memory_type == "implicit":
+        return "writing_style"
+    if memory_type == "work_pattern":
+        return "workflow"
+    return "general"
 
 
 async def extract_memories(
@@ -154,6 +205,7 @@ async def extract_memories(
             mem = UserMemoryModel(
                 workspace_id=workspace_id,
                 memory_type=it["memory_type"],
+                memory_scope=it["memory_scope"],
                 content=it["content"],
                 embedding=emb,
                 confidence=it["confidence"],
@@ -171,6 +223,7 @@ async def retrieve_memories(
     query: str,
     workspace_id: str = "default",
     top_k: int = 5,
+    scopes: set[str] | None = None,
 ) -> list[MemorySnippet]:
     """优先用 pgvector cosine Top-K 检索 active 记忆，失败时文本降级。
 
@@ -182,6 +235,7 @@ async def retrieve_memories(
     normalized_query = query.strip()
     if not normalized_query or top_k <= 0:
         return []
+    normalized_scopes = sorted(set(scopes or ()) & VALID_SCOPES)
 
     query_vector: list[float] | None = None
     try:
@@ -200,10 +254,11 @@ async def retrieve_memories(
                 dialect_name = getattr(getattr(bind, "dialect", None), "name", "")
                 if query_vector is not None and dialect_name == "postgresql":
                     result = await session.execute(
-                        _memory_vector_search_sql(),
+                        _memory_vector_search_sql(bool(normalized_scopes)),
                         {
                             "query_vec": str(query_vector),
                             "workspace_id": workspace_id,
+                            "memory_scopes": normalized_scopes,
                             "top_k": top_k,
                         },
                     )
@@ -212,6 +267,7 @@ async def retrieve_memories(
                         MemorySnippet(
                             id=row["id"],
                             memory_type=row["memory_type"],
+                            memory_scope=row["memory_scope"],
                             content=row["content"],
                             confidence=row["confidence"],
                             rank_score=float(row["rank_score"]),
@@ -233,11 +289,20 @@ async def retrieve_memories(
                         )
                         .limit(top_k)
                     )
+                    if normalized_scopes:
+                        stmt = stmt.where(
+                            UserMemoryModel.memory_scope.in_(normalized_scopes)
+                        )
                     rows = (await session.execute(stmt)).scalars().all()
                     snippets = [
                         MemorySnippet(
                             id=str(row.id),
                             memory_type=row.memory_type,
+                            memory_scope=(
+                                row.memory_scope
+                                if isinstance(row.memory_scope, str)
+                                else "general"
+                            ),
                             content=row.content,
                             confidence=row.confidence,
                         )
@@ -315,6 +380,7 @@ async def create_memory(
     workspace_id: str,
     memory_type: str,
     content: str,
+    memory_scope: str = "general",
     confidence: float = 0.8,
     evidence: str | None = None,
 ) -> UserMemoryModel:
@@ -325,6 +391,9 @@ async def create_memory(
         mem = UserMemoryModel(
             workspace_id=workspace_id,
             memory_type=memory_type,
+            memory_scope=(
+                memory_scope if memory_scope in VALID_SCOPES else "general"
+            ),
             content=content,
             confidence=confidence,
             status="active",

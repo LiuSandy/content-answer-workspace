@@ -65,6 +65,7 @@ async def learn_style_from_versions(
         mem = UserMemoryModel(
             workspace_id="default",
             memory_type="implicit",
+            memory_scope="writing_style",
             content=rule["content"],
             confidence=rule.get("confidence", 0.75),
             status="pending_confirmation",
