@@ -1,42 +1,52 @@
-import React, { useMemo } from "react";
+import React, { useLayoutEffect, useSyncExternalStore } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, AlertCircle } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { decorateStreamingMarkdown } from "./markdown-stream-decorator";
+import type { StreamingMessageController } from "./streaming-message-controller";
 
 export interface StreamingMessageCardProps {
-  isStreaming: boolean;
-  agentStatus: string | null;
-  streamingText: string;
-  streamingSourceList: any | null;
-  streamingError: string | null;
+  controller: StreamingMessageController;
   markdownComponents: any;
-  renderSourceList?: (data: any) => React.ReactNode;
+  renderSourceList?: (data: unknown) => React.ReactNode;
+  onContentChange?: () => void;
 }
 
-/**
- * 独立的流式消息卡片组件：
- * 1. 状态与渲染局部化：将打字机高频刷新的局部 DOM 从主面板隔离；
- * 2. 语法虚拟补齐：通过 decorateStreamingMarkdown 防止流式语法未闭合引起的布局跳变；
- * 3. 记忆化：使用 React.memo 避免非必要属性未变时的重新渲染。
- */
+/** 唯一订阅高频流式快照的展示组件。 */
 export const StreamingMessageCard = React.memo(function StreamingMessageCard({
-  isStreaming,
-  agentStatus,
-  streamingText,
-  streamingSourceList,
-  streamingError,
+  controller,
   markdownComponents,
   renderSourceList,
+  onContentChange,
 }: StreamingMessageCardProps) {
-  if (!isStreaming && !streamingError) {
-    return null;
-  }
+  const snapshot = useSyncExternalStore(
+    controller.subscribe,
+    controller.getSnapshot,
+    controller.getSnapshot,
+  );
 
-  // 虚拟补齐未闭合语法（代码块、LaTeX 公式、加粗等）
-  const decoratedText = useMemo(() => {
-    return decorateStreamingMarkdown(streamingText);
-  }, [streamingText]);
+  const {
+    visible,
+    agentStatus,
+    streamingText,
+    streamingSourceList,
+    streamingError,
+  } = snapshot;
+  const decoratedText = decorateStreamingMarkdown(streamingText);
+
+  // DOM 提交后通知滚动守卫；该回调只执行命令，不更新 ChatPanel state。
+  useLayoutEffect(() => {
+    if (visible) onContentChange?.();
+  }, [
+    visible,
+    agentStatus,
+    streamingText,
+    streamingSourceList,
+    streamingError,
+    onContentChange,
+  ]);
+
+  if (!visible) return null;
 
   return (
     <div className="flex justify-start w-full">

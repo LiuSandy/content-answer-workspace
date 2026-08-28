@@ -142,6 +142,28 @@ def _build_rag_payload(node_state: dict) -> dict | None:
     return None
 
 
+def _current_turn_platform_tool_result(messages: list) -> tuple[list, str | None, str | None]:
+    """读取当前用户轮次内最近的平台工具结果，绝不回收历史轮次结果。"""
+    for message in reversed(messages):
+        if getattr(message, "type", None) == "human":
+            break
+        if (
+            getattr(message, "type", None) == "tool"
+            and getattr(message, "name", None) in ("xiaohongshu_search", "zhihu_search")
+        ):
+            try:
+                import json
+
+                tool_data = json.loads(message.content)
+            except (TypeError, json.JSONDecodeError) as exc:
+                logger.warning("Failed to parse current-turn tool content: %s", exc)
+                continue
+            items = tool_data.get("items") if isinstance(tool_data, dict) else None
+            if isinstance(items, list):
+                return items, tool_data.get("platform", "xiaohongshu"), message.name
+    return [], None, None
+
+
 class CreateChatRequest(BaseModel):
     title: str = "新对话"
 
@@ -606,18 +628,10 @@ async def send_message_stream(
                             tool_platform = platform_result.get("platform")
                             tool_name = platform_result.get("tool_type")
 
-                    for m in reversed(messages_list) if not tool_items else []:
-                        if hasattr(m, "type") and m.type == "tool" and m.name in ("xiaohongshu_search", "zhihu_search"):
-                            try:
-                                import json
-                                tool_data = json.loads(m.content)
-                                if isinstance(tool_data, dict) and "items" in tool_data:
-                                    tool_items = tool_data["items"]
-                                    tool_platform = tool_data.get("platform", "xiaohongshu")
-                                    tool_name = m.name
-                                    break
-                            except Exception as e:
-                                logger.warning("Failed to parse tool content: %s", e)
+                    if not tool_items:
+                        tool_items, tool_platform, tool_name = _current_turn_platform_tool_result(
+                            messages_list
+                        )
 
                     if tool_items:
                         try:

@@ -38,6 +38,10 @@ async def compose_run_inputs(
         "chat_id": str(chat_id),
         "user_message_id": str(current_user_message_id),
         "user_message": current_user_message,
+        # knowledge_mode 是逐轮意图判定结果，不是分支级用户偏好。
+        # 每次 API 运行先恢复 normal，避免上一轮寒暄推断出的 off 经
+        # checkpoint 永久关闭后续实质问题的 RAG。
+        "knowledge_mode": "normal",
     }
     if extra:
         base.update(extra)
