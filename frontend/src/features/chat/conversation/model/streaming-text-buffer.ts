@@ -19,8 +19,9 @@ export interface StreamingTextBuffer {
 }
 
 /**
- * 与 React 组件解耦的流式文本缓冲器。
- * SSE 回调只写入这个对象；只有订阅它的流式卡片会在批量提交后更新。
+ * 与 React 解耦的流式文本缓冲器。
+ * 连续 chunk 先进入等待区，再按最小时间间隔批量提交；前台使用 RAF
+ * 对齐绘制，timer 负责节流并作为后台标签页中 RAF 暂停时的兜底。
  */
 export function createStreamingTextBuffer(
   options: StreamingBufferOptions = {},
@@ -32,6 +33,7 @@ export function createStreamingTextBuffer(
   const clearTimer = options.clearTimer ?? ((id) => clearTimeout(id));
   const now = options.now ?? (() => performance.now());
 
+  // pendingText 是等待区，committedText 是订阅者可读取的稳定快照。
   let pendingText = "";
   let committedText = "";
   let frameId: number | null = null;
@@ -52,6 +54,7 @@ export function createStreamingTextBuffer(
 
   const emit = () => listeners.forEach((listener) => listener());
 
+  // RAF 与 timer 共用 commit；先执行的一方会取消另一方，避免重复提交。
   const commit = () => {
     cancelScheduledFlush();
     if (!pendingText) return;
@@ -67,12 +70,12 @@ export function createStreamingTextBuffer(
 
     const remaining = Math.max(0, throttleMs - (now() - lastFlushTime));
     if (remaining > 0) {
-      // 直接由 timer 提交，确保后台标签页 RAF 被暂停时仍会刷新。
+      // 距离上次提交不足 throttleMs，只等待剩余时间即可。
       timerId = setTimer(commit, remaining);
       return;
     }
 
-    // 前台页面优先对齐下一次绘制；timer 是 RAF 被浏览器挂起时的兜底。
+    // 前台对齐下一次绘制；timer 在 RAF 被挂起时兜底。
     frameId = requestFrame(commit);
     timerId = setTimer(commit, throttleMs);
   };

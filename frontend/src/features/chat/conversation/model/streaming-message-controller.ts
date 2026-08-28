@@ -33,7 +33,11 @@ const EMPTY_SNAPSHOT: StreamingMessageSnapshot = {
   streamingError: null,
 };
 
-/** ChatPanel 只写事件，StreamingMessageCard 是唯一的快照订阅者。 */
+/**
+ * 管理一轮 SSE 助手消息的临时快照和展示生命周期。
+ * SSE 负责写入，StreamingMessageCard 通过 useSyncExternalStore 独占订阅，
+ * 从而避免高频文本更新触发 ChatPanel 和历史消息列表重新渲染。
+ */
 export function createStreamingMessageController(
   textBuffer: StreamingTextBuffer = createStreamingTextBuffer({ throttleMs: 30 }),
 ): StreamingMessageController {
@@ -41,6 +45,8 @@ export function createStreamingMessageController(
   const listeners = new Set<() => void>();
 
   const emit = () => listeners.forEach((listener) => listener());
+
+  // 相同快照不发通知，避免无意义的外部 Store 更新。
   const update = (patch: Partial<StreamingMessageSnapshot>) => {
     const next = { ...snapshot, ...patch };
     if (
@@ -56,6 +62,7 @@ export function createStreamingMessageController(
     emit();
   };
 
+  // 只在缓冲器批量提交时更新文本，而不是响应每个原始 SSE chunk。
   const unsubscribeBuffer = textBuffer.subscribe(() => {
     update({ streamingText: textBuffer.getSnapshot() });
   });
@@ -80,6 +87,7 @@ export function createStreamingMessageController(
       update({ visible: true, streamingSourceList });
     },
     setError(streamingError) {
+      // 出错前提交剩余文本，保留已经生成的部分内容。
       if (streamingError) textBuffer.flush();
       update({
         visible: Boolean(streamingError) || snapshot.visible,
