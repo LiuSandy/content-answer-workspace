@@ -590,16 +590,6 @@ async def send_message_stream(
                         msg_payload["ragSources"] = rag_payload.get("sources") or []
                         msg_payload["ragFallback"] = rag_payload.get("fallbackNotice")
                         msg_payload["traceId"] = rag_payload.get("traceId")
-                    saved = await chat_service.save_assistant_message(
-                        chat_id=chat_id,
-                        message_type="text",
-                        content=full_text,
-                        payload=msg_payload if msg_payload else None,
-                        parent_message_id=user_msg.id,
-                        run_id=run_id,
-                    )
-                    summary_leaf = saved.id
-                    assistant_text = full_text
 
                     # 确定性平台采集结果保存在独立 state 字段中，不写入 ToolMessage；
                     # 仍兼容读取普通 ReAct 工具调用产生的合法 ToolMessage。
@@ -680,18 +670,25 @@ async def send_message_stream(
                                 "items": serialized_items
                             }
 
-                            await chat_service.save_assistant_message(
-                                chat_id=chat_id,
-                                message_type="source_list",
-                                content="为您搜索采集到以下主题帖子：",
-                                payload=payload_data,
-                                parent_message_id=user_msg.id,
-                                run_id=run_id,
-                            )
+                            # 方案 1: 将采集到的卡片作为来源附件聚合在文本消息的 payload 中，避免产生平级分支覆盖冲突
+                            msg_payload["sourceList"] = payload_data
+
                             # 在 SSE 流结束前，向前端追加产生一条 source_list 消息完成事件
                             yield sse_named_event("source.list.completed", payload_data)
                         except Exception as e:
                             logger.error("Failed to persist and yield source items from tool call: %s", e)
+
+                    # 保存合并后的唯一助手消息 (方案 1: 单气泡聚合)
+                    saved = await chat_service.save_assistant_message(
+                        chat_id=chat_id,
+                        message_type="text",
+                        content=full_text,
+                        payload=msg_payload if msg_payload else None,
+                        parent_message_id=user_msg.id,
+                        run_id=run_id,
+                    )
+                    summary_leaf = saved.id
+                    assistant_text = full_text
                 elif intent == "task_plan":
                     # 复合任务：从 state 取结果并落库为结构化消息
                     tp_result = values.get("task_plan_result") or {}
