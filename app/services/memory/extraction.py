@@ -85,6 +85,7 @@ async def _extract_once(
             mem = UserMemoryModel(
                 workspace_id=workspace_id,
                 memory_type=it["memory_type"],
+                memory_scope=it["memory_scope"],
                 content=it["content"],
                 embedding=emb,
                 confidence=it["confidence"],

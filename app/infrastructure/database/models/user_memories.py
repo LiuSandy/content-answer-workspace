@@ -32,6 +32,11 @@ class UserMemoryModel(Base):
     workspace_id: Mapped[str] = mapped_column(String(100), nullable=False)
     # explicit / implicit / work_pattern
     memory_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # general / conversation / answer_format / writing_style / audience /
+    # platform / source_preference / workflow
+    memory_scope: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="general", server_default="general"
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     # 向量化存储；若 pgvector 不可用退化为 null
     if _HAS_PGVECTOR:
@@ -60,4 +65,10 @@ class UserMemoryModel(Base):
     __table_args__ = (
         Index("ix_user_memories_workspace_type", "workspace_id", "memory_type"),
         Index("ix_user_memories_workspace_status", "workspace_id", "status"),
+        Index(
+            "ix_user_memories_workspace_status_scope",
+            "workspace_id",
+            "status",
+            "memory_scope",
+        ),
     )
