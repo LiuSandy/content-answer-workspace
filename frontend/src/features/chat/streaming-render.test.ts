@@ -51,4 +51,14 @@ describe("streaming markdown decorator", () => {
     // Should close the code block, but not math or bold
     expect(decorated).toBe(codeWithMath + "\n```");
   });
+
+  test("closes a tilde fence with the same marker and length", () => {
+    const text = "~~~~typescript\nconst answer = 42;";
+    expect(decorateStreamingMarkdown(text)).toBe(text + "\n~~~~");
+  });
+
+  test("ignores math and bold markers inside an already closed code block", () => {
+    const text = "```text\n$$ price and ** marker\n```\n普通文本";
+    expect(decorateStreamingMarkdown(text)).toBe(text);
+  });
 });

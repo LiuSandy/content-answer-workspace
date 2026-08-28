@@ -55,7 +55,7 @@ def _make_llm_mock(monkeypatch, content: str):
     fake_provider = MagicMock()
     fake_provider.generate = AsyncMock(return_value=MagicMock(content=content))
     fake_registry = MagicMock()
-    fake_registry.get.return_value = fake_provider
+    fake_registry.get_default.return_value = fake_provider
     fake_prompt_registry = MagicMock()
     fake_prompt_registry.render.return_value = fake_rendered
     monkeypatch.setattr(

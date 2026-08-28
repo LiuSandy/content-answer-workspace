@@ -12,31 +12,52 @@ export function decorateStreamingMarkdown(raw: string): string {
 
   let decorated = raw;
 
-  // 1. 检查代码块围栏（``` 或 ~~~）
+  // 1. 检查代码块围栏（``` 或 ~~~），并记录围栏字符与最小长度。
   const lines = decorated.split("\n");
-  let inCodeFence = false;
+  let openFence: { marker: "`" | "~"; length: number } | null = null;
+  const outsideFenceLines: string[] = [];
   for (const line of lines) {
-    if (/^\s*(?:`{3,}|~{3,})/.test(line)) {
-      inCodeFence = !inCodeFence;
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
+    if (!openFence) {
+      if (fenceMatch) {
+        openFence = {
+          marker: fenceMatch[1][0] as "`" | "~",
+          length: fenceMatch[1].length,
+        };
+      } else {
+        outsideFenceLines.push(line);
+      }
+      continue;
+    }
+
+    if (
+      fenceMatch &&
+      fenceMatch[1][0] === openFence.marker &&
+      fenceMatch[1].length >= openFence.length &&
+      !fenceMatch[2].trim()
+    ) {
+      openFence = null;
     }
   }
 
-  if (inCodeFence) {
-    // 补齐末尾闭合代码围栏
-    decorated += "\n```";
+  if (openFence) {
+    decorated += `\n${openFence.marker.repeat(openFence.length)}`;
     return decorated;
   }
 
+  // 已闭合代码块里的符号不参与数学公式和粗体计数。
+  const syntaxText = outsideFenceLines.join("\n");
+
   // 2. 检查块级 LaTeX 数学公式（$$ ... $$）
   // 仅在不在代码块内部时检测
-  const blockMathMatches = decorated.match(/(?<!\\)\$\$/g);
+  const blockMathMatches = syntaxText.match(/(?<!\\)\$\$/g);
   if (blockMathMatches && blockMathMatches.length % 2 === 1) {
     decorated += "\n$$";
     return decorated;
   }
 
   // 3. 检查未闭合的加粗标记（**）
-  const boldMatches = decorated.match(/(?<!\\)\*\*/g);
+  const boldMatches = syntaxText.match(/(?<!\\)\*\*/g);
   if (boldMatches && boldMatches.length % 2 === 1) {
     decorated += "**";
   }

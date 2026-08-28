@@ -22,7 +22,7 @@ def _make_mock_deps(monkeypatch, llm_content: str):
         return_value=MagicMock(content=llm_content)
     )
     fake_registry = MagicMock()
-    fake_registry.get.return_value = fake_provider
+    fake_registry.get_default.return_value = fake_provider
     fake_prompt_registry = MagicMock()
     fake_prompt_registry.render.return_value = fake_rendered
     monkeypatch.setattr(
@@ -96,3 +96,26 @@ async def test_route_parse_url_rule_keeps_mode(monkeypatch):
     out = await route_intent_node(state)
     assert out["intent"] == "parse_url"
     assert out["knowledge_mode"] == "strict"
+
+
+@pytest.mark.asyncio
+async def test_route_clears_previous_turn_rag_state(monkeypatch):
+    _make_mock_deps(monkeypatch, '{"intent": "chat", "knowledge_mode": "normal"}')
+    state = _state("什么是同余定理")
+    state.update(
+        {
+            "rag_decision": False,
+            "decision_reason": "previous turn",
+            "retrieval_result": object(),
+            "trace_id": "old-trace",
+            "fallback_reason": "old-fallback",
+        }
+    )
+
+    out = await route_intent_node(state)
+
+    assert out["rag_decision"] is None
+    assert out["decision_reason"] is None
+    assert out["retrieval_result"] is None
+    assert out["trace_id"] is None
+    assert out["fallback_reason"] is None

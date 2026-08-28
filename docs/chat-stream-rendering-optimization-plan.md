@@ -47,6 +47,11 @@ flowchart TD
         RAF["requestAnimationFrame 约16ms-30ms"] -->|定时抽取| Flush["批次刷新"]
     end
 
+    subgraph StoreLayer["流式外部状态边界"]
+        Q --> Controller["StreamingMessageController"]
+        Controller -->|useSyncExternalStore 唯一订阅者| SMC
+    end
+
     subgraph DecoratorLayer["模块 3: 流式语法自动闭合包装"]
         Flush --> AutoClose["autoCloseMarkdownDecorator 自动补齐未闭合语法"]
     end
@@ -70,7 +75,9 @@ flowchart TD
 
 1. **抽离独立流式卡片 `<StreamingMessageCard />`**：
    - 将流式打字机的临时 DOM 结构、状态指示器以及 Markdown 内容抽离为一个专职子组件。
-   - `streamingText` 的频繁变动仅局限在该子组件内部重渲染，完全切断对父组件 `ChatPanel` 的无意义渲染扩散。
+   - `streamingText`、`agentStatus`、来源与错误统一放入 `StreamingMessageController`；`ChatPanel` 只写入 SSE 事件、不订阅流式快照。
+   - `<StreamingMessageCard />` 通过 `useSyncExternalStore` 成为唯一订阅者，频繁变动仅驱动该卡片重渲染，完全切断对父组件 `ChatPanel` 的渲染扩散。
+   - 控制器独立于卡片挂载周期，首次创建会话、路由切换和卡片暂未挂载时也不会丢失已经到达的事件。
 2. **对已有历史消息应用 `React.memo`**：
    - 为 `<MessageBubble>` 封装记忆化对比函数，只要消息的 `messageId`、`content`、`messageType`、`isEditing` 以及兄弟分支索引不变，流式期间跳过重渲染。
 3. **底部输入框隔离**：
@@ -97,7 +104,7 @@ flowchart TD
 1. **代码块围栏检查**：
    - 统计行首 ```` ``` ```` 的数量，若为奇数（说明代码块未闭合），在末尾补齐 `\n```\n`。
 2. **LaTeX 数学公式检查**：
-   - 检测末尾存在奇数个块级 `$$` 或行内 `$` 时，自动补齐对应的 `$$` 或 `$`，避免 KaTeX 报错或跳变。
+   - 检测末尾存在奇数个块级 `$$` 时，自动补齐对应的 `$$`，避免 KaTeX 报错或跳变。
 3. **行内样式检查**：
    - 自动检测未闭合的 `**` 加粗符号。
 
@@ -123,11 +130,12 @@ flowchart TD
 
 | 步骤 | 操作类型 | 文件路径 | 改造说明 |
 |---|---|---|---|
-| **Step 1** | **新建** | `frontend/src/features/chat/hooks/use-streaming-buffer.ts` | 实现 RAF 节流缓冲 Hook，提供 `appendChunk`、`flush`、`streamingText` 等接口 |
-| **Step 2** | **新建** | `frontend/src/features/chat/utils/markdown-stream-decorator.ts` | 实现流式 Markdown 虚拟闭合装饰器，解决代码块和公式跳闪 |
-| **Step 3** | **新建** | `frontend/src/features/chat/components/streaming-message-card.tsx` | 独立流式渲染卡片，集成语法闭合与打字机输出 |
-| **Step 4** | **修改** | `frontend/src/features/chat/chat-panel.tsx` | 1. 接入 `StreamingMessageCard`<br/>2. 为 `MessageBubble` 添加 `React.memo`<br/>3. 实现智能滚动监测与“回到底部”指示按钮 |
-| **Step 5** | **测试验证** | `frontend/src/features/chat/__tests__/streaming-render.test.tsx` | 编写单元测试验证缓冲合并、自动闭合逻辑与滚动守卫 |
+| **Step 1** | **新建** | `frontend/src/features/chat/use-streaming-buffer.ts` | 实现可订阅的 RAF 流式文本缓冲器，提供 `appendChunk`、`flush`、`reset` 与稳定快照 |
+| **Step 2** | **新建** | `frontend/src/features/chat/streaming-message-controller.ts` | 持有文本、Agent 状态、来源、错误和展示生命周期；不使用 `ChatPanel` React state |
+| **Step 3** | **新建** | `frontend/src/features/chat/markdown-stream-decorator.ts` | 实现流式 Markdown 虚拟闭合装饰器，解决代码块和公式跳闪 |
+| **Step 4** | **新建** | `frontend/src/features/chat/streaming-message-card.tsx` | 通过 `useSyncExternalStore` 独占订阅流式控制器，集成语法闭合与打字机输出 |
+| **Step 5** | **修改** | `frontend/src/features/chat/chat-panel.tsx` | 1. SSE 仅写入控制器<br/>2. 为 `MessageBubble` 添加 `React.memo`<br/>3. 自动滚动改为卡片提交后的稳定回调<br/>4. 处理首次建会话和切换会话竞态 |
+| **Step 6** | **测试验证** | `frontend/src/features/chat/streaming-state.test.ts`、`streaming-render.test.ts` | 验证缓冲合并、同步 Flush、挂载前事件保留、完整流式生命周期和 Markdown 自动闭合 |
 
 ---
 

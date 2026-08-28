@@ -97,6 +97,7 @@ async def test_first_run_rebuilds_full_branch():
         graph, str(chat.id), str(branch_root), history, current_id, "Q_new"
     )
     assert inputs["resumed_from_checkpoint"] is False
+    assert inputs["knowledge_mode"] == "normal"
     assert len(inputs["messages"]) == len(history) + 1
     assert inputs["messages"][-1] == {"role": "user", "content": "Q_new"}
     assert config["configurable"]["thread_id"] == branch_thread_id(str(chat.id), str(branch_root))
@@ -137,6 +138,7 @@ async def test_continue_passes_incremental_only():
     assert config2["configurable"]["thread_id"] == config1["configurable"]["thread_id"]
     assert inputs2["resumed_from_checkpoint"] is True
     assert inputs2["messages"] == [{"role": "user", "content": "Q2"}]
+    assert inputs2["knowledge_mode"] == "normal"
 
     # 运行后 checkpoint 内消息无重复
     await graph.ainvoke(inputs2, config2)
