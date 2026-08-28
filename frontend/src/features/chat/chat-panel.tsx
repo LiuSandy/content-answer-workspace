@@ -1,4 +1,4 @@
-import {useState, useRef, useEffect} from "react";
+import {useState, useRef, useEffect, useCallback, useMemo, memo} from "react";
 import {useQuery, useQueryClient} from "@tanstack/react-query";
 import {
     Send,
@@ -12,6 +12,7 @@ import {
     Pencil,
     ChevronLeft,
     ChevronRight,
+    ChevronDown,
     Wrench,
     ArrowUp,
     Clock
@@ -20,6 +21,8 @@ import {useNavigate} from "react-router-dom";
 
 import {apiGet, apiPost} from "@/lib/api";
 import {streamPost} from "@/lib/sse";
+import {useStreamingBuffer} from "./use-streaming-buffer";
+import {StreamingMessageCard} from "./streaming-message-card";
 import {
     abortStreamForChat,
     reconcileTransientStreamError,
@@ -152,12 +155,22 @@ export function ChatPanel() {
     } = useChatStore();
     const [inputText, setInputText] = useState("");
 
-    // 流式交互临时状态
+    // 流式交互临时状态（使用 RAF 时间切片缓冲，降低高频 Re-render 与 CPU 占用）
     const [isStreaming, setIsStreaming] = useState(false);
     const [agentStatus, setAgentStatus] = useState<string | null>(null);
-    const [streamingText, setStreamingText] = useState("");
+    const {
+        streamingText,
+        appendChunk: appendStreamingChunk,
+        flush: flushStreamingBuffer,
+        reset: resetStreamingBuffer,
+    } = useStreamingBuffer({ throttleMs: 30 });
     const [streamingSourceList, setStreamingSourceList] = useState<any | null>(null);
     const [streamingError, setStreamingError] = useState<string | null>(null);
+
+    // 智能吸底与用户滚动感知状态
+    const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
+    const scrollAreaViewportRef = useRef<HTMLDivElement | null>(null);
+    const markdownComponents = useMemo(() => getMarkdownComponents(false), []);
 
     // RAG 相关状态
     const [ragSources, setRagSources] = useState<Array<{label: string; title: string; sourceType: string; sourceUrl?: string | null; contentSnippet?: string}> | null>(null);
@@ -195,14 +208,15 @@ export function ChatPanel() {
     useEffect(() => {
         setIsStreaming(false);
         setAgentStatus(null);
-        setStreamingText("");
+        resetStreamingBuffer();
         setStreamingSourceList(null);
         setStreamingError(null);
         setRagSources(null);
         setRagFallback(null);
         setMultiAgentResult(null);
         setActiveTaskPlanId(null);
-    }, [currentChatId]);
+        setIsUserScrolledUp(false);
+    }, [currentChatId, resetStreamingBuffer]);
 
     // 获取消息历史
     const {data: messages = [], isLoading} = useQuery<Message[]>({
@@ -272,11 +286,40 @@ export function ChatPanel() {
         }
     }, [calculatedLeafId, activeLeafMessageId, setActiveLeafMessageId]);
 
-    // 滚动到底部
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({behavior: "smooth"});
-    }, [activePath, streamingText, agentStatus]);
+    // 智能滚动到最底部
+    const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+        if (scrollAreaViewportRef.current) {
+            scrollAreaViewportRef.current.scrollTo({
+                top: scrollAreaViewportRef.current.scrollHeight,
+                behavior,
+            });
+        } else {
+            messagesEndRef.current?.scrollIntoView({ behavior });
+        }
+    }, []);
 
+    // 捕获滚动事件，检测用户是否主动向上滑阅历史（离开底部超过 80px）
+    const handleScrollCapture = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+        const target = e.target as HTMLDivElement;
+        scrollAreaViewportRef.current = target;
+        const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+        setIsUserScrolledUp(distanceFromBottom > 80);
+    }, []);
+
+    // 发送提问或切换分支时，重置向上滑动状态并平滑滚动到底部
+    useEffect(() => {
+        if (!isStreaming) {
+            setIsUserScrolledUp(false);
+            scrollToBottom("smooth");
+        }
+    }, [activeLeafMessageId, isStreaming, scrollToBottom]);
+
+    // 流式打字期间：仅当用户未主动向上查看历史时，才进行自动吸底
+    useEffect(() => {
+        if (isStreaming && !isUserScrolledUp) {
+            scrollToBottom("auto");
+        }
+    }, [streamingText, agentStatus, isStreaming, isUserScrolledUp, scrollToBottom]);
 
     // ── 发送消息 ──
     const handleSendMessage = async (e?: React.FormEvent, overrideContent?: string, overrideParentId?: string | null) => {
@@ -296,7 +339,8 @@ export function ChatPanel() {
 
         // 初始化本轮流式交互状态：显示发送中，并清理上一轮的文本、来源、错误和 RAG 展示数据。
         setIsStreaming(true);
-        setStreamingText("");
+        resetStreamingBuffer();
+        setIsUserScrolledUp(false);
         setAgentStatus("发送中...");
         setStreamingSourceList(null);
         setStreamingError(null);
@@ -388,7 +432,7 @@ export function ChatPanel() {
                         }
                     } else if (event === "message.delta") {
                         setAgentStatus(null);
-                        setStreamingText((prev) => prev + data.delta);
+                        appendStreamingChunk(data.delta);
                     } else if (event === "source.list.completed") {
                         setAgentStatus(null);
                         setStreamingSourceList(data);
@@ -400,13 +444,16 @@ export function ChatPanel() {
                         setRagFallback(data.reason || "私有资料证据不足，使用了其他知识来源");
                     } else if (event === "agent.error") {
                         setAgentStatus(null);
+                        flushStreamingBuffer();
                         setStreamingError(data.message || "生成超时已自动停止，请重试");
                     } else if (event === "run.failed") {
                         setAgentStatus(null);
+                        flushStreamingBuffer();
                         setStreamingError(data.message || "请求处理失败");
                     }
                 },
                 onError: (err) => {
+                    flushStreamingBuffer();
                     setStreamingError(err.message);
                     setAgentStatus(null);
                 },
@@ -431,9 +478,10 @@ export function ChatPanel() {
         if (abortRef.current?.controller === controller) {
             abortRef.current = null;
         }
+        flushStreamingBuffer();
+        resetStreamingBuffer();
         setIsStreaming(false);
         setAgentStatus(null);
-        setStreamingText("");
         setStreamingSourceList(null);
         setRagSources(null);
         setRagFallback(null);
@@ -467,7 +515,8 @@ export function ChatPanel() {
     const handleSelectChoice = async (optionId: string, messageId: string) => {
         if (isStreaming || !currentChatId) return;
         setIsStreaming(true);
-        setStreamingText("");
+        resetStreamingBuffer();
+        setIsUserScrolledUp(false);
         setAgentStatus("已选择，正在继续...");
         setStreamingError(null);
 
@@ -494,12 +543,14 @@ export function ChatPanel() {
                         setAgentStatus(toolMap[data.tool_type] || `执行工具: ${data.tool_type}`);
                     } else if (event === "message.delta") {
                         setAgentStatus(null);
-                        setStreamingText((prev) => prev + data.delta);
+                        appendStreamingChunk(data.delta);
                     } else if (event === "agent.error") {
                         setAgentStatus(null);
+                        flushStreamingBuffer();
                         setStreamingError(data.message || "生成超时已自动停止，请重试");
                     } else if (event === "run.failed") {
                         setAgentStatus(null);
+                        flushStreamingBuffer();
                         setStreamingError(data.message || "续跑失败，请重试");
                     }
                 },
@@ -579,82 +630,80 @@ export function ChatPanel() {
     }
 
     return (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-muted/30">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-muted/30 relative">
             {/* ── 消息列表 ── */}
-            <ScrollArea className="flex-1 min-h-0 p-4">
-                <div className="flex w-full flex-col gap-4 px-2">
-                    {isLoading ? (
-                        <div className="space-y-3 py-8">
-                            <Skeleton className="mx-auto h-16 w-3/4 rounded-xl"/>
-                            <Skeleton className="ml-auto h-10 w-1/2 rounded-xl"/>
-                            <Skeleton className="h-16 w-3/4 rounded-xl"/>
-                        </div>
-                    ) : (
-                        activePath.map((msg) => {
-                            const siblings = resolvedMessages.filter(m => m.parentMessageId === msg.parentMessageId && m.role === "user");
-                            siblings.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+            <div className="relative flex-1 min-h-0 flex flex-col">
+                <ScrollArea
+                    className="flex-1 min-h-0 p-4"
+                    onScrollCapture={handleScrollCapture}
+                >
+                    <div className="flex w-full flex-col gap-4 px-2">
+                        {isLoading ? (
+                            <div className="space-y-3 py-8">
+                                <Skeleton className="mx-auto h-16 w-3/4 rounded-xl"/>
+                                <Skeleton className="ml-auto h-10 w-1/2 rounded-xl"/>
+                                <Skeleton className="h-16 w-3/4 rounded-xl"/>
+                            </div>
+                        ) : (
+                            activePath.map((msg) => {
+                                const siblings = resolvedMessages.filter(m => m.parentMessageId === msg.parentMessageId && m.role === "user");
+                                siblings.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-                            return (
-                                <MessageBubble
-                                    key={msg.messageId}
-                                    msg={msg}
+                                return (
+                                    <MemoizedMessageBubble
+                                        key={msg.messageId}
+                                        msg={msg}
+                                        onSelectItem={setSelectedSourceItemId}
+                                        onSelectChoice={handleSelectChoice}
+                                        selectedId={selectedSourceItemId}
+                                        isEditing={editingMessageId === msg.messageId}
+                                        onStartEdit={() => setEditingMessageId(msg.messageId)}
+                                        onCancelEdit={() => setEditingMessageId(null)}
+                                        onConfirmEdit={(content) => handleConfirmEdit(msg, content)}
+                                        siblings={siblings}
+                                        onSwitchSibling={(dir) => handleSwitchSibling(msg, dir)}
+                                        isStreaming={isStreaming}
+                                    />
+                                );
+                            })
+                        )}
+
+                        {/* 独立流式响应卡片：集成语法虚拟补齐与局部渲染优化 */}
+                        <StreamingMessageCard
+                            isStreaming={isStreaming}
+                            agentStatus={agentStatus}
+                            streamingText={streamingText}
+                            streamingSourceList={streamingSourceList}
+                            streamingError={streamingError}
+                            markdownComponents={markdownComponents}
+                            renderSourceList={(data) => (
+                                <SourceListCard
+                                    data={data}
                                     onSelectItem={setSelectedSourceItemId}
-                                    onSelectChoice={handleSelectChoice}
                                     selectedId={selectedSourceItemId}
-                                    isEditing={editingMessageId === msg.messageId}
-                                    onStartEdit={() => setEditingMessageId(msg.messageId)}
-                                    onCancelEdit={() => setEditingMessageId(null)}
-                                    onConfirmEdit={(content) => handleConfirmEdit(msg, content)}
-                                    siblings={siblings}
-                                    onSwitchSibling={(dir) => handleSwitchSibling(msg, dir)}
-                                    isStreaming={isStreaming}
                                 />
-                            );
-                        })
-                    )}
+                            )}
+                        />
+                        <div ref={messagesEndRef}/>
+                    </div>
+                </ScrollArea>
 
-                    {/* 实时流式响应；出错后卡片保留展示错误，直到下一次发送 */}
-                    {(isStreaming || streamingError) && (
-                        <div className="flex justify-start w-full">
-                            <Card className="max-w-[calc(100%-3rem)] w-full border-none bg-card shadow-sm">
-                                <CardContent className="p-3.5">
-                                    {agentStatus && (
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Loader2 className="h-4 w-4 animate-spin text-primary"/>
-                                            {agentStatus}
-                                        </div>
-                                    )}
-                                    {streamingText && (
-                                        <div className="text-sm leading-relaxed max-w-none text-foreground/90">
-                                            <MarkdownContent components={getMarkdownComponents(false)}>
-                                                {streamingText}
-                                            </MarkdownContent>
-                                        </div>
-                                    )}
-                                    {streamingSourceList && (
-                                        <SourceListCard
-                                            data={streamingSourceList}
-                                            onSelectItem={setSelectedSourceItemId}
-                                            selectedId={selectedSourceItemId}
-                                        />
-                                    )}
-                                    {streamingError && (
-                                        <div
-                                            className="flex items-start gap-2.5 text-destructive bg-destructive/5 border border-destructive/20 rounded-xl p-3 w-full">
-                                            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5"/>
-                                            <div>
-                                                <p className="text-sm font-semibold">请求出错</p>
-                                                <p className="mt-1 text-xs leading-relaxed opacity-90">{streamingError}</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        </div>
-                    )}
-                    <div ref={messagesEndRef}/>
-                </div>
-            </ScrollArea>
+                {/* 智能吸底提示：当用户向上翻阅历史且有流式内容或长列表时，显示回到底部按钮 */}
+                {isUserScrolledUp && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setIsUserScrolledUp(false);
+                            scrollToBottom("smooth");
+                        }}
+                        className="absolute bottom-3 right-6 z-20 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/90 backdrop-blur-sm border border-border/80 shadow-md rounded-full text-foreground hover:bg-muted transition-all animate-in fade-in zoom-in-95 cursor-pointer"
+                    >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                        <span>回到底部</span>
+                        {isStreaming && <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />}
+                    </button>
+                )}
+            </div>
 
             {/* ── TaskPlan 进度卡片（如果当前 chat 创建过 plan）── */}
             {activeTaskPlanId && <TaskPlanCard planId={activeTaskPlanId} />}
@@ -823,6 +872,16 @@ function MessageBubble({
                                         traceId={msg.payload.traceId}
                                     />
                                 )}
+                                {/* 方案 1：如果在普通文本回答中附带了搜索采集卡片，直接在正文下方融合展示 */}
+                                {!isUser && (msg.payload?.sourceList || msg.payload?.source_list) && (
+                                    <div className="mt-4 pt-3 border-t border-border/30">
+                                        <SourceListCard
+                                            data={msg.payload.sourceList || msg.payload.source_list}
+                                            onSelectItem={onSelectItem}
+                                            selectedId={selectedId}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         )}
                         {msg.messageType === "error" && (
@@ -916,6 +975,24 @@ function MessageBubble({
         </div>
     );
 }
+
+/**
+ * 记忆化的消息气泡组件：
+ * 在 SSE 高频流式推流期间，只要已有消息的核心属性未发生变化，
+ * 彻底跳过重新渲染，切断对整个历史消息链的无意义开销。
+ */
+const MemoizedMessageBubble = memo(MessageBubble, (prev, next) => {
+    return (
+        prev.msg.messageId === next.msg.messageId &&
+        prev.msg.content === next.msg.content &&
+        prev.msg.messageType === next.msg.messageType &&
+        prev.msg.payload === next.msg.payload &&
+        prev.isEditing === next.isEditing &&
+        prev.selectedId === next.selectedId &&
+        prev.isStreaming === next.isStreaming &&
+        prev.siblings.length === next.siblings.length
+    );
+});
 
 // ── Human-in-the-loop 选择卡片 ───────────────────────────────────────
 
