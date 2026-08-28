@@ -27,20 +27,20 @@ import { streamPost } from "@/lib/sse";
 import { useChatStore } from "@/store/chat-store";
 import { useAlertDialog } from "@/hooks/use-alert-dialog";
 import { InlineRefineMenu, type InlineRefineParams } from "./inline-refine-menu";
-import { SelectionHighlight } from "./selection-highlight-extension";
-import { QualityReviewDialog, ReportCard } from "./quality-review-dialog";
-import type { QualityReviewRecordDTO } from "./quality-review-api";
+import { SelectionHighlight } from "../extensions/selection-highlight-extension";
+import { QualityReviewDialog, ReportCard } from "../review/quality-review-dialog";
+import type { QualityReviewRecordDTO } from "../review/quality-review-api";
 import {
   compactOutlineLabel,
   compactReviewLabel,
   currentVersionBadgeClass,
   modelLabel,
-} from "./version-history";
+} from "../review/version-history";
 import {
   initialCreationProgress,
   reduceCreationProgress,
-} from "./creation-review-lifecycle";
-import { OutlineDialog } from "./outline-dialog";
+} from "../review/creation-review-lifecycle";
+import { OutlineDialog } from "../outline/outline-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";

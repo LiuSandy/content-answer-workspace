@@ -4,14 +4,14 @@ import { useNavigate } from "react-router-dom";
 import { apiGet, apiPost } from "@/lib/api";
 import { streamPost } from "@/lib/sse";
 import { useChatStore } from "@/store/chat-store";
-import { type MultiAgentRunResult } from "./agent-workspace-panel";
-import type { ChatMessage } from "./chat-message-tree";
+import type { MultiAgentRunResult } from "../../tasks/types/multi-agent";
+import type { ChatMessage } from "../model/chat-message-tree";
 import {
   abortStreamForChat,
   reconcileTransientStreamError,
   type ActiveChatStream,
-} from "./chat-stream-lifecycle";
-import { createStreamingMessageController } from "./streaming-message-controller";
+} from "../model/chat-stream-lifecycle";
+import { createStreamingMessageController } from "../model/streaming-message-controller";
 
 type StreamUiState = {
   isStreaming: boolean;

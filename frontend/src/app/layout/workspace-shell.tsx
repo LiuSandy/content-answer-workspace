@@ -4,8 +4,8 @@ import { BrainCircuit, Settings, Moon, Sun, SearchCode } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { PromptTemplatesDialog } from "./prompt-templates-dialog";
-import { RagSearchTestDialog } from "../knowledge/rag-search-test-dialog";
+import { PromptTemplatesDialog } from "@/features/chat/prompts/prompt-templates-dialog";
+import { RagSearchTestDialog } from "@/features/knowledge/rag-search-test-dialog";
 
 /**
  * 应用外壳：顶部 Header + 主体 Outlet。

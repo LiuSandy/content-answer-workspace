@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decorateStreamingMarkdown } from "./markdown-stream-decorator";
+import { decorateStreamingMarkdown } from "../model/markdown-stream-decorator";
 
 describe("streaming markdown decorator", () => {
   test("returns empty string when input is empty", () => {

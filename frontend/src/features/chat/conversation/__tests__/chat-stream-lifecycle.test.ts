@@ -4,7 +4,7 @@ import {
   abortStreamForChat,
   reconcileTransientStreamError,
   type ActiveChatStream,
-} from "./chat-stream-lifecycle";
+} from "../model/chat-stream-lifecycle";
 
 describe("chat stream lifecycle", () => {
   test("does not abort a newly-created chat stream when the previous empty route cleans up", () => {

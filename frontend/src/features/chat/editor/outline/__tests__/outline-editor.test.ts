@@ -7,7 +7,7 @@ import {
   removeSection,
   updateSection,
   type EditableOutlineSection,
-} from "./outline-editor";
+} from "../outline-editor";
 
 const sections: EditableOutlineSection[] = [
   {

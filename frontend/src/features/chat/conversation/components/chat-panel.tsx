@@ -6,7 +6,7 @@ import { PromptInput } from "@/components/ui/prompt-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChatStore } from "@/store/chat-store";
-import { AgentWorkspacePanel } from "./agent-workspace-panel";
+import { AgentWorkspacePanel } from "../../tasks/components/agent-workspace-panel";
 import { getChatMarkdownComponents } from "./chat-markdown-components";
 import { MemoizedMessageBubble, SourceListCard } from "./chat-message-bubble";
 import {
@@ -15,12 +15,12 @@ import {
   getUserMessageSiblings,
   resolveParentIds,
   type ChatMessage,
-} from "./chat-message-tree";
+} from "../model/chat-message-tree";
 import { MemoryAppliedBadge } from "./memory-applied-badge";
 import { StreamingMessageCard } from "./streaming-message-card";
-import { TaskPlanCard } from "./task-plan-card";
-import { useChatScroll } from "./use-chat-scroll";
-import { useChatStream } from "./use-chat-stream";
+import { TaskPlanCard } from "../../tasks/components/task-plan-card";
+import { useChatScroll } from "../hooks/use-chat-scroll";
+import { useChatStream } from "../hooks/use-chat-stream";
 
 /** 中间对话面板：负责组合消息路径、流式会话和输入区域。 */
 export function ChatPanel() {

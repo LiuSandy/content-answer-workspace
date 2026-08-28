@@ -1,19 +1,6 @@
 import { useState } from "react";
 import { Users, Loader2, XCircle, CheckCircle2, Clock } from "lucide-react";
-
-export interface AgentStatus {
-  name: string;
-  status: string;
-  message?: string;
-  resultPreview?: string;
-}
-
-export interface MultiAgentRunResult {
-  runId: string;
-  status: string;
-  agents: AgentStatus[];
-  finalContent?: string;
-}
+import type { AgentStatus, MultiAgentRunResult } from "../types/multi-agent";
 
 const AGENT_LABEL: Record<string, string> = {
   orchestrator: "Orchestrator 编排",
