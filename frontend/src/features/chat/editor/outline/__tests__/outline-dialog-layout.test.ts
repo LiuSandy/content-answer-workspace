@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { outlineDialogLayout } from "./outline-dialog-layout";
+import { outlineDialogLayout } from "../outline-dialog-layout";
 
 describe("outline dialog scrolling", () => {
   test("gives the dialog and its scroll viewport a shrinkable height chain", () => {

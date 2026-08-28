@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 
-import { ChatSidebar } from "./chat-sidebar";
-import { ChatPanel } from "./chat-panel";
-import { EditorPanel } from "./editor-panel";
-import { TodayOpportunitiesBanner } from "./today-opportunities-banner";
+import { ChatSidebar } from "./sessions/chat-sidebar";
+import { ChatPanel } from "./conversation/components/chat-panel";
+import { EditorPanel } from "./editor/components/editor-panel";
+import { TodayOpportunitiesBanner } from "./components/today-opportunities-banner";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useChatStore } from "@/store/chat-store";
 
@@ -41,4 +41,3 @@ export function ChatWorkspace() {
     </div>
   );
 }
-

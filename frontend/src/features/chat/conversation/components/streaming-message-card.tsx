@@ -2,8 +2,8 @@ import React, { useLayoutEffect, useSyncExternalStore } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, AlertCircle } from "lucide-react";
 import { MarkdownContent } from "@/components/ui/markdown-content";
-import { decorateStreamingMarkdown } from "./markdown-stream-decorator";
-import type { StreamingMessageController } from "./streaming-message-controller";
+import { decorateStreamingMarkdown } from "../model/markdown-stream-decorator";
+import type { StreamingMessageController } from "../model/streaming-message-controller";
 
 export interface StreamingMessageCardProps {
   controller: StreamingMessageController;

@@ -3,7 +3,7 @@ import {
   getActiveMessagePath,
   resolveParentIds,
   type ChatMessage,
-} from "./chat-message-tree";
+} from "../model/chat-message-tree";
 
 const message = (
   messageId: string,

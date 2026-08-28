@@ -6,7 +6,7 @@ import {
   currentVersionBadgeClass,
   modelLabel,
   reviewLabel,
-} from "./version-history";
+} from "../version-history";
 
 describe("version history presentation", () => {
   test("uses a high contrast current-version badge", () => {

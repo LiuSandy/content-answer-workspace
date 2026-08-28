@@ -1,7 +1,7 @@
 import {
   createStreamingTextBuffer,
   type StreamingTextBuffer,
-} from "./use-streaming-buffer";
+} from "./streaming-text-buffer";
 
 export interface StreamingMessageSnapshot {
   visible: boolean;

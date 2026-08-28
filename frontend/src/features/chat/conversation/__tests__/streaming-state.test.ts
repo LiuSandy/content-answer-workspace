@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createStreamingMessageController } from "./streaming-message-controller";
-import { createStreamingTextBuffer } from "./use-streaming-buffer";
+import { createStreamingMessageController } from "../model/streaming-message-controller";
+import { createStreamingTextBuffer } from "../model/streaming-text-buffer";
 
 function createManualBuffer() {
   let currentTime = 100;

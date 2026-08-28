@@ -8,7 +8,7 @@ import {
   resumeTaskPlan,
   type TaskPlanDTO,
   type SubTaskDTO,
-} from "./task-plan-api";
+} from "../api/task-plan-api";
 
 const TYPE_LABEL: Record<string, string> = {
   search: "搜索",

@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SourceList } from "@/features/knowledge/source-list";
 import { cn } from "@/lib/utils";
 import { getChatMarkdownComponents } from "./chat-markdown-components";
-import type { ChatMessage } from "./chat-message-tree";
+import type { ChatMessage } from "../model/chat-message-tree";
 
 const USER_MARKDOWN_COMPONENTS = getChatMarkdownComponents(true);
 const ASSISTANT_MARKDOWN_COMPONENTS = getChatMarkdownComponents(false);

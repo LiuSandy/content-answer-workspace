@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
-import { WorkspaceLayout } from "@/features/chat/workspace-shell";
-import { ChatWorkspace } from "@/features/chat/chat-workspace";
+import { WorkspaceLayout } from "@/app/layout/workspace-shell";
+import { ChatWorkspace } from "@/features/chat";
 import { SettingsPage } from "@/features/settings/settings-page";
 import { KnowledgePage } from "@/features/knowledge/knowledge-page";
 
