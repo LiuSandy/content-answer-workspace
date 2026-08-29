@@ -6,7 +6,7 @@
 优先级（后写的覆盖先写的）：
   1. 寒暄 → chat + off
   2. 严格知识模式 → chat + strict
-  3. 平台采集 → chat（对话工具采集）+ platform + query
+  3. 平台采集 → collect + platform + query
   4. 单篇创作 → task_plan
   5. 多阶段创作 → multi_agent
   6. URL 解析 → parse_url
@@ -253,7 +253,7 @@ def detect_intent_by_rules(message: str) -> dict[str, Any] | None:
         limit, sort, limit_explicit, sort_explicit = _extract_search_constraints(message)
         query = _extract_query(message, platform, sort)
         return {
-            "intent": "chat",
+            "intent": "collect",
             "knowledge_mode": knowledge_mode,
             "platform": platform,
             "query": query or None,
@@ -265,11 +265,11 @@ def detect_intent_by_rules(message: str) -> dict[str, Any] | None:
             "confidence": 1.0,
         }
 
-    # 7. 有采集动作但没有平台名（默认当作普通对话，交给 LLM 决定平台）
+    # 7. 有采集动作但没有平台名（保留采集意图，交给 LLM 补全平台）
     if any(v in message for v in _COLLECT_VERBS):
         limit, sort, limit_explicit, sort_explicit = _extract_search_constraints(message)
         return {
-            "intent": "chat",
+            "intent": "collect",
             "knowledge_mode": knowledge_mode,
             "platform": None,
             "query": _extract_query(message, None, sort) or None,

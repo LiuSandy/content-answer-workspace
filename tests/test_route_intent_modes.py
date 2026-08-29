@@ -1,7 +1,7 @@
 """意图路由自动判定执行模式与知识模式测试。
 
 验证：不再需要用户在前端选择模式，route_intent_node 通过 LLM 一次判定
-intent（chat/parse_url/task_plan/multi_agent）与 knowledge_mode（off/normal/strict）。
+intent（chat/parse_url/collect/task_plan/multi_agent）与 knowledge_mode（off/normal/strict）。
 """
 from __future__ import annotations
 
@@ -33,11 +33,10 @@ def _make_mock_deps(monkeypatch, llm_content: str):
     )
 
 
-def _state(message: str, mode: str = "normal") -> dict:
+def _state(message: str) -> dict:
     return {
         "user_message": message,
         "extracted_urls": [],
-        "knowledge_mode": mode,
     }
 
 
@@ -54,6 +53,14 @@ async def test_route_identifies_multi_agent(monkeypatch):
     _make_mock_deps(monkeypatch, '{"intent": "multi_agent", "knowledge_mode": "normal"}')
     out = await route_intent_node(_state("调研并输出一份 AI Agent 行业现状分析报告"))
     assert out["intent"] == "multi_agent"
+
+
+@pytest.mark.asyncio
+async def test_route_identifies_platform_collection():
+    out = await route_intent_node(_state("帮我搜搜知乎上关于副业的热门讨论"))
+    assert out["intent"] == "collect"
+    assert out["intent_platform"] == "zhihu"
+    assert out["intent_query"] == "副业"
 
 
 @pytest.mark.asyncio
@@ -81,21 +88,24 @@ async def test_route_defaults_chat_on_bad_llm_output(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_route_keeps_explicit_knowledge_mode(monkeypatch):
-    """调用方显式传入 strict/off 时优先保留（测试/内部直连兼容）。"""
+async def test_route_ignores_previous_turn_knowledge_mode(monkeypatch):
+    """上一轮的知识模式不能覆盖本轮意图识别结果。"""
     _make_mock_deps(monkeypatch, '{"intent": "chat", "knowledge_mode": "normal"}')
-    out = await route_intent_node(_state("解释下 RAG", mode="strict"))
-    assert out["knowledge_mode"] == "strict"
+    state = _state("解释下 RAG")
+    state["knowledge_mode"] = "strict"
+    out = await route_intent_node(state)
+    assert out["knowledge_mode"] == "normal"
 
 
 @pytest.mark.asyncio
-async def test_route_parse_url_rule_keeps_mode(monkeypatch):
-    """URL 规则分支：保留显式传入的知识模式。"""
-    state = _state("解析这个网页 https://zhuanlan.zhihu.com/p/123", mode="strict")
+async def test_route_parse_url_rule_ignores_previous_mode(monkeypatch):
+    """URL 规则分支也必须重新判定本轮知识模式。"""
+    state = _state("解析这个网页 https://zhuanlan.zhihu.com/p/123")
+    state["knowledge_mode"] = "strict"
     state["extracted_urls"] = ["https://zhuanlan.zhihu.com/p/123"]
     out = await route_intent_node(state)
     assert out["intent"] == "parse_url"
-    assert out["knowledge_mode"] == "strict"
+    assert out["knowledge_mode"] == "normal"
 
 
 @pytest.mark.asyncio

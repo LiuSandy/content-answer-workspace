@@ -6,16 +6,17 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from ....prompts.registry import prompt_registry
-from app.infrastructure.llm.langchain import get_chat_model
+from app.contracts.ports import LLMProvider
+from app.infrastructure.llm.registry import llm_provider_registry
 from app.services.context.composer import ContextComposer, SimpleContextProfile
 from app.state import ChatAgentState
 
 from app.agents._shared.tools import ALL_TOOLS
 
 
-def _get_chat_llm() -> Any:
-    """获取统一模型，并在 Chat Agent 边界绑定本节点需要的工具。"""
-    return get_chat_model().bind_tools(ALL_TOOLS)
+def _get_chat_provider() -> LLMProvider:
+    """获取当前注册的默认 LLM Provider。"""
+    return llm_provider_registry.get_default()
 
 
 def _resolve_context_profile() -> SimpleContextProfile:
@@ -132,8 +133,12 @@ def _bound_messages(raw_messages: list, system_content: str, summary: str | None
     return [SystemMessage(content=system_content)] + final, meta
 
 
-async def chat_node(state: ChatAgentState, *, llm: Any | None = None) -> dict:
-    llm = llm or _get_chat_llm()
+async def chat_node(
+    state: ChatAgentState,
+    *,
+    provider: LLMProvider | None = None,
+) -> dict:
+    provider = provider or _get_chat_provider()
     # 从 Prompt Registry 加载系统 Prompt
     try:
         rendered = prompt_registry.render("chat.system")
@@ -167,5 +172,5 @@ async def chat_node(state: ChatAgentState, *, llm: Any | None = None) -> dict:
         )
 
     messages, composer_meta = _bound_messages(list(state.get("messages", [])), system_content, branch_summary)
-    response = await llm.ainvoke(messages)
+    response = await provider.ainvoke(messages, ALL_TOOLS)
     return {"messages": [response], "composer_meta": composer_meta}

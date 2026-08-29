@@ -22,7 +22,7 @@ from app.state import ChatAgentState
 
 logger = logging.getLogger(__name__)
 
-_VALID_INTENTS = {"chat", "parse_url", "task_plan", "multi_agent"}
+_VALID_INTENTS = {"chat", "parse_url", "collect", "task_plan", "multi_agent"}
 _VALID_MODES = {"off", "normal", "strict"}
 # 置信度低于该值视为不可靠，降级为 chat（宁可走保守路线）
 _MIN_CONFIDENCE = 0.6
@@ -57,12 +57,11 @@ def _preprocess_intent_input(state: ChatAgentState) -> dict:
     }
 
 
-def _default_result(message: str, existing_mode: str | None) -> dict:
+def _default_result(message: str) -> dict:
     """保守兜底：默认普通对话。"""
-    mode = existing_mode if existing_mode in _VALID_MODES else "normal"
     return {
         "intent": "chat",
-        "knowledge_mode": mode,
+        "knowledge_mode": "normal",
         "intent_confidence": 0.0,
         "intent_reason": "fallback: default chat",
         "intent_platform": None,
@@ -74,9 +73,6 @@ def _default_result(message: str, existing_mode: str | None) -> dict:
 
 async def _detect_intent(state: ChatAgentState) -> dict:
     message = state.get("user_message", "")
-    existing_mode = state.get("knowledge_mode")
-    if existing_mode not in _VALID_MODES:
-        existing_mode = "normal"
 
     # ── L0 规则层 ──────────────────────────────────────────────────────────
     rule_result = detect_intent_by_rules(message)
@@ -89,9 +85,6 @@ async def _detect_intent(state: ChatAgentState) -> dict:
         rule_result.setdefault("intent_query", rule_result.get("query"))
         rule_result.setdefault("intent_limit", rule_result.get("limit", 10))
         rule_result.setdefault("intent_sort", rule_result.get("sort", "relevance"))
-        # 显式 strict/off 优先保留（测试/内部直连兼容）
-        if existing_mode in ("strict", "off"):
-            rule_result["knowledge_mode"] = existing_mode
         return rule_result
 
     # ── L1 LLM 层（规则未命中） ────────────────────────────────────────────
@@ -116,7 +109,7 @@ async def _detect_intent(state: ChatAgentState) -> dict:
                 "Intent LLM output unparseable (%s), defaulting to chat",
                 structured.degradation_reason,
             )
-            result = _default_result(message, existing_mode)
+            result = _default_result(message)
             result["intent_reason"] = f"llm unparseable: {structured.method_used}"
             return result
 
@@ -131,14 +124,10 @@ async def _detect_intent(state: ChatAgentState) -> dict:
             confidence = 0.9
         confidence = max(0.0, min(1.0, confidence))
 
-        # 显式 strict/off 优先保留
-        if existing_mode in ("strict", "off"):
-            knowledge_mode = existing_mode
-
         # 低置信度降级：宁可 chat 也不要冒险进错模式
         if confidence < _MIN_CONFIDENCE:
             logger.info("Intent low confidence (%.2f) for %r, defaulting to chat", confidence, message[:50])
-            result = _default_result(message, existing_mode)
+            result = _default_result(message)
             result["intent_reason"] = f"llm low confidence {confidence:.2f}"
             return result
 
@@ -168,7 +157,7 @@ async def _detect_intent(state: ChatAgentState) -> dict:
         }
     except Exception as e:
         logger.warning("Intent routing failed, defaulting to chat: %s", e)
-        return _default_result(message, existing_mode)
+        return _default_result(message)
 
 
 async def route_intent_node(state: ChatAgentState) -> dict:

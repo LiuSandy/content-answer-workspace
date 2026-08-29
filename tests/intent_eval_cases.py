@@ -19,13 +19,13 @@ INTENT_EVAL_CASES = [
     {"input": "谢谢", "intent": "chat", "knowledge_mode": "off", "rule_only": True},
     {"input": "hello", "intent": "chat", "knowledge_mode": "off", "rule_only": True},
     # ── 平台采集 ──
-    {"input": "帮我搜搜知乎上关于副业的热门讨论", "intent": "chat", "platform": "zhihu", "rule_only": True},
+    {"input": "帮我搜搜知乎上关于副业的热门讨论", "intent": "collect", "platform": "zhihu", "rule_only": True},
     {"input": "请您检索一下小红书关于历史播客的帖子，需要发布时间最近的，只要五个，不要重复",
-     "intent": "chat", "platform": "xiaohongshu", "rule_only": True},
-    {"input": "采集 B站 上关于 AI 的视频", "intent": "chat", "platform": "bilibili", "rule_only": True},
-    {"input": "看看 YouTube 有没有做手冲咖啡的教程", "intent": "chat", "platform": "youtube", "rule_only": True},
-    {"input": "搜搜推特上关于 AI 绘画的讨论", "intent": "chat", "platform": "twitter", "rule_only": True},
-    {"input": "github 上有没有好用的 RAG 项目", "intent": "chat", "platform": "github", "rule_only": True},
+     "intent": "collect", "platform": "xiaohongshu", "rule_only": True},
+    {"input": "采集 B站 上关于 AI 的视频", "intent": "collect", "platform": "bilibili", "rule_only": True},
+    {"input": "看看 YouTube 有没有做手冲咖啡的教程", "intent": "collect", "platform": "youtube", "rule_only": True},
+    {"input": "搜搜推特上关于 AI 绘画的讨论", "intent": "collect", "platform": "twitter", "rule_only": True},
+    {"input": "github 上有没有好用的 RAG 项目", "intent": "collect", "platform": "github", "rule_only": True},
     # ── URL 解析 ──
     {"input": "解析一下 https://zhuanlan.zhihu.com/p/123", "intent": "parse_url", "rule_only": True},
     # ── 单篇创作 ──
@@ -45,7 +45,7 @@ INTENT_EVAL_CASES = [
     {"input": "为什么天空是蓝色的", "intent": "chat", "knowledge_mode": "normal"},
     {"input": "解释一下什么是区块链", "intent": "chat", "knowledge_mode": "normal"},
     # ── 模糊/边界 ──
-    {"input": "帮我找找有哪些做副业的内容", "intent": "chat", "knowledge_mode": "normal"},
+    {"input": "帮我找找有哪些做副业的内容", "intent": "collect", "knowledge_mode": "normal"},
     {"input": "写一个关于 AI 的回答，顺便调研下当前进展",
      "intent": "multi_agent", "knowledge_mode": "normal"},
 ]

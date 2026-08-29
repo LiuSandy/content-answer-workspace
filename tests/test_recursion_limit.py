@@ -39,11 +39,8 @@ async def test_graph_recursion_error_caught_on_runaway_loop(monkeypatch):
     from app.agents.chat.graph import build_chat_agent_graph
 
     # LLM 永远要调工具，制造死循环
-    class RunawayLLM:
-        def bind_tools(self, _tools):
-            return self
-
-        async def ainvoke(self, messages):
+    class RunawayProvider:
+        async def ainvoke(self, messages, tools):
             return AIMessage(
                 content="",
                 tool_calls=[{
@@ -65,8 +62,7 @@ async def test_graph_recursion_error_caught_on_runaway_loop(monkeypatch):
     ri.llm_provider_registry = frg
     ri.prompt_registry = MagicMock(render=MagicMock(return_value=fr))
     msvc.retrieve_memories = AsyncMock(return_value=[])
-    chat_mod._get_chat_llm = lambda: RunawayLLM()
-    chat_mod._llm = RunawayLLM()
+    chat_mod._get_chat_provider = lambda: RunawayProvider()
 
     graph = build_chat_agent_graph(MemorySaver())
     base = {

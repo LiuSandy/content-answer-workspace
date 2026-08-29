@@ -76,11 +76,8 @@ async def test_graph_native_interrupt_resumes_without_repeating_tool(graph, monk
     # mock chat LLM：第一轮调工具，第二轮不调工具
     calls = {"n": 0}
 
-    class FakeLLM:
-        def bind_tools(self, _tools):
-            return self
-
-        async def ainvoke(self, messages):
+    class FakeProvider:
+        async def ainvoke(self, messages, tools):
             calls["n"] += 1
             if calls["n"] == 1:
                 # 第一次调用：请求调用 xiaohongshu_search
@@ -97,8 +94,7 @@ async def test_graph_native_interrupt_resumes_without_repeating_tool(graph, monk
             return AIMessage(content="done")
 
     from app.agents.chat.nodes import chat as chat_mod
-    monkeypatch.setattr(chat_mod, "_get_chat_llm", lambda: FakeLLM())
-    monkeypatch.setattr(chat_mod, "_llm", FakeLLM(), raising=False)
+    monkeypatch.setattr(chat_mod, "_get_chat_provider", lambda: FakeProvider())
 
     # mock 工具底层 _run 返回 YAML list（仅 1 条，触发 requested=5 但 total=1 的冲突）
     yaml_payload = "- rank: 1\n  author: 张三\n  likes: '150'\n  title: 唯一结果\n  url: https://xhs.com/n/1\n  published_at: '2026-07-25'\n"
@@ -130,17 +126,13 @@ async def test_graph_normal_chat_no_hitl(graph, monkeypatch):
     """正常对话（无工具冲突）不触发 HITL。"""
     calls = {"n": 0}
 
-    class FakeLLM:
-        def bind_tools(self, _tools):
-            return self
-
-        async def ainvoke(self, messages):
+    class FakeProvider:
+        async def ainvoke(self, messages, tools):
             calls["n"] += 1
             return AIMessage(content="普通回答")
 
     from app.agents.chat.nodes import chat as chat_mod
-    monkeypatch.setattr(chat_mod, "_get_chat_llm", lambda: FakeLLM())
-    monkeypatch.setattr(chat_mod, "_llm", FakeLLM(), raising=False)
+    monkeypatch.setattr(chat_mod, "_get_chat_provider", lambda: FakeProvider())
 
     base = _base_state("你好")
     final = await graph.ainvoke(base, {"configurable": {"thread_id": "hitl2"}})

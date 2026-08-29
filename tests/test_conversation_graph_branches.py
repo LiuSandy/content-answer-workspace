@@ -17,7 +17,7 @@ def test_route_after_intent_selects_platform_collect_for_explicit_zhihu_search(m
     monkeypatch.setattr(conversation, "has_platform_search_route", lambda state: True)
 
     assert conversation._route_after_intent({
-        "intent": "chat",
+        "intent": "collect",
         "intent_platform": "zhihu",
         "intent_query": "热门",
     }) == "platform_collect"

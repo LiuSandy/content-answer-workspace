@@ -32,6 +32,8 @@ def _route_after_intent(state: ChatAgentState) -> str:
     intent = state.get("intent", "chat")
     if intent == "parse_url":
         return "parse_url"
+    if intent == "collect":
+        return "platform_collect"
     if intent == "task_plan":
         return "writer"
     if intent == "multi_agent":

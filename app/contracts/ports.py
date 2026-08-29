@@ -82,6 +82,14 @@ class LLMProvider(Protocol):
         """流式生成回复；适用于聊天和长文本生成场景。"""
         ...
 
+    async def ainvoke(
+        self,
+        messages: list[Any],
+        tools: list[Any],
+    ) -> Any:
+        """生成可包含工具调用的 Agent 消息。"""
+        ...
+
     def model_for(self, purpose: str | None = None) -> str:
         """返回默认模型，或指定用途的模型覆盖。"""
         ...

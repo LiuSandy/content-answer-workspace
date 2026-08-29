@@ -44,16 +44,6 @@ class LLMProviderRegistry:
             )
         return str(model)
 
-    def get_langchain_chat_model(self) -> object:
-        """Request a LangChain-compatible model from the active provider."""
-        provider = self.get_default()
-        factory = getattr(provider, "get_langchain_chat_model", None)
-        if not callable(factory):
-            raise RuntimeError(
-                f"LLM provider '{provider.key}' does not support LangChain chat models"
-            )
-        return factory()
-
     def get_structured_methods(self, key: str) -> list[str]:
         """返回 provider 声明的结构化输出能力（roadmap R1）。"""
         provider = self.get(key)
@@ -67,9 +57,15 @@ class LLMProviderRegistry:
 
 def build_default_registry() -> LLMProviderRegistry:
     """Build the registry through the configured provider registration boundary."""
-    from .providers.deepseek.registration import build_deepseek_registry
+    from .providers.deepseek.registration import register_deepseek
+    from .providers.kimi.registration import register_kimi
+    from .providers.minimax.registration import register_minimax
 
-    return build_deepseek_registry(LLMProviderRegistry)
+    registry = LLMProviderRegistry()
+    register_deepseek(registry)
+    register_kimi(registry)
+    register_minimax(registry)
+    return registry
 
 
 # 全局单例

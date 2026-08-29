@@ -1,43 +1,56 @@
-"""DeepSeek implementation of the project-wide LLMProvider contract."""
+"""Reusable adapter for providers exposing OpenAI-compatible chat completions."""
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from typing import Any
 
+from langchain_openai import ChatOpenAI
+from openai import AsyncOpenAI
+
 from app.contracts.dto import LLMMessage, LLMRequest, LLMResponse, LLMStreamEvent
 
-from .client import DeepSeekClient
-from .settings import DeepSeekSettings, load_deepseek_settings
 
+class OpenAICompatibleProvider:
+    """Implement the project LLM contract for an OpenAI-compatible endpoint."""
 
-class DeepSeekProvider:
-    """Translate project DTOs to and from the DeepSeek-compatible API."""
-
-    key: str = "deepseek"
-    structured_methods: list[str] = ["json_mode", "generic_parse"]
+    structured_methods: list[str] = ["generic_parse"]
 
     def __init__(
         self,
-        api_key: str | None = None,
-        base_url: str | None = None,
-        client: DeepSeekClient | None = None,
-        settings: DeepSeekSettings | None = None,
+        *,
+        key: str,
+        api_key: str,
+        base_url: str,
+        model: str,
     ) -> None:
-        self._settings = settings or load_deepseek_settings()
-        self._client = client or DeepSeekClient(
-            api_key=api_key,
-            base_url=base_url,
-            settings=self._settings,
-        )
+        self.key = key
+        self._api_key = api_key
+        self._base_url = base_url.rstrip("/")
+        self._model = model
+        self._sdk: AsyncOpenAI | None = None
+        self._langchain_model: ChatOpenAI | None = None
 
     @property
     def default_model(self) -> str:
-        return self._settings.model
+        return self._model
 
     def model_for(self, purpose: str | None = None) -> str:
-        if purpose == "topic_expansion":
-            return self._settings.topic_expansion_model
-        return self._settings.model
+        return self._model
+
+    def _get_sdk(self) -> AsyncOpenAI:
+        if self._sdk is None:
+            self._sdk = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url)
+        return self._sdk
+
+    def _get_langchain_chat_model(self) -> ChatOpenAI:
+        if self._langchain_model is None:
+            self._langchain_model = ChatOpenAI(
+                api_key=self._api_key,
+                base_url=self._base_url,
+                model=self._model,
+                streaming=True,
+            )
+        return self._langchain_model
 
     async def ainvoke(
         self,
@@ -45,18 +58,18 @@ class DeepSeekProvider:
         tools: list[Any],
     ) -> Any:
         """Generate one LangChain message with provider-owned tool binding."""
-        model = self._client.get_langchain_chat_model().bind_tools(tools)
+        model = self._get_langchain_chat_model().bind_tools(tools)
         return await model.ainvoke(messages)
 
-    def _to_openai_messages(self, messages: list[LLMMessage]) -> list[dict[str, Any]]:
+    @staticmethod
+    def _messages(messages: list[LLMMessage]) -> list[dict[str, Any]]:
         return [{"role": message.role, "content": message.content} for message in messages]
 
     def _request_params(self, request: LLMRequest, *, stream: bool) -> dict[str, Any]:
-        """Translate a project request into shared OpenAI-compatible parameters."""
         params = dict(request.extra or {})
         params.update(
             model=request.model,
-            messages=self._to_openai_messages(request.messages),
+            messages=self._messages(request.messages),
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             stream=stream,
@@ -66,8 +79,7 @@ class DeepSeekProvider:
         return params
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
-        """Generate one complete response and normalize vendor metadata."""
-        response = await self._client.create_chat_completion(
+        response = await self._get_sdk().chat.completions.create(
             **self._request_params(request, stream=False)
         )
         choice = response.choices[0]
@@ -80,8 +92,7 @@ class DeepSeekProvider:
         )
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[LLMStreamEvent]:
-        """Stream normalized text deltas and final token usage."""
-        stream = await self._client.create_chat_completion(
+        stream = await self._get_sdk().chat.completions.create(
             **self._request_params(request, stream=True)
         )
         async for chunk in stream:
