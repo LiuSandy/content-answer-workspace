@@ -47,9 +47,7 @@ export const ReconvertDiffDialog: React.FC<ReconvertDiffDialogProps> = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             放弃
           </Button>
-          <Button onClick={onApplyNew}>
-            应用新解析版本
-          </Button>
+          <Button onClick={onApplyNew}>应用新解析版本</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

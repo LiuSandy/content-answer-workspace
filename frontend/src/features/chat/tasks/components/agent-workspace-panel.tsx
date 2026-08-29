@@ -74,9 +74,7 @@ export function AgentWorkspacePanel({
         <Users className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
         <span className="text-[10px] font-bold">Agent 协作</span>
         {goal && (
-          <span className="text-[9px] text-muted-foreground truncate flex-1">
-            目标：{goal}
-          </span>
+          <span className="text-[9px] text-muted-foreground truncate flex-1">目标：{goal}</span>
         )}
         <button
           onClick={() => setCollapsed(true)}

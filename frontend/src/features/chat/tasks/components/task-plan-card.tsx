@@ -99,13 +99,19 @@ export function TaskPlanCard({ planId }: { planId: string }) {
     <div className="border border-border rounded-lg p-2.5 my-2 bg-muted/20">
       <div className="flex items-center gap-1.5 mb-2">
         <span className="text-[10px] font-bold">TaskPlan</span>
-        <span className={`text-[9px] px-1.5 py-0.5 rounded ${
-          plan.status === "done" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
-          : plan.status === "failed" ? "bg-red-100 text-red-700"
-          : plan.status === "running" ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-          : plan.status === "interrupted" ? "bg-amber-100 text-amber-700"
-          : "bg-muted text-muted-foreground"
-        }`}>
+        <span
+          className={`text-[9px] px-1.5 py-0.5 rounded ${
+            plan.status === "done"
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+              : plan.status === "failed"
+                ? "bg-red-100 text-red-700"
+                : plan.status === "running"
+                  ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                  : plan.status === "interrupted"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-muted text-muted-foreground"
+          }`}
+        >
           {plan.status}
         </span>
         <span className="text-[10px] text-muted-foreground ml-auto">{plan.goal}</span>
@@ -143,7 +149,9 @@ export function TaskPlanCard({ planId }: { planId: string }) {
               setRetrying(null);
             }}
           >
-            <RotateCw className={`h-3 w-3 ${retrying === failedTask.taskId ? "animate-spin" : ""}`} />
+            <RotateCw
+              className={`h-3 w-3 ${retrying === failedTask.taskId ? "animate-spin" : ""}`}
+            />
             重试 {failedTask.taskId}
           </button>
         )}

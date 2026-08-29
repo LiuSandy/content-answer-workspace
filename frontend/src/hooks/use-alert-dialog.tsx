@@ -66,17 +66,20 @@ export function AlertDialogProvider({ children }: PropsWithChildren) {
     });
   }, []);
 
-  const settle = useCallback((result: boolean) => {
-    if (settledRef.current || !pending) return;
-    settledRef.current = true;
-    if (pending.kind === "confirm") {
-      pending.resolve(result);
-    } else {
-      pending.resolve();
-    }
-    // 必须清空 pending 才能让 AlertDialog 的 open 状态归位，否则弹窗会停留在打开状态
-    setPending(null);
-  }, [pending]);
+  const settle = useCallback(
+    (result: boolean) => {
+      if (settledRef.current || !pending) return;
+      settledRef.current = true;
+      if (pending.kind === "confirm") {
+        pending.resolve(result);
+      } else {
+        pending.resolve();
+      }
+      // 必须清空 pending 才能让 AlertDialog 的 open 状态归位，否则弹窗会停留在打开状态
+      setPending(null);
+    },
+    [pending],
+  );
 
   const contextValue = useMemo(() => ({ confirm, notify }), [confirm, notify]);
 
@@ -97,7 +100,8 @@ export function AlertDialogProvider({ children }: PropsWithChildren) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {(isConfirm ? confirmOptions?.title : notifyOptions?.title) ?? (isConfirm ? "请确认" : "提示")}
+              {(isConfirm ? confirmOptions?.title : notifyOptions?.title) ??
+                (isConfirm ? "请确认" : "提示")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {isConfirm ? confirmOptions?.description : notifyOptions?.description}

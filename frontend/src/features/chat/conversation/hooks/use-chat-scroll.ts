@@ -28,7 +28,7 @@ export function useChatScroll(activeLeafMessageId: string | null) {
     const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
     const scrolledUp = distanceFromBottom > 80;
     isUserScrolledUpRef.current = scrolledUp;
-    setIsUserScrolledUp((current) => current === scrolledUp ? current : scrolledUp);
+    setIsUserScrolledUp((current) => (current === scrolledUp ? current : scrolledUp));
   }, []);
 
   const handleStreamingContentChange = useCallback(() => {

@@ -12,7 +12,7 @@ async function unwrap<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const message =
       typeof payload === "object" && payload && "error" in payload
-        ? (payload as ApiEnvelope<T>).error?.message ?? "Request failed"
+        ? ((payload as ApiEnvelope<T>).error?.message ?? "Request failed")
         : "Request failed";
     throw new Error(message);
   }
@@ -63,5 +63,3 @@ export async function apiUpload<T>(url: string, formData: FormData): Promise<T> 
   });
   return unwrap<T>(response);
 }
-
-

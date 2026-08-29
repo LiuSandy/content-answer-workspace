@@ -24,11 +24,19 @@ export function ChatWorkspace() {
         <ChatSidebar />
         {showEditor ? (
           <ResizablePanelGroup orientation="horizontal" className="flex-1">
-            <ResizablePanel defaultSize={50} minSize={30} className="flex flex-col min-h-0 overflow-hidden">
+            <ResizablePanel
+              defaultSize={50}
+              minSize={30}
+              className="flex flex-col min-h-0 overflow-hidden"
+            >
               <ChatPanel />
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={50} minSize={30} className="flex flex-col min-h-0 overflow-hidden">
+            <ResizablePanel
+              defaultSize={50}
+              minSize={30}
+              className="flex flex-col min-h-0 overflow-hidden"
+            >
               <EditorPanel />
             </ResizablePanel>
           </ResizablePanelGroup>

@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
   useAgentReachStatus,
   useConfigureGroqKey,
@@ -97,7 +96,10 @@ const SETUP_TYPE_BADGE: Record<PlatformMeta["setupType"], { label: string; class
   "zero-config": { label: "零配置", className: "bg-green-50 text-green-700 border-green-200" },
   "install-package": { label: "装包即用", className: "bg-blue-50 text-blue-700 border-blue-200" },
   "install-cli": { label: "装 CLI", className: "bg-sky-50 text-sky-700 border-sky-200" },
-  "requires-auth": { label: "需要认证", className: "bg-orange-50 text-orange-700 border-orange-200" },
+  "requires-auth": {
+    label: "需要认证",
+    className: "bg-orange-50 text-orange-700 border-orange-200",
+  },
 };
 
 function SetupGuide({ steps }: { steps: PlatformMeta["setupSteps"] }) {
@@ -135,14 +137,17 @@ function TwitterAuthInput() {
   return (
     <div className="mt-2 ml-1 space-y-2 border-l-2 border-muted pl-3">
       <p className="text-[11px] text-muted-foreground">
-        在浏览器中登录 Twitter/X，打开开发者工具（F12）→ Application → Cookies →
-        找到 <code className="bg-muted px-1 rounded">auth_token</code> 和 <code className="bg-muted px-1 rounded">ct0</code> 两个字段。
+        在浏览器中登录 Twitter/X，打开开发者工具（F12）→ Application → Cookies → 找到{" "}
+        <code className="bg-muted px-1 rounded">auth_token</code> 和{" "}
+        <code className="bg-muted px-1 rounded">ct0</code> 两个字段。
       </p>
       <div className="flex items-center gap-1.5 text-[11px]">
         <span className="text-muted-foreground">当前状态：</span>
-        {auth?.configured
-          ? <span className="text-green-600 font-medium">已配置 ✓</span>
-          : <span className="text-orange-600">未配置</span>}
+        {auth?.configured ? (
+          <span className="text-green-600 font-medium">已配置 ✓</span>
+        ) : (
+          <span className="text-orange-600">未配置</span>
+        )}
       </div>
       <div className="space-y-1.5">
         <Input
@@ -181,7 +186,8 @@ function OpenCliGuide({ platform }: { platform: string }) {
         </code>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        ② 在 Chrome 中登录{platform === "xiaohongshu" ? "小红书" : "Reddit"}，保持 Chrome 开启即可使用。
+        ② 在 Chrome 中登录{platform === "xiaohongshu" ? "小红书" : "Reddit"}，保持 Chrome
+        开启即可使用。
       </p>
     </div>
   );
@@ -202,7 +208,11 @@ export function AgentReachSettings() {
   function toggleExpand(platform: string) {
     setExpandedPlatforms((prev) => {
       const next = new Set(prev);
-      next.has(platform) ? next.delete(platform) : next.add(platform);
+      if (next.has(platform)) {
+        next.delete(platform);
+      } else {
+        next.add(platform);
+      }
       return next;
     });
   }
@@ -254,10 +264,11 @@ export function AgentReachSettings() {
                     className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground transition-colors"
                     aria-label={isExpanded ? "收起配置引导" : "展开配置引导"}
                   >
-                    {isExpanded
-                      ? <ChevronDown className="h-3.5 w-3.5" />
-                      : <ChevronRight className="h-3.5 w-3.5" />
-                    }
+                    {isExpanded ? (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    )}
                   </button>
 
                   {/* 平台信息 */}
@@ -273,12 +284,18 @@ export function AgentReachSettings() {
                       </Badge>
                       {/* 运行时健康状态（来自 agent-reach doctor） */}
                       {platformStatus?.healthy === true && (
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-green-50 text-green-700 border-green-200">
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] h-4 px-1.5 bg-green-50 text-green-700 border-green-200"
+                        >
                           已就绪
                         </Badge>
                       )}
                       {platformStatus?.healthy === false && (
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-red-50 text-red-700 border-red-200">
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] h-4 px-1.5 bg-red-50 text-red-700 border-red-200"
+                        >
                           未就绪
                         </Badge>
                       )}

@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  initialCreationProgress,
-  reduceCreationProgress,
-} from "../creation-review-lifecycle";
+import { initialCreationProgress, reduceCreationProgress } from "../creation-review-lifecycle";
 
 describe("creation review lifecycle", () => {
   test("maps review and rewrite events to user-facing progress", () => {

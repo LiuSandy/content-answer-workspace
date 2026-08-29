@@ -65,13 +65,19 @@ const defaultComponents: Components = {
   ),
   th: ({ node, className, ...props }) => (
     <th
-      className={classes("border-b border-r border-slate-200 px-3 py-2 font-semibold last:border-r-0 dark:border-slate-700", className)}
+      className={classes(
+        "border-b border-r border-slate-200 px-3 py-2 font-semibold last:border-r-0 dark:border-slate-700",
+        className,
+      )}
       {...props}
     />
   ),
   td: ({ node, className, ...props }) => (
     <td
-      className={classes("border-b border-r border-slate-200 px-3 py-2 align-top last:border-r-0 dark:border-slate-700", className)}
+      className={classes(
+        "border-b border-r border-slate-200 px-3 py-2 align-top last:border-r-0 dark:border-slate-700",
+        className,
+      )}
       {...props}
     />
   ),

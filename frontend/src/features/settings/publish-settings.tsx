@@ -41,9 +41,7 @@ export function PublishSettings() {
       <div className="flex items-center justify-between rounded-lg border px-4 py-3">
         <div>
           <p className="text-sm font-medium">测试模式</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            开启时不追加公众号 CTA 文本
-          </p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">开启时不追加公众号 CTA 文本</p>
         </div>
         <Switch checked={testMode} onCheckedChange={setTestMode} />
       </div>
@@ -83,9 +81,7 @@ export function PublishSettings() {
         </Button>
         {saved && <span className="text-sm text-green-600">已保存 ✓</span>}
         {update.isError && (
-          <span className="text-sm text-destructive">
-            {(update.error as Error)?.message}
-          </span>
+          <span className="text-sm text-destructive">{(update.error as Error)?.message}</span>
         )}
       </div>
     </div>

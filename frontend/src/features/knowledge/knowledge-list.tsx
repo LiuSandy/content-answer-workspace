@@ -92,9 +92,7 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
 
       <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-[#edf0f4] dark:divide-border">
         {sortedDocs.length === 0 ? (
-          <div className="p-6 text-center text-xs text-muted-foreground">
-            暂无匹配资料
-          </div>
+          <div className="p-6 text-center text-xs text-muted-foreground">暂无匹配资料</div>
         ) : (
           sortedDocs.map((doc) => {
             const isSelected = doc.id === selectedDocId;
@@ -117,10 +115,12 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
                     {doc.title}
                   </div>
                   <div className="text-[9px] text-[#8a96a5] dark:text-muted-foreground mt-1">
-                    更新于 · {new Date(doc.updatedAt || doc.createdAt || Date.now()).toLocaleDateString()}
+                    更新于 ·{" "}
+                    {new Date(doc.updatedAt || doc.createdAt || Date.now()).toLocaleDateString()}
                   </div>
                   {renderStatusTag(doc.status)}
-                  {doc.sourceFile?.job && ["queued", "running"].includes(doc.sourceFile.job.status) ? (
+                  {doc.sourceFile?.job &&
+                  ["queued", "running"].includes(doc.sourceFile.job.status) ? (
                     <div className="mt-1.5">
                       <div className="flex items-center justify-between text-[9px] text-[#64748b]">
                         <span>{stageLabel(doc.sourceFile.job.stage)}</span>
@@ -134,10 +134,15 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       </div>
                       {doc.sourceFile.job.totalPages > 0 ? (
                         <div className="mt-1 text-[9px] text-[#64748b]">
-                          已完成 {doc.sourceFile.job.completedPages}/{doc.sourceFile.job.totalPages} 页
-                          <span className="ml-1.5 text-[#059669]">成功 {doc.sourceFile.job.succeededPages}</span>
+                          已完成 {doc.sourceFile.job.completedPages}/{doc.sourceFile.job.totalPages}{" "}
+                          页
+                          <span className="ml-1.5 text-[#059669]">
+                            成功 {doc.sourceFile.job.succeededPages}
+                          </span>
                           {doc.sourceFile.job.failedPages > 0 ? (
-                            <span className="ml-1.5 text-[#be123c]">失败 {doc.sourceFile.job.failedPages}</span>
+                            <span className="ml-1.5 text-[#be123c]">
+                              失败 {doc.sourceFile.job.failedPages}
+                            </span>
                           ) : null}
                         </div>
                       ) : null}
@@ -149,7 +154,10 @@ export const KnowledgeList: React.FC<KnowledgeListProps> = ({
                     </div>
                   ) : null}
                   {doc.sourceFile?.failureReason ? (
-                    <div className="mt-1 text-[9px] text-[#be123c] line-clamp-2" title={doc.sourceFile.failureReason}>
+                    <div
+                      className="mt-1 text-[9px] text-[#be123c] line-clamp-2"
+                      title={doc.sourceFile.failureReason}
+                    >
                       {doc.sourceFile.failureReason}
                     </div>
                   ) : null}

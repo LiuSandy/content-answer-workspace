@@ -75,7 +75,9 @@ export function CollectSettings() {
             </SelectTrigger>
             <SelectContent>
               {PLATFORMS.map((p) => (
-                <SelectItem key={p} value={p}>{p}</SelectItem>
+                <SelectItem key={p} value={p}>
+                  {p}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -145,9 +147,7 @@ export function CollectSettings() {
         </Button>
         {saved && <span className="text-sm text-green-600">已保存 ✓</span>}
         {update.isError && (
-          <span className="text-sm text-destructive">
-            {(update.error as Error)?.message}
-          </span>
+          <span className="text-sm text-destructive">{(update.error as Error)?.message}</span>
         )}
       </div>
     </div>

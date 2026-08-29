@@ -37,10 +37,7 @@ const PROMPT_TABS: Array<{ id: string; label: string; hint: string }> = [
   { id: "platform.default", label: "其他平台", hint: "未单独适配平台的通用兜底规范" },
 ];
 
-export function PromptTemplatesDialog({
-  open,
-  onOpenChange,
-}: PromptTemplatesDialogProps) {
+export function PromptTemplatesDialog({ open, onOpenChange }: PromptTemplatesDialogProps) {
   const [activeTabId, setActiveTabId] = useState<string>(PROMPT_TABS[0].id);
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
@@ -141,9 +138,7 @@ export function PromptTemplatesDialog({
               {tab.label}
             </button>
           ))}
-          <span className="ml-2 text-[10px] text-muted-foreground truncate">
-            {activeTab.hint}
-          </span>
+          <span className="ml-2 text-[10px] text-muted-foreground truncate">{activeTab.hint}</span>
         </div>
 
         <div className="flex-1 min-h-0 relative flex flex-col mt-3">

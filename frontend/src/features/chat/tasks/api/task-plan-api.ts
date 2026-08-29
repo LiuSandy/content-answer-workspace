@@ -18,7 +18,11 @@ export interface TaskPlanDTO {
   tasks: SubTaskDTO[];
 }
 
-export async function createTaskPlan(goal: string, chatId?: string, workspaceId = "default"): Promise<TaskPlanDTO> {
+export async function createTaskPlan(
+  goal: string,
+  chatId?: string,
+  workspaceId = "default",
+): Promise<TaskPlanDTO> {
   const res = await fetch("/api/task-plans", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -1,31 +1,23 @@
-import * as React from "react"
-import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer"
+import * as React from "react";
+import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer";
 
-import { cn } from "@/lib/utils"
-import { drawerPopupFocusClass } from "./drawer-layout"
+import { cn } from "@/lib/utils";
+import { drawerPopupFocusClass } from "./drawer-layout";
 
-function Drawer({
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />
+function Drawer({ ...props }: React.ComponentProps<typeof DrawerPrimitive.Root>) {
+  return <DrawerPrimitive.Root data-slot="drawer" {...props} />;
 }
 
-function DrawerTrigger({
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Trigger>) {
-  return <DrawerPrimitive.Trigger data-slot="drawer-trigger" {...props} />
+function DrawerTrigger({ ...props }: React.ComponentProps<typeof DrawerPrimitive.Trigger>) {
+  return <DrawerPrimitive.Trigger data-slot="drawer-trigger" {...props} />;
 }
 
-function DrawerPortal({
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Portal>) {
-  return <DrawerPrimitive.Portal data-slot="drawer-portal" {...props} />
+function DrawerPortal({ ...props }: React.ComponentProps<typeof DrawerPrimitive.Portal>) {
+  return <DrawerPrimitive.Portal data-slot="drawer-portal" {...props} />;
 }
 
-function DrawerClose({
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Close>) {
-  return <DrawerPrimitive.Close data-slot="drawer-close" {...props} />
+function DrawerClose({ ...props }: React.ComponentProps<typeof DrawerPrimitive.Close>) {
+  return <DrawerPrimitive.Close data-slot="drawer-close" {...props} />;
 }
 
 function DrawerOverlay({
@@ -35,13 +27,10 @@ function DrawerOverlay({
   return (
     <DrawerPrimitive.Backdrop
       data-slot="drawer-overlay"
-      className={cn(
-        "fixed inset-0 z-50 bg-black/40 transition-opacity",
-        className
-      )}
+      className={cn("fixed inset-0 z-50 bg-black/40 transition-opacity", className)}
       {...props}
     />
-  )
+  );
 }
 
 function DrawerViewport({
@@ -54,7 +43,7 @@ function DrawerViewport({
       className={cn("fixed inset-0 z-50", className)}
       {...props}
     />
-  )
+  );
 }
 
 function DrawerContent({
@@ -76,7 +65,7 @@ function DrawerContent({
             // bottom drawer
             "data-[swipe-axis=y]:inset-x-0 data-[swipe-axis=y]:bottom-0 data-[swipe-axis=y]:right-auto data-[swipe-axis=y]:h-auto data-[swipe-axis=y]:max-h-[calc(100dvh-6rem)] data-[swipe-axis=y]:w-auto data-[swipe-axis=y]:flex-col data-[swipe-axis=y]:rounded-t-xl data-[swipe-axis=y]:border-l-0 data-[swipe-axis=y]:border-t",
             "data-[swipe-axis=y]:data-[ending-style]:translate-y-full data-[swipe-axis=y]:data-[starting-style]:translate-y-full data-[swipe-axis=y]:data-[ending-style]:translate-x-0 data-[swipe-axis=y]:data-[starting-style]:translate-x-0",
-            className
+            className,
           )}
           {...props}
         >
@@ -84,7 +73,7 @@ function DrawerContent({
         </DrawerPrimitive.Popup>
       </DrawerViewport>
     </DrawerPortal>
-  )
+  );
 }
 
 function DrawerHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -94,7 +83,7 @@ function DrawerHeader({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
       className={cn("flex flex-col gap-1.5 p-4", className)}
       {...props}
     />
-  )
+  );
 }
 
 function DrawerFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -104,20 +93,17 @@ function DrawerFooter({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
       className={cn("mt-auto flex flex-col gap-2 p-4", className)}
       {...props}
     />
-  )
+  );
 }
 
-function DrawerTitle({
-  className,
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Title>) {
+function DrawerTitle({ className, ...props }: React.ComponentProps<typeof DrawerPrimitive.Title>) {
   return (
     <DrawerPrimitive.Title
       data-slot="drawer-title"
       className={cn("text-lg font-semibold leading-none tracking-tight", className)}
       {...props}
     />
-  )
+  );
 }
 
 function DrawerDescription({
@@ -130,7 +116,7 @@ function DrawerDescription({
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
-  )
+  );
 }
 
 export {
@@ -145,4 +131,4 @@ export {
   DrawerTitle,
   DrawerTrigger,
   DrawerViewport,
-}
+};

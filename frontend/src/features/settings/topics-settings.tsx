@@ -15,14 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { TopicItem } from "./settings-api";
-import {
-  useCreateTopic,
-  useDeleteTopic,
-  useTopics,
-  useUpdateTopic,
-} from "./use-settings";
+import { useCreateTopic, useDeleteTopic, useTopics, useUpdateTopic } from "./use-settings";
 
 const EMPTY_TOPIC: TopicItem = {
   id: "",
@@ -82,15 +76,22 @@ function TopicDialog({
             <Input
               value={form.keywords.join(", ")}
               onChange={(e) =>
-                set("keywords", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))
+                set(
+                  "keywords",
+                  e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                )
               }
               placeholder="关键词1, 关键词2"
             />
           </div>
-
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>取消</Button>
+          <Button variant="outline" onClick={onClose}>
+            取消
+          </Button>
           <Button onClick={() => onSave(form)} disabled={isPending || !form.id || !form.name}>
             {isPending ? "保存中…" : "保存"}
           </Button>
@@ -158,7 +159,9 @@ export function TopicsSettings() {
                   </Badge>
                 ))}
                 {t.keywords.length > 6 && (
-                  <span className="text-[10px] text-muted-foreground">+{t.keywords.length - 6}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    +{t.keywords.length - 6}
+                  </span>
                 )}
               </div>
             </div>
@@ -203,7 +206,9 @@ export function TopicsSettings() {
             删除主题「{topics.find((t) => t.id === deleteId)?.name}」后无法恢复。
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>取消</Button>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>
+              取消
+            </Button>
             <Button
               variant="default"
               className="bg-destructive hover:bg-destructive/90"

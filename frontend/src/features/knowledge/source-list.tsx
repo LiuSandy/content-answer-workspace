@@ -43,11 +43,7 @@ export const SourceList: React.FC<SourceListProps> = ({
           >
             <BookOpen className="h-3 w-3" />
             <span className="font-medium">参考来源 ({sources.length})</span>
-            {expanded ? (
-              <ChevronUp className="h-3 w-3" />
-            ) : (
-              <ChevronDown className="h-3 w-3" />
-            )}
+            {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
 
           {expanded && (
@@ -57,7 +53,10 @@ export const SourceList: React.FC<SourceListProps> = ({
                   key={src.label}
                   className="flex items-start gap-2 p-2 rounded-md bg-muted/40 border border-border/50 text-[10px]"
                 >
-                  <Badge variant="outline" className="shrink-0 mt-0.5 font-mono text-[9px] px-1 py-0.5">
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 mt-0.5 font-mono text-[9px] px-1 py-0.5"
+                  >
                     {src.label}
                   </Badge>
                   <div className="min-w-0 flex-1">

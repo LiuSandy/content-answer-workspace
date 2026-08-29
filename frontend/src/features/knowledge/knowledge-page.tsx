@@ -2,7 +2,13 @@ import React, { useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { KnowledgeList } from "./knowledge-list";
 import { KnowledgeDetail } from "./knowledge-detail";
@@ -31,7 +37,12 @@ export const KnowledgePage: React.FC = () => {
       id: `source:${source.id}`,
       workspaceId: source.workspaceId,
       ownerId: source.ownerId,
-      sourceType: source.extension === "pdf" ? "pdf" : source.extension === "md" || source.extension === "markdown" ? "markdown" : "text",
+      sourceType:
+        source.extension === "pdf"
+          ? "pdf"
+          : source.extension === "md" || source.extension === "markdown"
+            ? "markdown"
+            : "text",
       title: source.originalFilename,
       status: "failed",
       hasManualEdits: false,
@@ -43,7 +54,7 @@ export const KnowledgePage: React.FC = () => {
     }));
   const allDocuments = [...(data?.documents || []), ...sourceOnlyFailures];
   const activeSourceCount = sourceFiles.filter(
-    (source) => source.job?.status === "queued" || source.job?.status === "running"
+    (source) => source.job?.status === "queued" || source.job?.status === "running",
   ).length;
   const latestSourceFailure = sourceFiles.find((source) => source.status === "failed");
 
@@ -58,10 +69,17 @@ export const KnowledgePage: React.FC = () => {
       if (doc.status !== statusFilter) return false;
     }
     if (typeFilter !== "all") {
-      if (typeFilter === "markdown" && doc.sourceType !== "markdown" && !doc.title.endsWith(".md")) return false;
-      if (typeFilter === "pdf" && doc.sourceType !== "pdf" && !doc.title.endsWith(".pdf")) return false;
+      if (typeFilter === "markdown" && doc.sourceType !== "markdown" && !doc.title.endsWith(".md"))
+        return false;
+      if (typeFilter === "pdf" && doc.sourceType !== "pdf" && !doc.title.endsWith(".pdf"))
+        return false;
       if (typeFilter === "url" && doc.sourceType !== "url" && !doc.sourceUrl) return false;
-      if (typeFilter === "image" && doc.sourceType !== "image" && !doc.title.match(/\.(png|jpg|jpeg)$/i)) return false;
+      if (
+        typeFilter === "image" &&
+        doc.sourceType !== "image" &&
+        !doc.title.match(/\.(png|jpg|jpeg)$/i)
+      )
+        return false;
     }
     return true;
   });
@@ -72,7 +90,7 @@ export const KnowledgePage: React.FC = () => {
 
   const { data: markdownData, isLoading: isMarkdownLoading } = useKnowledgeMarkdown(
     selectedDoc?.id,
-    selectedDoc?.status === "awaiting_confirmation"
+    selectedDoc?.status === "awaiting_confirmation",
   );
 
   const {
@@ -161,7 +179,9 @@ export const KnowledgePage: React.FC = () => {
           className="h-8 text-xs px-2.5"
           title="递归检查 pending 源文件目录"
         >
-          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${scanMutation.isPending ? "animate-spin" : ""}`} />
+          <RefreshCw
+            className={`h-3.5 w-3.5 mr-1.5 ${scanMutation.isPending ? "animate-spin" : ""}`}
+          />
           {scanMutation.isPending ? "检查中" : "检查源文件"}
         </Button>
 
@@ -177,7 +197,6 @@ export const KnowledgePage: React.FC = () => {
 
       {/* 2. 三栏主体工作区 (.kb-body) */}
       <div className="flex-1 grid grid-cols-[190px_350px_minmax(430px,1fr)] bg-white dark:bg-card min-h-0 overflow-hidden">
-        
         {/* 左栏：筛选侧边栏 */}
         <aside className="border-r border-[#e5e9ef] dark:border-border bg-[#fbfcfd] dark:bg-card/50 p-3.5 space-y-1 overflow-y-auto min-h-0">
           <div className="text-[9px] tracking-wider uppercase text-[#94a3b8] font-bold px-2 mb-2">
@@ -301,7 +320,9 @@ export const KnowledgePage: React.FC = () => {
               isConfirming={confirmMutation.isPending}
               isReconverting={reconvertMutation.isPending}
               isDeleting={deleteMutation.isPending}
-              onSaveMarkdown={(md) => updateMarkdownMutation.mutate({ documentId: selectedDoc.id, markdown: md })}
+              onSaveMarkdown={(md) =>
+                updateMarkdownMutation.mutate({ documentId: selectedDoc.id, markdown: md })
+              }
               onConfirm={() => confirmMutation.mutate(selectedDoc.id)}
               onReconvert={() => reconvertMutation.mutate(selectedDoc.id)}
               onDelete={() => {

@@ -22,7 +22,6 @@ export interface PublishConfig {
   ctaText: string;
 }
 
-
 export interface AgentReachConfig {
   enabledPlatforms: string[];
   groqApiKey: string;
@@ -90,7 +89,6 @@ export async function updatePublishSettings(payload: Partial<PublishConfig>): Pr
     body: JSON.stringify(payload),
   });
 }
-
 
 export async function getAgentReachStatus(): Promise<AgentReachStatus> {
   return fetchJson<AgentReachStatus>("/api/settings/agent-reach/status");
