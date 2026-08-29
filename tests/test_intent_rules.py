@@ -49,7 +49,7 @@ def test_detect_knowledge_mode_plain():
 
 def test_rule_xiaohongshu_collection():
     r = detect_intent_by_rules("请您检索一下小红书关于历史播客的帖子，只要五个")
-    assert r["intent"] == "chat"
+    assert r["intent"] == "collect"
     assert r["platform"] == "xiaohongshu"
     assert r["knowledge_mode"] == "normal"
     assert "历史播客" in (r["query"] or "")
@@ -57,7 +57,7 @@ def test_rule_xiaohongshu_collection():
 
 def test_rule_zhihu_search():
     r = detect_intent_by_rules("帮我搜搜知乎上关于副业的热门讨论")
-    assert r["intent"] == "chat"
+    assert r["intent"] == "collect"
     assert r["platform"] == "zhihu"
     assert r["query"] == "副业"
     assert r["sort"] == "hot"
@@ -111,7 +111,7 @@ def test_platform_collection_understands_bare_find_with_count():
 
 def test_rule_bilibili_collection():
     r = detect_intent_by_rules("采集 B站 上关于 AI 的视频")
-    assert r["intent"] == "chat"
+    assert r["intent"] == "collect"
     assert r["platform"] == "bilibili"
 
 
@@ -119,7 +119,7 @@ def test_rule_generic_collection_low_confidence():
     """有采集动作但无平台名 → 规则给低置信度，交 LLM 精修。"""
     r = detect_intent_by_rules("帮我找找有哪些做副业的内容")
     assert r is not None
-    assert r["intent"] == "chat"
+    assert r["intent"] == "collect"
     assert r["confidence"] < 1.0
 
 

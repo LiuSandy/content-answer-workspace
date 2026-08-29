@@ -67,8 +67,8 @@ def _make_llm_mock(monkeypatch, content: str):
     return fake_provider
 
 
-def _state(message: str, mode: str = "normal") -> dict:
-    return {"user_message": message, "extracted_urls": [], "knowledge_mode": mode}
+def _state(message: str) -> dict:
+    return {"user_message": message, "extracted_urls": []}
 
 
 @pytest.mark.asyncio
@@ -120,11 +120,12 @@ async def test_route_llm_platform_query_captured(monkeypatch):
     """LLM 层返回的平台搜索结构被完整捕获到 state。"""
     _make_llm_mock(
         monkeypatch,
-        '{"intent": "chat", "knowledge_mode": "normal", "platform": "zhihu", '
+        '{"intent": "collect", "knowledge_mode": "normal", "platform": "zhihu", '
         '"query": "AI 副业", "limit": 5, "sort": "hot", '
         '"confidence": 0.9, "reason": "search"}',
     )
     out = await route_intent_node(_state("帮我找找 AI 副业的东西"))
+    assert out["intent"] == "collect"
     assert out["intent_platform"] == "zhihu"
     assert out["intent_query"] == "AI 副业"
     assert out["intent_limit"] == 5
@@ -140,8 +141,10 @@ async def test_route_llm_bad_json_falls_back(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_route_keeps_explicit_strict(monkeypatch):
-    """显式 strict 保留（兼容内部直连）。"""
+async def test_route_does_not_inherit_previous_strict(monkeypatch):
+    """上一轮的 strict 不得覆盖本轮识别结果。"""
     _make_llm_mock(monkeypatch, '{"intent": "chat", "knowledge_mode": "normal", "confidence": 0.9}')
-    out = await route_intent_node(_state("解释下 RAG", mode="strict"))
-    assert out["knowledge_mode"] == "strict"
+    state = _state("解释下 RAG")
+    state["knowledge_mode"] = "strict"
+    out = await route_intent_node(state)
+    assert out["knowledge_mode"] == "normal"

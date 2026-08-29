@@ -37,7 +37,7 @@ def compiled_graph(monkeypatch):
     fake_provider = MagicMock()
     fake_provider.generate = AsyncMock(return_value=MagicMock(content='{"intent": "chat"}'))
     fake_registry = MagicMock()
-    fake_registry.get.return_value = fake_provider
+    fake_registry.get_default.return_value = fake_provider
     fake_prompt_registry = MagicMock()
     fake_prompt_registry.render.return_value = fake_rendered
     monkeypatch.setattr(
@@ -55,29 +55,25 @@ def compiled_graph(monkeypatch):
     fake_factory.return_value.__aexit__ = AsyncMock(return_value=None)
     monkeypatch.setattr("app.infrastructure.database.session.get_session_factory", lambda: fake_factory)
 
-    # 3) chat_node：mock _get_chat_llm 返回可捕获 messages 的 LLM
+    # 3) chat_node：mock Provider 返回可捕获 messages 的模型结果
     captured_messages = []
 
-    class FakeLLM:
-        def bind_tools(self, _tools):
-            return self
-
-        async def ainvoke(self, messages):
+    class FakeProvider:
+        async def ainvoke(self, messages, tools):
             captured_messages.append(list(messages))
             from langchain_core.messages import AIMessage
             return AIMessage(content="mocked grounded answer")
 
-    fake_llm = FakeLLM()
+    fake_provider = FakeProvider()
     monkeypatch.setattr(
-        "app.agents.chat.nodes.chat._get_chat_llm", lambda: fake_llm
+        "app.agents.chat.nodes.chat._get_chat_provider", lambda: fake_provider
     )
-    monkeypatch.setattr("app.agents.chat.nodes.chat._llm", fake_llm, raising=False)
 
     graph = build_chat_agent_graph(MemorySaver())
     return graph, captured_messages
 
 
-def _base_state(message: str, mode: str) -> ChatAgentState:
+def _base_state(message: str) -> ChatAgentState:
     return {
         "chat_id": "00000000-0000-0000-0000-000000000001",
         "user_message_id": "msg-1",
@@ -91,7 +87,6 @@ def _base_state(message: str, mode: str) -> ChatAgentState:
         "error": None,
         "workspace_id": "default",
         "owner_id": "default",
-        "knowledge_mode": mode,
         "rag_decision": None,
         "decision_reason": None,
         "retrieval_result": None,
@@ -160,7 +155,7 @@ async def test_path1_normal_with_evidence_grounds_chat_and_records_trace(
 
     config = {"configurable": {"thread_id": "path1"}}
     final_state: ChatAgentState = await graph.ainvoke(
-        _base_state("帮我解释下 RAG 是什么", "normal"), config
+        _base_state("帮我解释下 RAG 是什么"), config
     )
 
     # 检索执行 + Trace 落库三段式
@@ -199,7 +194,7 @@ async def test_path2_normal_insufficient_evidence_falls_back_with_notice(
 
     config = {"configurable": {"thread_id": "path2"}}
     final_state: ChatAgentState = await graph.ainvoke(
-        _base_state("帮我解释下 RAG 是什么", "normal"), config
+        _base_state("帮我解释下 RAG 是什么"), config
     )
 
     # 仍然检索 + Trace 落库
@@ -232,7 +227,7 @@ async def test_path3_strict_insufficient_evidence_refuses_without_chat_llm(
 
     config = {"configurable": {"thread_id": "path3"}}
     final_state: ChatAgentState = await graph.ainvoke(
-        _base_state("帮我解释下 RAG 是什么", "strict"), config
+        _base_state("只能根据我上传的资料回答：帮我解释下 RAG 是什么"), config
     )
 
     # chat LLM 不被调用
@@ -262,7 +257,7 @@ async def test_path4_off_mode_skips_retrieval(compiled_graph, monkeypatch):
 
     config = {"configurable": {"thread_id": "path4"}}
     final_state: ChatAgentState = await graph.ainvoke(
-        _base_state("帮我解释下 RAG 是什么", "off"), config
+        _base_state("你好"), config
     )
 
     # off 模式：rag_decision=False，retriever 未被调用

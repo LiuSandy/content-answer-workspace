@@ -23,6 +23,7 @@ def test_chat_intents_route_before_any_memory_lookup(monkeypatch):
         lambda state: bool(state.get("intent_platform")),
     )
     assert _route_after_intent({"intent": "parse_url"}) == "parse_url"
+    assert _route_after_intent({"intent": "collect"}) == "platform_collect"
     assert _route_after_intent({"intent": "task_plan"}) == "writer"
     assert _route_after_intent({"intent": "multi_agent"}) == "writer"
     assert _route_after_intent({"intent": "chat", "intent_platform": "zhihu"}) == "platform_collect"

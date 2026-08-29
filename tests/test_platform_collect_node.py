@@ -19,7 +19,7 @@ class _FakeSearchTool:
 
 def _state() -> dict:
     return {
-        "intent": "chat",
+        "intent": "collect",
         "intent_platform": "zhihu",
         "intent_query": "热门",
         "intent_limit": 10,

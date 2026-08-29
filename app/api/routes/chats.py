@@ -604,8 +604,8 @@ async def send_message_stream(
                     )
                     yield sse_named_event("choice.requested", hitl_choice)
                     return
-                elif intent == "chat" and assistant_content_parts:
-                    # 普通对话，保存回复文本
+                elif intent in {"chat", "collect"} and assistant_content_parts:
+                    # 普通对话或平台采集，保存回复文本
                     full_text = "".join(assistant_content_parts)
                     msg_payload = {}
                     if rag_payload:

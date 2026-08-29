@@ -246,7 +246,8 @@ async def test_structured_result_metadata_serializable_for_audit():
 # ── 五类公共 schema 可导入 ───────────────────────────────────────────────
 
 def test_five_public_schemas_importable():
-    route = IntentRoute(intent="chat", knowledge_mode="off", confidence=0.9)
+    route = IntentRoute(intent="collect", knowledge_mode="normal", confidence=0.9)
+    assert route.intent == "collect"
     assert route.platform is None
     assert route.query is None
 
