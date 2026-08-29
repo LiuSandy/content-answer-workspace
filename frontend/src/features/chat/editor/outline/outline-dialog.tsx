@@ -15,12 +15,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   addKeyPoint,
@@ -227,8 +222,16 @@ export function OutlineDialog({
     () => sections.length > 0 && sections.every((section) => section.heading.trim().length > 0),
     [sections],
   );
-  const pending = generateMutation.isPending || updateMutation.isPending || confirmMutation.isPending || activateMutation.isPending;
-  const error = generateMutation.error || updateMutation.error || confirmMutation.error || activateMutation.error;
+  const pending =
+    generateMutation.isPending ||
+    updateMutation.isPending ||
+    confirmMutation.isPending ||
+    activateMutation.isPending;
+  const error =
+    generateMutation.error ||
+    updateMutation.error ||
+    confirmMutation.error ||
+    activateMutation.error;
 
   if (!documentId || !sourceItemId) return null;
 
@@ -261,11 +264,17 @@ export function OutlineDialog({
                   size="sm"
                   className="h-7 shrink-0 px-2 text-[10px]"
                   disabled={pending || active || !version.operationId}
-                  onClick={() => version.operationId && activateMutation.mutate(version.operationId)}
+                  onClick={() =>
+                    version.operationId && activateMutation.mutate(version.operationId)
+                  }
                   title={active ? "当前大纲版本" : `切换到大纲 O${version.versionNumber}`}
                 >
                   O{version.versionNumber}
-                  <span className={version.status === "confirmed" ? "text-emerald-600" : "text-amber-600"}>
+                  <span
+                    className={
+                      version.status === "confirmed" ? "text-emerald-600" : "text-amber-600"
+                    }
+                  >
                     {version.status === "confirmed" ? "已确认" : "草稿"}
                   </span>
                 </Button>
@@ -292,7 +301,12 @@ export function OutlineDialog({
                   <span className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                     <CheckCircle className="h-3.5 w-3.5" /> 大纲已确认
                   </span>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditing(true)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setEditing(true)}
+                  >
                     <Pencil className="h-3.5 w-3.5" /> 编辑大纲
                   </Button>
                 </div>
@@ -305,14 +319,18 @@ export function OutlineDialog({
                   </p>
                   {outline.viewpointQuestions.map((question, index) => (
                     <div key={question} className="flex items-start gap-2">
-                      <span className="mt-1 shrink-0 text-[10px] text-muted-foreground">Q{index + 1}.</span>
+                      <span className="mt-1 shrink-0 text-[10px] text-muted-foreground">
+                        Q{index + 1}.
+                      </span>
                       <div className="flex-1 space-y-1">
                         <p className="text-[11px]">{question}</p>
                         <input
                           className="h-8 w-full rounded-md border bg-background px-2 text-[11px]"
                           placeholder="输入你的回答…"
                           value={answers[question] || ""}
-                          onChange={(event) => setAnswers((value) => ({ ...value, [question]: event.target.value }))}
+                          onChange={(event) =>
+                            setAnswers((value) => ({ ...value, [question]: event.target.value }))
+                          }
                         />
                       </div>
                     </div>
@@ -333,22 +351,50 @@ export function OutlineDialog({
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t pt-3">
           {!outline ? (
-            <Button size="sm" className="h-8 text-xs" onClick={() => generateMutation.mutate(false)} disabled={pending}>
-              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => generateMutation.mutate(false)}
+              disabled={pending}
+            >
+              {pending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Plus className="h-3.5 w-3.5" />
+              )}
               生成大纲
             </Button>
           ) : (
             <>
-              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => generateMutation.mutate(true)} disabled={pending}>
-                <RefreshCw className={`h-3.5 w-3.5 ${generateMutation.isPending ? "animate-spin" : ""}`} />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => generateMutation.mutate(true)}
+                disabled={pending}
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${generateMutation.isPending ? "animate-spin" : ""}`}
+                />
                 重新生成
               </Button>
               {editing && (
                 <>
-                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => updateMutation.mutate()} disabled={pending || !valid}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => updateMutation.mutate()}
+                    disabled={pending || !valid}
+                  >
                     <Save className="h-3.5 w-3.5" /> 保存大纲
                   </Button>
-                  <Button size="sm" className="h-8 text-xs" onClick={() => confirmMutation.mutate()} disabled={pending || !valid}>
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => confirmMutation.mutate()}
+                    disabled={pending || !valid}
+                  >
                     <CheckCircle className="h-3.5 w-3.5" /> 保存并确认
                   </Button>
                 </>
@@ -380,7 +426,9 @@ function OutlineEditor({
               aria-label={`章节 ${sectionIndex + 1} 标题`}
               className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs font-semibold"
               value={section.heading}
-              onChange={(event) => onChange(updateSection(sections, sectionIndex, { heading: event.target.value }))}
+              onChange={(event) =>
+                onChange(updateSection(sections, sectionIndex, { heading: event.target.value }))
+              }
               placeholder="章节标题"
             />
             <input
@@ -390,9 +438,13 @@ function OutlineEditor({
               max={5000}
               className="h-8 w-20 rounded-md border bg-background px-2 text-center text-[10px]"
               value={section.wordCountEstimate}
-              onChange={(event) => onChange(updateSection(sections, sectionIndex, {
-                wordCountEstimate: Math.max(50, Number(event.target.value) || 50),
-              }))}
+              onChange={(event) =>
+                onChange(
+                  updateSection(sections, sectionIndex, {
+                    wordCountEstimate: Math.max(50, Number(event.target.value) || 50),
+                  }),
+                )
+              }
             />
             <Button
               variant="ghost"
@@ -433,13 +485,23 @@ function OutlineEditor({
                 </Button>
               </div>
             ))}
-            <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => onChange(addKeyPoint(sections, sectionIndex))}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[11px]"
+              onClick={() => onChange(addKeyPoint(sections, sectionIndex))}
+            >
               <Plus className="h-3 w-3" /> 添加要点
             </Button>
           </div>
         </div>
       ))}
-      <Button variant="outline" size="sm" className="h-8 w-full border-dashed text-xs" onClick={() => onChange(addSection(sections))}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 w-full border-dashed text-xs"
+        onClick={() => onChange(addSection(sections))}
+      >
         <Plus className="h-3.5 w-3.5" /> 添加章节
       </Button>
     </div>
@@ -452,14 +514,20 @@ function OutlinePreview({ sections }: { sections: EditableOutlineSection[] }) {
       {sections.map((section, index) => (
         <div key={section.id ?? index} className="rounded-lg border bg-card p-3">
           <div className="mb-1 flex items-center gap-2">
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">{index + 1}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+              {index + 1}
+            </span>
             <span className="text-xs font-semibold">{section.heading}</span>
-            <span className="ml-auto text-[9px] text-muted-foreground">约 {section.wordCountEstimate} 字</span>
+            <span className="ml-auto text-[9px] text-muted-foreground">
+              约 {section.wordCountEstimate} 字
+            </span>
           </div>
           {section.keyPoints.length > 0 && (
             <ul className="space-y-0.5 pl-5">
               {section.keyPoints.map((keyPoint, keyPointIndex) => (
-                <li key={keyPointIndex} className="list-disc text-[10px] text-muted-foreground">{keyPoint}</li>
+                <li key={keyPointIndex} className="list-disc text-[10px] text-muted-foreground">
+                  {keyPoint}
+                </li>
               ))}
             </ul>
           )}

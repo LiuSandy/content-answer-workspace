@@ -17,7 +17,10 @@ export function addSection(sections: EditableOutlineSection[]): EditableOutlineS
   ];
 }
 
-export function removeSection(sections: EditableOutlineSection[], index: number): EditableOutlineSection[] {
+export function removeSection(
+  sections: EditableOutlineSection[],
+  index: number,
+): EditableOutlineSection[] {
   if (sections.length <= 1) return sections;
   return sections.filter((_, sectionIndex) => sectionIndex !== index);
 }
@@ -32,7 +35,10 @@ export function updateSection(
   );
 }
 
-export function addKeyPoint(sections: EditableOutlineSection[], sectionIndex: number): EditableOutlineSection[] {
+export function addKeyPoint(
+  sections: EditableOutlineSection[],
+  sectionIndex: number,
+): EditableOutlineSection[] {
   const section = sections[sectionIndex];
   if (!section) return sections;
   return updateSection(sections, sectionIndex, {

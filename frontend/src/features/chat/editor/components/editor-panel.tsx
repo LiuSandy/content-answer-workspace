@@ -92,7 +92,10 @@ type RunFailedPayload = {
  * notify 由调用组件通过 useAlertDialog() 传入，因为该函数定义在组件外部，
  * 无法直接调用依赖 Context 的 Hook。
  */
-function handleRunFailed(data: RunFailedPayload, notify: (options: { description: string }) => Promise<void>) {
+function handleRunFailed(
+  data: RunFailedPayload,
+  notify: (options: { description: string }) => Promise<void>,
+) {
   void notify({ description: data.message || "操作失败，请稍后重试" });
 }
 
@@ -117,8 +120,6 @@ type VersionSummary = {
   contentSummary: string;
   createdAt: string;
 };
-
-
 
 /**
  * 右侧编辑面板：选中帖子后展示回答生成 / 编辑 / 版本历史。
@@ -167,13 +168,17 @@ export function EditorPanel() {
       await navigator.clipboard.writeText((editor as any).getMarkdown());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
+    } catch {
       void notify("复制失败");
     }
   };
 
   // 1. 获取文档状态
-  const { data: docState, isLoading: isDocLoading, error: docError } = useQuery<DocumentState>({
+  const {
+    data: docState,
+    isLoading: isDocLoading,
+    error: docError,
+  } = useQuery<DocumentState>({
     queryKey: ["document", selectedSourceItemId],
     queryFn: () => apiGet(`/api/source-items/${selectedSourceItemId}/document`),
     enabled: !!selectedSourceItemId,
@@ -194,32 +199,43 @@ export function EditorPanel() {
   });
 
   // Tiptap 编辑器实例
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Markdown.configure({
-        markedOptions: {
-          gfm: true,
-          breaks: true,
-        }
-      }),
-      Placeholder.configure({
-        placeholder: "点击上方「生成回答」开始创作，或者在此手动输入内容...",
-      }),
-      SelectionHighlight,
-    ],
-    content: "",
-    onUpdate: () => {
-      onUpdateRef.current?.();
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit,
+        Markdown.configure({
+          markedOptions: {
+            gfm: true,
+            breaks: true,
+          },
+        }),
+        Placeholder.configure({
+          placeholder: "点击上方「生成回答」开始创作，或者在此手动输入内容...",
+        }),
+        SelectionHighlight,
+      ],
+      content: "",
+      onUpdate: () => {
+        onUpdateRef.current?.();
+      },
     },
-  }, [selectedSourceItemId]);
+    [selectedSourceItemId],
+  );
 
   // 页面切换或文档加载完成后同步内容
   useEffect(() => {
     if (editor && docState) {
       const currentContent = docState.currentContent || "";
-      const hasMarkdownMarkers = currentContent.includes("**") || currentContent.includes("###") || /^\s*[-*]\s+/m.test(currentContent);
-      const isHtml = (currentContent.includes("<p>") || currentContent.includes("<strong>") || currentContent.includes("<ul>") || currentContent.includes("<li>")) && !hasMarkdownMarkers;
+      const hasMarkdownMarkers =
+        currentContent.includes("**") ||
+        currentContent.includes("###") ||
+        /^\s*[-*]\s+/m.test(currentContent);
+      const isHtml =
+        (currentContent.includes("<p>") ||
+          currentContent.includes("<strong>") ||
+          currentContent.includes("<ul>") ||
+          currentContent.includes("<li>")) &&
+        !hasMarkdownMarkers;
 
       let cleanContent = currentContent;
       if (!isHtml && cleanContent.startsWith("<p>") && cleanContent.endsWith("</p>")) {
@@ -298,20 +314,6 @@ export function EditorPanel() {
     queryClient.invalidateQueries({ queryKey: ["versions", docState?.documentId] });
   };
 
-  // 3. 手动保存版本
-  const saveCheckpointMutation = useMutation({
-    mutationFn: () =>
-      apiPost<DocumentState>(`/api/documents/${docStateRef.current?.documentId}/versions`, {
-        expectedLockVersion: docStateRef.current?.lockVersion,
-      }),
-    onSuccess: (updatedState) => {
-      queryClient.setQueryData(["document", selectedSourceItemId], updatedState);
-      queryClient.invalidateQueries({ queryKey: ["versions", docStateRef.current?.documentId] });
-      queryClient.invalidateQueries({ queryKey: ["outline", docStateRef.current?.documentId] });
-      queryClient.invalidateQueries({ queryKey: ["outline-versions", docStateRef.current?.documentId] });
-    },
-  });
-
   // 历史版本列表
   const { data: versions = [] } = useQuery<VersionSummary[]>({
     queryKey: ["versions", docState?.documentId],
@@ -322,15 +324,22 @@ export function EditorPanel() {
   // 恢复历史版本
   const restoreVersionMutation = useMutation({
     mutationFn: (versionId: string) =>
-      apiPost<DocumentState>(`/api/documents/${docStateRef.current?.documentId}/versions/${versionId}/restore`, {
-        expectedLockVersion: docStateRef.current?.lockVersion,
-      }),
+      apiPost<DocumentState>(
+        `/api/documents/${docStateRef.current?.documentId}/versions/${versionId}/restore`,
+        {
+          expectedLockVersion: docStateRef.current?.lockVersion,
+        },
+      ),
     onSuccess: (updatedState) => {
       queryClient.setQueryData(["document", selectedSourceItemId], updatedState);
       queryClient.invalidateQueries({ queryKey: ["versions", docStateRef.current?.documentId] });
       if (editor) {
         const restoredContent = updatedState.currentContent || "";
-        const isHtml = restoredContent.includes("<p>") || restoredContent.includes("<strong>") || restoredContent.includes("<ul>") || restoredContent.includes("<li>");
+        const isHtml =
+          restoredContent.includes("<p>") ||
+          restoredContent.includes("<strong>") ||
+          restoredContent.includes("<ul>") ||
+          restoredContent.includes("<li>");
         (editor.commands as any).setContent(restoredContent, {
           contentType: isHtml ? "html" : "markdown",
           emitUpdate: false,
@@ -342,7 +351,10 @@ export function EditorPanel() {
 
   // 4. AI 生成回答 (Stream)
   const handleGenerateAnswer = async () => {
-    const cachedDocState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
+    const cachedDocState = queryClient.getQueryData<DocumentState>([
+      "document",
+      selectedSourceItemId,
+    ]);
     const currentDocState = cachedDocState || docStateRef.current;
     if (!currentDocState || isGenerating || !editor) return;
     cancelDebouncedSave();
@@ -363,7 +375,17 @@ export function EditorPanel() {
         },
         {
           onEvent: (event, data) => {
-            if (["run.started", "review.started", "review.completed", "rewrite.started", "document.completed", "run.completed", "run.failed"].includes(event)) {
+            if (
+              [
+                "run.started",
+                "review.started",
+                "review.completed",
+                "rewrite.started",
+                "document.completed",
+                "run.completed",
+                "run.failed",
+              ].includes(event)
+            ) {
               setCreationProgress((state) => reduceCreationProgress(state, event, data));
             }
             if (event === "document.delta") {
@@ -404,17 +426,30 @@ export function EditorPanel() {
   };
 
   // 5. 局部精修 (Stream)：由 InlineRefineMenu 在提交对话框时携带选区快照调用
-  const handleInlineRefinement = async ({ from, to, text: selectedText, instruction }: InlineRefineParams) => {
-    const cachedDocState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
+  const handleInlineRefinement = async ({
+    from,
+    to,
+    text: selectedText,
+    instruction,
+  }: InlineRefineParams) => {
+    const cachedDocState = queryClient.getQueryData<DocumentState>([
+      "document",
+      selectedSourceItemId,
+    ]);
     const currentDocState = cachedDocState || docStateRef.current;
     if (!currentDocState || isGenerating || !editor) return;
 
     // 立即保存挂起的修改，确保后端内容最新，并获取最新 lockVersion
     const updatedState = await flushPendingSave();
-    const activeCachedState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
+    const activeCachedState = queryClient.getQueryData<DocumentState>([
+      "document",
+      selectedSourceItemId,
+    ]);
     const activeLockVersion = updatedState
       ? updatedState.lockVersion
-      : (activeCachedState ? activeCachedState.lockVersion : currentDocState.lockVersion);
+      : activeCachedState
+        ? activeCachedState.lockVersion
+        : currentDocState.lockVersion;
 
     setIsGenerating(true);
     editor.commands.deleteRange({ from, to });
@@ -460,23 +495,31 @@ export function EditorPanel() {
 
   // 6. 全文重写 (Stream)
   const handleFullRewrite = async () => {
-    const cachedDocState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
+    const cachedDocState = queryClient.getQueryData<DocumentState>([
+      "document",
+      selectedSourceItemId,
+    ]);
     const currentDocState = cachedDocState || docStateRef.current;
     if (!currentDocState || isGenerating || !editor) return;
 
-    const hasContent = !!editor.getText()?.trim();
-    if (!hasContent || !rewriteInstruction.trim()) {
+    const hasEditorContent = !!editor.getText()?.trim();
+    if (!hasEditorContent || !rewriteInstruction.trim()) {
       await handleGenerateAnswer();
       return;
     }
-    
+
     // 立即保存挂起的修改，确保获取最新 lockVersion
     const updatedState = await flushPendingSave();
-    const activeCachedState = queryClient.getQueryData<DocumentState>(["document", selectedSourceItemId]);
-    const activeLockVersion = updatedState 
-      ? updatedState.lockVersion 
-      : (activeCachedState ? activeCachedState.lockVersion : currentDocState.lockVersion);
-    
+    const activeCachedState = queryClient.getQueryData<DocumentState>([
+      "document",
+      selectedSourceItemId,
+    ]);
+    const activeLockVersion = updatedState
+      ? updatedState.lockVersion
+      : activeCachedState
+        ? activeCachedState.lockVersion
+        : currentDocState.lockVersion;
+
     setIsGenerating(true);
     editor.commands.setContent("");
 
@@ -526,9 +569,7 @@ export function EditorPanel() {
         <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-violet-200 via-pink-100 to-amber-100 shadow-sm dark:from-violet-900/40 dark:via-pink-900/30 dark:to-amber-900/30">
           <Sparkles className="h-7 w-7 text-violet-500 dark:text-violet-300" />
         </div>
-        <p className="text-sm text-muted-foreground">
-          等待 Agent 完成分析与生成…
-        </p>
+        <p className="text-sm text-muted-foreground">等待 Agent 完成分析与生成…</p>
       </aside>
     );
   }
@@ -556,11 +597,9 @@ export function EditorPanel() {
   // ── 正常编辑态 ──
   return (
     <aside className="flex h-full w-full flex-col min-h-0 overflow-hidden border-l bg-card">
-
       {/* ── 头部：原文信息 + 操作按钮 ── */}
       <div className="border-b bg-zinc-50/50 dark:bg-zinc-950/20 px-4 py-3 shrink-0">
         <div className="flex items-start justify-between gap-3 min-w-0">
-
           {/* 左侧：平台标签 + 标题 + 作者 + 摘要 */}
           <div className="flex flex-col gap-1.5 min-w-0 flex-1">
             {/* 平台 badge + 可点击标题 */}
@@ -803,7 +842,10 @@ function EditorTabContent({
     <div className="relative flex flex-1 flex-col min-h-0 overflow-hidden">
       {/* Tiptap 编辑区 */}
       <ScrollArea className="flex-1 min-h-0 p-4">
-        <EditorContent editor={editor} className="prose dark:prose-invert max-w-none outline-none min-h-[300px]" />
+        <EditorContent
+          editor={editor}
+          className="prose dark:prose-invert max-w-none outline-none min-h-[300px]"
+        />
         <InlineRefineMenu editor={editor} isGenerating={isGenerating} onRefine={onInlineRefine} />
       </ScrollArea>
 
@@ -829,7 +871,9 @@ function EditorTabContent({
           disabled={isGenerating}
           allowEmpty={true}
           submitLabel={hasContent ? "重新生成" : "一键生成"}
-          submitIcon={hasContent ? <RefreshCw className="h-3.5 w-3.5" /> : <Wand2 className="h-3.5 w-3.5" />}
+          submitIcon={
+            hasContent ? <RefreshCw className="h-3.5 w-3.5" /> : <Wand2 className="h-3.5 w-3.5" />
+          }
           selectedStyles={selectedStyles}
           onSelectedStylesChange={setSelectedStyles}
           wordCount={wordCount}
@@ -880,95 +924,97 @@ function HistoryDrawerContent({
     <>
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="relative space-y-3 before:absolute before:bottom-5 before:left-[7px] before:top-5 before:w-px before:bg-slate-200 dark:before:bg-slate-800">
-        {versions.map((ver) => {
-          const isCurrent = ver.id === currentVersionId;
-          const reviewPassed = ver.qualityReview?.passed;
-          return (
-            <article
-              key={ver.id}
-              className="relative pl-6"
-            >
-              <span
-                className={`absolute left-0 top-4 z-10 h-[15px] w-[15px] rounded-full border-4 border-[#fbfbf8] dark:border-slate-950 ${
-                  isCurrent ? "bg-slate-950 dark:bg-slate-100" : "bg-slate-300 dark:bg-slate-700"
-                }`}
-              />
-              <div className={`overflow-hidden rounded-xl border bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] transition-shadow hover:shadow-[0_8px_24px_rgba(15,23,42,0.065)] dark:bg-slate-900 ${
-                isCurrent ? "border-slate-900 dark:border-slate-200" : "border-slate-200 dark:border-slate-800"
-              }`}>
-                {isCurrent ? <div className="h-0.5 bg-slate-950 dark:bg-slate-100" /> : null}
-                <div className="flex flex-col gap-2.5 p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold tracking-tight text-slate-950 dark:text-slate-50">
-                      版本 {ver.versionNumber}
-                    </span>
-                    {isCurrent && (
-                      <Badge className={currentVersionBadgeClass}>
-                        当前版本
-                      </Badge>
-                    )}
-                  </div>
-                  <time className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
-                    {new Date(ver.createdAt).toLocaleString()}
-                  </time>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                  <Bot className="h-3.5 w-3.5 shrink-0 text-slate-700 dark:text-slate-300" />
-                  <span className="truncate font-mono">{modelLabel(ver.provider, ver.model)}</span>
-                </div>
+          {versions.map((ver) => {
+            const isCurrent = ver.id === currentVersionId;
+            const reviewPassed = ver.qualityReview?.passed;
+            return (
+              <article key={ver.id} className="relative pl-6">
+                <span
+                  className={`absolute left-0 top-4 z-10 h-[15px] w-[15px] rounded-full border-4 border-[#fbfbf8] dark:border-slate-950 ${
+                    isCurrent ? "bg-slate-950 dark:bg-slate-100" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                />
+                <div
+                  className={`overflow-hidden rounded-xl border bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)] transition-shadow hover:shadow-[0_8px_24px_rgba(15,23,42,0.065)] dark:bg-slate-900 ${
+                    isCurrent
+                      ? "border-slate-900 dark:border-slate-200"
+                      : "border-slate-200 dark:border-slate-800"
+                  }`}
+                >
+                  {isCurrent ? <div className="h-0.5 bg-slate-950 dark:bg-slate-100" /> : null}
+                  <div className="flex flex-col gap-2.5 p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold tracking-tight text-slate-950 dark:text-slate-50">
+                          版本 {ver.versionNumber}
+                        </span>
+                        {isCurrent && <Badge className={currentVersionBadgeClass}>当前版本</Badge>}
+                      </div>
+                      <time className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                        {new Date(ver.createdAt).toLocaleString()}
+                      </time>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <Bot className="h-3.5 w-3.5 shrink-0 text-slate-700 dark:text-slate-300" />
+                      <span className="truncate font-mono">
+                        {modelLabel(ver.provider, ver.model)}
+                      </span>
+                    </div>
 
-                <div>
-                  <p className="line-clamp-3 text-xs leading-[1.65] text-slate-600 dark:text-slate-300">
-                    {ver.contentSummary || "该版本暂无内容摘要"}
-                  </p>
-                </div>
+                    <div>
+                      <p className="line-clamp-3 text-xs leading-[1.65] text-slate-600 dark:text-slate-300">
+                        {ver.contentSummary || "该版本暂无内容摘要"}
+                      </p>
+                    </div>
 
-                <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
-                  <div className="flex min-w-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 rounded-md px-2 text-[11px] font-medium text-amber-800 hover:bg-amber-50 hover:text-amber-950 disabled:text-slate-400 dark:text-amber-300 dark:hover:bg-amber-950/50"
-                      disabled={!ver.outlineOperationId}
-                      onClick={() => setOutlineDetail(ver)}
-                    >
-                      <ListTree className="h-3.5 w-3.5" />
-                      {compactOutlineLabel(ver.outlineVersionNumber, ver.outlineSections.length)}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={`h-7 rounded-md px-2 text-[11px] font-medium disabled:text-slate-400 ${
-                        reviewPassed
-                          ? "text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
-                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                      }`}
-                      disabled={!ver.qualityReview}
-                      onClick={() => setReviewDetail(ver)}
-                    >
-                      <ClipboardList className="h-3.5 w-3.5" />
-                      {compactReviewLabel(ver.qualityReview)}
-                    </Button>
+                    <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
+                      <div className="flex min-w-0 items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 rounded-md px-2 text-[11px] font-medium text-amber-800 hover:bg-amber-50 hover:text-amber-950 disabled:text-slate-400 dark:text-amber-300 dark:hover:bg-amber-950/50"
+                          disabled={!ver.outlineOperationId}
+                          onClick={() => setOutlineDetail(ver)}
+                        >
+                          <ListTree className="h-3.5 w-3.5" />
+                          {compactOutlineLabel(
+                            ver.outlineVersionNumber,
+                            ver.outlineSections.length,
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className={`h-7 rounded-md px-2 text-[11px] font-medium disabled:text-slate-400 ${
+                            reviewPassed
+                              ? "text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
+                              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                          }`}
+                          disabled={!ver.qualityReview}
+                          onClick={() => setReviewDetail(ver)}
+                        >
+                          <ClipboardList className="h-3.5 w-3.5" />
+                          {compactReviewLabel(ver.qualityReview)}
+                        </Button>
+                      </div>
+                      <Button
+                        variant={isCurrent ? "ghost" : "outline"}
+                        size="sm"
+                        className="h-7 shrink-0 rounded-md px-2.5 text-[11px]"
+                        onClick={() => onRestore(ver.id)}
+                        disabled={isCurrent}
+                      >
+                        <Undo2 className="h-3 w-3" />
+                        {isCurrent ? "当前版本" : "恢复此版本"}
+                      </Button>
+                    </div>
                   </div>
-                  <Button
-                    variant={isCurrent ? "ghost" : "outline"}
-                    size="sm"
-                    className="h-7 shrink-0 rounded-md px-2.5 text-[11px]"
-                    onClick={() => onRestore(ver.id)}
-                    disabled={isCurrent}
-                  >
-                    <Undo2 className="h-3 w-3" />
-                    {isCurrent ? "当前版本" : "恢复此版本"}
-                  </Button>
                 </div>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+              </article>
+            );
+          })}
         </div>
       </div>
 
@@ -989,25 +1035,34 @@ function HistoryDrawerContent({
           <ScrollArea className="min-h-0 flex-1 pr-3">
             <div className="space-y-3 py-1">
               {(outlineDetail?.outlineSections ?? []).map((section, index) => (
-                <section key={section.id ?? index} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <section
+                  key={section.id ?? index}
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+                >
                   <div className="flex items-start gap-2">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-950 text-[10px] font-semibold text-white dark:bg-slate-100 dark:text-slate-950">
                       {index + 1}
                     </span>
                     <div className="min-w-0 flex-1">
                       <h4 className="text-xs font-semibold">{section.heading}</h4>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground">约 {section.wordCountEstimate} 字</p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        约 {section.wordCountEstimate} 字
+                      </p>
                     </div>
                   </div>
                   {section.keyPoints.length > 0 ? (
                     <ul className="mt-2 list-disc space-y-1 pl-9 text-[11px] leading-5 text-muted-foreground">
-                      {section.keyPoints.map((point, pointIndex) => <li key={pointIndex}>{point}</li>)}
+                      {section.keyPoints.map((point, pointIndex) => (
+                        <li key={pointIndex}>{point}</li>
+                      ))}
                     </ul>
                   ) : null}
                 </section>
               ))}
               {outlineDetail && outlineDetail.outlineSections.length === 0 ? (
-                <p className="py-12 text-center text-xs text-muted-foreground">该版本没有大纲快照。</p>
+                <p className="py-12 text-center text-xs text-muted-foreground">
+                  该版本没有大纲快照。
+                </p>
               ) : null}
             </div>
           </ScrollArea>
@@ -1026,7 +1081,9 @@ function HistoryDrawerContent({
             <DialogDescription>历史评审结果，仅供查看。</DialogDescription>
           </DialogHeader>
           <ScrollArea className="min-h-0 flex-1 pr-3">
-            {reviewDetail?.qualityReview ? <ReportCard report={reviewDetail.qualityReview} /> : null}
+            {reviewDetail?.qualityReview ? (
+              <ReportCard report={reviewDetail.qualityReview} />
+            ) : null}
           </ScrollArea>
         </DialogContent>
       </Dialog>

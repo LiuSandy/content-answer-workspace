@@ -1,14 +1,21 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Sparkles, X } from "lucide-react";
-import { fetchOpportunities, startPlan, type Opportunity } from "@/features/knowledge/opportunity-api";
+import {
+  fetchOpportunities,
+  startPlan,
+  type Opportunity,
+} from "@/features/knowledge/opportunity-api";
 import { Button } from "@/components/ui/button";
 
 function platformBadge(p: string) {
   switch (p.toLowerCase()) {
-    case "zhihu": return "知乎";
-    case "xiaohongshu": return "小红书";
-    default: return p;
+    case "zhihu":
+      return "知乎";
+    case "xiaohongshu":
+      return "小红书";
+    default:
+      return p;
   }
 }
 
@@ -21,9 +28,7 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
       // 广播 planId，chat-panel 监听后展示 TaskPlanCard
       const planId = data?.data?.planId;
       if (planId) {
-        window.dispatchEvent(
-          new CustomEvent("taskplan:created", { detail: { planId } })
-        );
+        window.dispatchEvent(new CustomEvent("taskplan:created", { detail: { planId } }));
       }
     },
   });
@@ -38,8 +43,12 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
           热度 {Math.round(opp.hotScore * 100)}
         </span>
       </div>
-      <a href={opp.questionUrl} target="_blank" rel="noopener noreferrer"
-         className="text-[10px] font-semibold hover:text-primary line-clamp-2">
+      <a
+        href={opp.questionUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[10px] font-semibold hover:text-primary line-clamp-2"
+      >
         {opp.questionTitle}
       </a>
       <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
@@ -51,9 +60,13 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
         onClick={() => startPlanMutation.mutate()}
       >
         {startPlanMutation.isPending ? (
-          <><Loader2 className="h-3 w-3 animate-spin mr-1" /> 启动中...</>
+          <>
+            <Loader2 className="h-3 w-3 animate-spin mr-1" /> 启动中...
+          </>
         ) : (
-          <><Sparkles className="h-3 w-3 mr-1" /> 一键创作</>
+          <>
+            <Sparkles className="h-3 w-3 mr-1" /> 一键创作
+          </>
         )}
       </Button>
     </div>
@@ -65,7 +78,7 @@ export function TodayOpportunitiesBanner({ workspaceId = "default" }: { workspac
   const { data, isLoading } = useQuery<Opportunity[]>({
     queryKey: ["opportunities", workspaceId],
     queryFn: () => fetchOpportunities(workspaceId),
-    refetchInterval: 60 * 60 * 1000,  // 每小时刷新
+    refetchInterval: 60 * 60 * 1000, // 每小时刷新
   });
 
   if (collapsed || !data || data.length === 0) {
@@ -80,7 +93,10 @@ export function TodayOpportunitiesBanner({ workspaceId = "default" }: { workspac
           <span className="text-[11px] font-bold">今日内容机会</span>
           <span className="text-[9px] text-muted-foreground">基于热榜与你的兴趣领域</span>
         </div>
-        <button onClick={() => setCollapsed(true)} className="text-muted-foreground hover:text-foreground">
+        <button
+          onClick={() => setCollapsed(true)}
+          className="text-muted-foreground hover:text-foreground"
+        >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>

@@ -8,11 +8,7 @@ import { cn } from "@/lib/utils";
  * 这里保留 shadcn/ui 风格的 Navigation Menu 语义，但不依赖额外的 Radix NavigationMenu 包，
  * 这样可以在当前项目依赖不变的前提下完成顶部菜单展示。
  */
-function NavigationMenu({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"nav">) {
+function NavigationMenu({ className, children, ...props }: React.ComponentProps<"nav">) {
   return (
     <nav
       data-slot="navigation-menu"
@@ -28,11 +24,7 @@ function NavigationMenu({
  * 导航项列表。
  * 用列表结构承载顶部菜单，语义上更接近真实导航，也方便后续继续扩展菜单项。
  */
-function NavigationMenuList({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"ul">) {
+function NavigationMenuList({ className, children, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
       data-slot="navigation-menu-list"
@@ -48,11 +40,7 @@ function NavigationMenuList({
  * 单个导航项容器。
  * 单独包一层 list item，保持菜单项结构稳定，避免直接把按钮散落在导航列表里。
  */
-function NavigationMenuItem({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"li">) {
+function NavigationMenuItem({ className, children, ...props }: React.ComponentProps<"li">) {
   return (
     <li data-slot="navigation-menu-item" className={cn("relative", className)} {...props}>
       {children}

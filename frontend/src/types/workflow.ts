@@ -244,13 +244,7 @@ export type ChatConversationRunSseEvent =
   | { id: number; event: "canceled"; data: { message: string } };
 
 export type ChatRunUiStatus =
-  | "creating"
-  | "streaming"
-  | "recovering"
-  | "done"
-  | "error"
-  | "interrupted"
-  | "canceled";
+  "creating" | "streaming" | "recovering" | "done" | "error" | "interrupted" | "canceled";
 
 export type AgentTool = {
   name: string;
@@ -284,13 +278,7 @@ export type GenerationJobSseEvent =
   | { id: number; event: "canceled"; data: { message: string } };
 
 export type GenerationUiStatus =
-  | "idle"
-  | "creating"
-  | "generating"
-  | "done"
-  | "error"
-  | "interrupted"
-  | "canceled";
+  "idle" | "creating" | "generating" | "done" | "error" | "interrupted" | "canceled";
 
 export type GenerationStatus = GenerationUiStatus;
 

@@ -28,16 +28,13 @@ describe("chat stream lifecycle", () => {
   });
 
   test("clears a transient SSE error after the same error is persisted", () => {
-    const result = reconcileTransientStreamError(
-      "本轮处理步骤过多已自动停止",
-      [
-        {
-          messageType: "error",
-          content: null,
-          payload: { message: "本轮处理步骤过多已自动停止" },
-        },
-      ],
-    );
+    const result = reconcileTransientStreamError("本轮处理步骤过多已自动停止", [
+      {
+        messageType: "error",
+        content: null,
+        payload: { message: "本轮处理步骤过多已自动停止" },
+      },
+    ]);
 
     expect(result).toBeNull();
   });

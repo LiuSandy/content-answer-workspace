@@ -5,7 +5,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CollectConfig,
-  LlmConfig,
   PublishConfig,
   TopicItem,
   configureGroqKey,
@@ -77,7 +76,6 @@ export function useUpdatePublish() {
     onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
   });
 }
-
 
 export function useUpdateAgentReachPlatforms() {
   const qc = useQueryClient();

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { apiGet, apiPost, apiDelete, apiPut } from "@/lib/api";
+import { apiGet, apiDelete, apiPut } from "@/lib/api";
 import { useChatStore } from "@/store/chat-store";
 import { useAlertDialog } from "@/hooks/use-alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -37,8 +37,6 @@ export function ChatSidebar() {
     queryKey: ["chats"],
     queryFn: () => apiGet("/api/chats"),
   });
-
-
 
   // 重命名对话
   const renameMutation = useMutation({
@@ -108,12 +106,15 @@ export function ChatSidebar() {
                           currentChatId === chat.chatId
                             ? "border-primary/40 bg-muted"
                             : "border-transparent hover:bg-muted/60",
-                        )
+                        ),
                   )}
                 >
                   <div className="flex items-center justify-between gap-2 min-w-0 w-full">
                     {isEditing ? (
-                      <div className="flex items-center gap-1 w-full min-w-0" onClick={(e) => e.stopPropagation()}>
+                      <div
+                        className="flex items-center gap-1 w-full min-w-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="text"
                           value={editingTitle}

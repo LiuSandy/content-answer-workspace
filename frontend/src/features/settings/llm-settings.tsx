@@ -100,9 +100,7 @@ export function LlmSettings() {
         </Button>
         {saved && <span className="text-sm text-green-600">已保存 ✓</span>}
         {update.isError && (
-          <span className="text-sm text-destructive">
-            {(update.error as Error)?.message}
-          </span>
+          <span className="text-sm text-destructive">{(update.error as Error)?.message}</span>
         )}
       </div>
 

@@ -1,10 +1,5 @@
 export type KnowledgeDocumentStatus =
-  | "pending"
-  | "awaiting_confirmation"
-  | "indexing"
-  | "available"
-  | "failed"
-  | "deleted";
+  "pending" | "awaiting_confirmation" | "indexing" | "available" | "failed" | "deleted";
 
 export type SourceType = "pdf" | "markdown" | "text" | "image" | "url" | "history";
 

@@ -10,7 +10,7 @@ export interface ListDocumentsResponse {
 
 export async function fetchKnowledgeDocuments(
   workspaceId: string = "default",
-  status?: string
+  status?: string,
 ): Promise<ListDocumentsResponse> {
   const query = new URLSearchParams({ workspaceId });
   if (status) query.append("status", status);
@@ -19,14 +19,14 @@ export async function fetchKnowledgeDocuments(
 
 export async function uploadKnowledgeDocument(
   file: File,
-  workspaceId: string = "default"
+  workspaceId: string = "default",
 ): Promise<{ sourceFileId: string; status: string; outcome: string }> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("workspaceId", workspaceId);
   return apiUpload<{ sourceFileId: string; status: string; outcome: string }>(
     "/api/knowledge/documents",
-    formData
+    formData,
   );
 }
 
@@ -38,25 +38,25 @@ export interface SourceFileScanResult {
 }
 
 export async function scanKnowledgeSourceFiles(
-  workspaceId: string = "default"
+  workspaceId: string = "default",
 ): Promise<SourceFileScanResult> {
   return apiPost<SourceFileScanResult>(
     `/api/knowledge/source-files/scan?workspaceId=${encodeURIComponent(workspaceId)}`,
-    {}
+    {},
   );
 }
 
 export async function fetchKnowledgeSourceFiles(
-  workspaceId: string = "default"
+  workspaceId: string = "default",
 ): Promise<{ sourceFiles: KnowledgeSourceFile[] }> {
   return apiGet<{ sourceFiles: KnowledgeSourceFile[] }>(
-    `/api/knowledge/source-files?workspaceId=${encodeURIComponent(workspaceId)}`
+    `/api/knowledge/source-files?workspaceId=${encodeURIComponent(workspaceId)}`,
   );
 }
 
 export async function importKnowledgeUrl(
   url: string,
-  workspaceId: string = "default"
+  workspaceId: string = "default",
 ): Promise<KnowledgeDocument> {
   return apiPost<KnowledgeDocument>("/api/knowledge/documents/import-url", {
     url,
@@ -66,17 +66,17 @@ export async function importKnowledgeUrl(
 
 export async function fetchDocumentMarkdown(
   documentId: string,
-  isCandidate: boolean = false
+  isCandidate: boolean = false,
 ): Promise<{ documentId: string; markdown: string; isCandidate: boolean }> {
   return apiGet<{ documentId: string; markdown: string; isCandidate: boolean }>(
-    `/api/knowledge/documents/${documentId}/markdown?isCandidate=${isCandidate}`
+    `/api/knowledge/documents/${documentId}/markdown?isCandidate=${isCandidate}`,
   );
 }
 
 export async function updateDocumentMarkdown(
   documentId: string,
   markdown: string,
-  workspaceId: string = "default"
+  workspaceId: string = "default",
 ): Promise<void> {
   await apiPut(`/api/knowledge/documents/${documentId}/markdown`, {
     markdown,
@@ -89,11 +89,11 @@ export async function confirmKnowledgeDocument(documentId: string): Promise<void
 }
 
 export async function reconvertKnowledgeDocument(
-  documentId: string
+  documentId: string,
 ): Promise<{ status: string; diff?: string }> {
   return apiPost<{ status: string; diff?: string }>(
     `/api/knowledge/documents/${documentId}/reconvert`,
-    {}
+    {},
   );
 }
 
@@ -143,7 +143,7 @@ export interface TestRetrievalResponse {
 export async function testKnowledgeRetrieval(
   query: string,
   mode: string = "normal",
-  workspaceId: string = "default"
+  workspaceId: string = "default",
 ): Promise<TestRetrievalResponse> {
   return apiPost<TestRetrievalResponse>("/api/knowledge/test-search", {
     query,

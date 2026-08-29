@@ -33,9 +33,7 @@ function createManualBuffer() {
       currentTime += ms;
     },
     runFrame() {
-      const entry = frames.entries().next().value as
-        | [number, FrameRequestCallback]
-        | undefined;
+      const entry = frames.entries().next().value as [number, FrameRequestCallback] | undefined;
       if (!entry) return;
       frames.delete(entry[0]);
       entry[1](currentTime);

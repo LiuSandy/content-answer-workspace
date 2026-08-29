@@ -19,7 +19,7 @@ export function useKnowledgeDocuments(workspaceId: string = "default", statusFil
     refetchInterval: (query) => {
       const docs = query.state.data?.documents || [];
       const hasActiveProcessing = docs.some(
-        (doc) => doc.status === "pending" || doc.status === "indexing"
+        (doc) => doc.status === "pending" || doc.status === "indexing",
       );
       return hasActiveProcessing ? 2000 : false;
     },

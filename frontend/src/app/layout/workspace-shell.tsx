@@ -80,7 +80,12 @@ export function WorkspaceLayout() {
             RAG 测试
           </Button>
 
-          <Button variant="outline" size="sm" onClick={() => setIsPromptDialogOpen(true)} className="h-8 gap-1.5 text-xs font-semibold px-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsPromptDialogOpen(true)}
+            className="h-8 gap-1.5 text-xs font-semibold px-3"
+          >
             <Settings className="h-3.5 w-3.5" />
             提示词
           </Button>
@@ -106,16 +111,10 @@ export function WorkspaceLayout() {
       </main>
 
       {/* ── RAG 检索测试弹窗 ── */}
-      <RagSearchTestDialog
-        open={isRagTestOpen}
-        onOpenChange={setIsRagTestOpen}
-      />
+      <RagSearchTestDialog open={isRagTestOpen} onOpenChange={setIsRagTestOpen} />
 
       {/* ── 提示词模板管理弹窗 ── */}
-      <PromptTemplatesDialog
-        open={isPromptDialogOpen}
-        onOpenChange={setIsPromptDialogOpen}
-      />
+      <PromptTemplatesDialog open={isPromptDialogOpen} onOpenChange={setIsPromptDialogOpen} />
     </div>
   );
 }

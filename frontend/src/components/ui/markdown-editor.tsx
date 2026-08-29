@@ -14,15 +14,28 @@ type MarkdownEditorProps = {
 
 const markdownComponents: Components = {
   p: ({ node, ...props }) => <p className="my-3 leading-relaxed first:mt-0 last:mb-0" {...props} />,
-  h1: ({ node, ...props }) => <h1 className="mb-3 mt-5 text-xl font-semibold leading-snug first:mt-0" {...props} />,
-  h2: ({ node, ...props }) => <h2 className="mb-2.5 mt-5 text-base font-semibold leading-snug first:mt-0" {...props} />,
-  h3: ({ node, ...props }) => <h3 className="mb-2 mt-4 text-sm font-semibold leading-snug first:mt-0" {...props} />,
-  h4: ({ node, ...props }) => <h4 className="mb-1.5 mt-3 text-sm font-semibold leading-snug first:mt-0" {...props} />,
+  h1: ({ node, ...props }) => (
+    <h1 className="mb-3 mt-5 text-xl font-semibold leading-snug first:mt-0" {...props} />
+  ),
+  h2: ({ node, ...props }) => (
+    <h2 className="mb-2.5 mt-5 text-base font-semibold leading-snug first:mt-0" {...props} />
+  ),
+  h3: ({ node, ...props }) => (
+    <h3 className="mb-2 mt-4 text-sm font-semibold leading-snug first:mt-0" {...props} />
+  ),
+  h4: ({ node, ...props }) => (
+    <h4 className="mb-1.5 mt-3 text-sm font-semibold leading-snug first:mt-0" {...props} />
+  ),
   ul: ({ node, ...props }) => <ul className="my-3 list-disc space-y-1.5 pl-5" {...props} />,
   ol: ({ node, ...props }) => <ol className="my-3 list-decimal space-y-1.5 pl-5" {...props} />,
   li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
   a: ({ node, ...props }) => (
-    <a className="text-blue-600 underline underline-offset-2 hover:text-blue-700" target="_blank" rel="noreferrer" {...props} />
+    <a
+      className="text-blue-600 underline underline-offset-2 hover:text-blue-700"
+      target="_blank"
+      rel="noreferrer"
+      {...props}
+    />
   ),
   blockquote: ({ node, ...props }) => (
     <blockquote className="my-3 border-l-2 border-blue-200 pl-3 text-slate-600" {...props} />
@@ -44,12 +57,23 @@ const markdownComponents: Components = {
   ),
   thead: ({ node, ...props }) => <thead className="bg-slate-50" {...props} />,
   th: ({ node, ...props }) => (
-    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left font-semibold" {...props} />
+    <th
+      className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left font-semibold"
+      {...props}
+    />
   ),
-  td: ({ node, ...props }) => <td className="border border-slate-200 px-3 py-2 align-top" {...props} />,
+  td: ({ node, ...props }) => (
+    <td className="border border-slate-200 px-3 py-2 align-top" {...props} />
+  ),
 };
 
-function MarkdownEditor({ value, onChange, className, placeholder, readOnly = false }: MarkdownEditorProps) {
+function MarkdownEditor({
+  value,
+  onChange,
+  className,
+  placeholder,
+  readOnly = false,
+}: MarkdownEditorProps) {
   const [mode, setMode] = useState<"preview" | "source">(value.trim() ? "preview" : "source");
 
   return (
@@ -74,9 +98,7 @@ function MarkdownEditor({ value, onChange, className, placeholder, readOnly = fa
       {mode === "preview" ? (
         <div className="markdown-editor__content">
           {value.trim() ? (
-            <MarkdownContent components={markdownComponents}>
-              {value}
-            </MarkdownContent>
+            <MarkdownContent components={markdownComponents}>{value}</MarkdownContent>
           ) : (
             <p className="m-0 text-slate-400">{placeholder}</p>
           )}

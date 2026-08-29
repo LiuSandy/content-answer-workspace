@@ -58,10 +58,12 @@ export function ChatPanel() {
     enabled: Boolean(currentChatId),
   });
   const resolvedMessages = useMemo(() => resolveParentIds(messages), [messages]);
-  const { path: activePath, leafId: calculatedLeafId } = useMemo(
+  const { path: selectedBranchMessages, leafId: calculatedLeafId } = useMemo(
     () => getActiveMessagePath(resolvedMessages, activeLeafMessageId),
     [activeLeafMessageId, resolvedMessages],
   );
+
+  console.log("selectedBranchMessages", selectedBranchMessages);
 
   useEffect(() => {
     if (calculatedLeafId && calculatedLeafId !== activeLeafMessageId) {
@@ -80,37 +82,41 @@ export function ChatPanel() {
     void sendMessage(content);
   }, [inputText, isStreaming, sendMessage]);
 
-  const handleConfirmEdit = useCallback((message: ChatMessage, content: string) => {
-    setEditingMessageId(null);
-    void sendMessage(content, message.parentMessageId);
-  }, [sendMessage]);
+  const handleConfirmEdit = useCallback(
+    (message: ChatMessage, content: string) => {
+      setEditingMessageId(null);
+      void sendMessage(content, message.parentMessageId);
+    },
+    [sendMessage],
+  );
 
-  const handleSwitchSibling = useCallback((
-    message: ChatMessage,
-    direction: "prev" | "next",
-  ) => {
-    const siblings = getUserMessageSiblings(resolvedMessages, message);
-    const currentIndex = siblings.findIndex(
-      (sibling) => sibling.messageId === message.messageId,
-    );
-    const targetIndex = direction === "prev" ? currentIndex - 1 : currentIndex + 1;
-    const target = siblings[targetIndex];
-    if (!target) return;
-    setActiveLeafMessageId(findActiveLeafDescendant(resolvedMessages, target.messageId));
-  }, [resolvedMessages, setActiveLeafMessageId]);
+  const handleSwitchSibling = useCallback(
+    (message: ChatMessage, direction: "prev" | "next") => {
+      const siblings = getUserMessageSiblings(resolvedMessages, message);
+      const currentIndex = siblings.findIndex((sibling) => sibling.messageId === message.messageId);
+      const targetIndex = direction === "prev" ? currentIndex - 1 : currentIndex + 1;
+      const target = siblings[targetIndex];
+      if (!target) return;
+      setActiveLeafMessageId(findActiveLeafDescendant(resolvedMessages, target.messageId));
+    },
+    [resolvedMessages, setActiveLeafMessageId],
+  );
 
   const handleStartEdit = useCallback((messageId: string) => {
     setEditingMessageId(messageId);
   }, []);
   const handleCancelEdit = useCallback(() => setEditingMessageId(null), []);
 
-  const renderStreamingSourceList = useCallback((data: unknown) => (
-    <SourceListCard
-      data={data}
-      onSelectItem={setSelectedSourceItemId}
-      selectedId={selectedSourceItemId}
-    />
-  ), [selectedSourceItemId, setSelectedSourceItemId]);
+  const renderStreamingSourceList = useCallback(
+    (data: unknown) => (
+      <SourceListCard
+        data={data}
+        onSelectItem={setSelectedSourceItemId}
+        selectedId={selectedSourceItemId}
+      />
+    ),
+    [selectedSourceItemId, setSelectedSourceItemId],
+  );
 
   const streamingMessageCard = (
     <StreamingMessageCard
@@ -159,22 +165,24 @@ export function ChatPanel() {
                 <Skeleton className="ml-auto h-10 w-1/2 rounded-xl" />
                 <Skeleton className="h-16 w-3/4 rounded-xl" />
               </div>
-            ) : activePath.map((message) => (
-              <MemoizedMessageBubble
-                key={message.messageId}
-                msg={message}
-                onSelectItem={setSelectedSourceItemId}
-                onSelectChoice={selectChoice}
-                selectedId={selectedSourceItemId}
-                isEditing={editingMessageId === message.messageId}
-                onStartEdit={handleStartEdit}
-                onCancelEdit={handleCancelEdit}
-                onConfirmEdit={handleConfirmEdit}
-                siblings={getUserMessageSiblings(resolvedMessages, message)}
-                onSwitchSibling={handleSwitchSibling}
-                isStreaming={isStreaming}
-              />
-            ))}
+            ) : (
+              selectedBranchMessages.map((message) => (
+                <MemoizedMessageBubble
+                  key={message.messageId}
+                  msg={message}
+                  onSelectItem={setSelectedSourceItemId}
+                  onSelectChoice={selectChoice}
+                  selectedId={selectedSourceItemId}
+                  isEditing={editingMessageId === message.messageId}
+                  onStartEdit={handleStartEdit}
+                  onCancelEdit={handleCancelEdit}
+                  onConfirmEdit={handleConfirmEdit}
+                  siblings={getUserMessageSiblings(resolvedMessages, message)}
+                  onSwitchSibling={handleSwitchSibling}
+                  isStreaming={isStreaming}
+                />
+              ))
+            )}
 
             {streamingMessageCard}
             <div ref={messagesEndRef} />

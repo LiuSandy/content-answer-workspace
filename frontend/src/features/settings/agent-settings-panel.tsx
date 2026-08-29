@@ -45,7 +45,10 @@ export function AgentSettingsPanel() {
     mutationFn: () =>
       updateSettings({
         proactiveSensingEnabled: enabled,
-        interestTags: tagsInput.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
+        interestTags: tagsInput
+          .split(/[,，]/)
+          .map((t) => t.trim())
+          .filter(Boolean),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-settings"] }),
   });
@@ -82,9 +85,7 @@ export function AgentSettingsPanel() {
 
       <div>
         <label className="text-sm font-medium block mb-1.5">感兴趣的领域 Tag</label>
-        <p className="text-xs text-muted-foreground mb-2">
-          用英文逗号分隔,影响机会匹配度评分。
-        </p>
+        <p className="text-xs text-muted-foreground mb-2">用英文逗号分隔,影响机会匹配度评分。</p>
         <input
           type="text"
           value={tagsInput}
@@ -101,9 +102,13 @@ export function AgentSettingsPanel() {
         className="h-8"
       >
         {mutation.isPending ? (
-          <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> 保存中…</>
+          <>
+            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> 保存中…
+          </>
         ) : mutation.isSuccess ? (
-          <><Check className="h-3.5 w-3.5 mr-1.5" /> 已保存</>
+          <>
+            <Check className="h-3.5 w-3.5 mr-1.5" /> 已保存
+          </>
         ) : (
           "保存配置"
         )}

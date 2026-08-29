@@ -101,7 +101,7 @@ export function PromptInput({
     <div
       className={cn(
         "relative flex flex-col rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all shadow-sm",
-        className
+        className,
       )}
     >
       <Textarea
@@ -114,8 +114,8 @@ export function PromptInput({
         rows={3}
         className={cn(
           "w-full bg-transparent resize-none border-0 pl-3 py-2 text-sm placeholder:text-zinc-400 dark:placeholder:text-zinc-500 outline-none focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-[84px] min-h-[84px] max-h-[84px] overflow-y-auto leading-relaxed text-zinc-800 dark:text-zinc-200 shadow-none focus-visible:ring-offset-0",
-          (submitLabel || rightActions) ? "pr-28" : "pr-12",
-          (showStyles || leftActions || afterWordCountActions) ? "pb-10" : ""
+          submitLabel || rightActions ? "pr-28" : "pr-12",
+          showStyles || leftActions || afterWordCountActions ? "pb-10" : "",
         )}
       />
 
@@ -137,12 +137,17 @@ export function PromptInput({
                   "h-8 px-2.5 rounded-lg text-xs gap-1.5 font-medium transition-colors shrink-0",
                   selectedStyles.length > 0
                     ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-950/60"
-                    : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800",
                 )}
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 <span>{getStyleButtonLabel()}</span>
-                <ChevronDown className={cn("h-3 w-3 opacity-60 transition-transform", dropdownOpen && "rotate-180")} />
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 opacity-60 transition-transform",
+                    dropdownOpen && "rotate-180",
+                  )}
+                />
               </Button>
 
               {/* 浮动下拉面板 (向上弹出) */}
@@ -182,7 +187,9 @@ export function PromptInput({
           {showStyles && wordCount !== undefined && onWordCountChange && (
             <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 select-none">
               <span className="h-3.5 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5" />
-              <label htmlFor="word-count-input" className="font-medium shrink-0">字数:</label>
+              <label htmlFor="word-count-input" className="font-medium shrink-0">
+                字数:
+              </label>
               <input
                 id="word-count-input"
                 type="number"
@@ -220,7 +227,8 @@ export function PromptInput({
             onClick={onSubmit}
             className={cn(
               "h-8 px-3 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white transition-colors shrink-0 gap-1.5 text-xs font-medium",
-              (disabled || (!allowEmpty && !value.trim())) && "bg-indigo-100 text-zinc-400 dark:bg-indigo-950/40 dark:disabled:text-zinc-700"
+              (disabled || (!allowEmpty && !value.trim())) &&
+                "bg-indigo-100 text-zinc-400 dark:bg-indigo-950/40 dark:disabled:text-zinc-700",
             )}
           >
             {submitIcon}

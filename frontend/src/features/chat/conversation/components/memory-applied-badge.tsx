@@ -1,10 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Brain } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface MemoryDTO {
   id: string;
@@ -36,9 +32,13 @@ export function MemoryAppliedBadge({ workspaceId = "default" }: { workspaceId?: 
   const count = active?.length || 0;
   if (count === 0) return null;
 
-  const preview = (active || []).slice(0, 3).map(m => (
-    `${TYPE_LABEL[m.memoryType] || m.memoryType}: ${m.content}${m.evidence ? ` (证据: ${m.evidence.length > 30 ? m.evidence.slice(0, 30) + "…" : m.evidence})` : ""}`
-  )).join("\n");
+  const preview = (active || [])
+    .slice(0, 3)
+    .map(
+      (m) =>
+        `${TYPE_LABEL[m.memoryType] || m.memoryType}: ${m.content}${m.evidence ? ` (证据: ${m.evidence.length > 30 ? m.evidence.slice(0, 30) + "…" : m.evidence})` : ""}`,
+    )
+    .join("\n");
 
   return (
     <Tooltip>

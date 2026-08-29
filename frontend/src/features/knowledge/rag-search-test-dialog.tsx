@@ -44,7 +44,11 @@ const STEP_STATUS_META: Record<
 };
 
 /** 检索流程执行时间线；展示每个阶段的状态、耗时与说明（标题由外层折叠按钮承担） */
-function PipelineTimeline({ steps }: { steps: NonNullable<TestRetrievalResponse["pipelineSteps"]> }) {
+function PipelineTimeline({
+  steps,
+}: {
+  steps: NonNullable<TestRetrievalResponse["pipelineSteps"]>;
+}) {
   return (
     <div className="rounded-lg border bg-card divide-y">
       {steps.map((step, idx) => {
@@ -116,7 +120,8 @@ export function RagSearchTestDialog({ open, onOpenChange }: RagSearchTestDialogP
             </Badge>
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            输入关键字或提问测试底层 RAG 检索引擎（查询改写 → BM25 + 向量双路 → RRF 融合 → LLM 重排打分 → 阈值判定）。
+            输入关键字或提问测试底层 RAG 检索引擎（查询改写 → BM25 + 向量双路 → RRF 融合 → LLM
+            重排打分 → 阈值判定）。
           </DialogDescription>
         </DialogHeader>
 
@@ -133,8 +138,16 @@ export function RagSearchTestDialog({ open, onOpenChange }: RagSearchTestDialogP
                 className="pl-9 h-9 text-sm"
               />
             </div>
-            <Button onClick={handleSearch} disabled={loading || !query.trim()} className="h-9 px-4 gap-1.5 font-semibold">
-              {loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+            <Button
+              onClick={handleSearch}
+              disabled={loading || !query.trim()}
+              className="h-9 px-4 gap-1.5 font-semibold"
+            >
+              {loading ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search className="h-3.5 w-3.5" />
+              )}
               {loading ? "检索中..." : "测试检索"}
             </Button>
           </div>
@@ -177,7 +190,9 @@ export function RagSearchTestDialog({ open, onOpenChange }: RagSearchTestDialogP
             <div className="flex h-64 flex-col items-center justify-center text-center text-muted-foreground gap-2">
               <Layers className="h-8 w-8 text-muted-foreground/50" />
               <p className="text-sm">在上方输入框中输入关键字并点击【测试检索】</p>
-              <p className="text-xs text-muted-foreground/70">将展示检索流程明细、命中片段与 Agent 注入上下文</p>
+              <p className="text-xs text-muted-foreground/70">
+                将展示检索流程明细、命中片段与 Agent 注入上下文
+              </p>
             </div>
           )}
 
@@ -199,9 +214,14 @@ export function RagSearchTestDialog({ open, onOpenChange }: RagSearchTestDialogP
                       <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                     )}
                     <span className="font-bold text-sm">
-                      {result.hasEvidence ? "已命中强相关证据（has_evidence = true）" : "私有资料证据不足（has_evidence = false）"}
+                      {result.hasEvidence
+                        ? "已命中强相关证据（has_evidence = true）"
+                        : "私有资料证据不足（has_evidence = false）"}
                     </span>
-                    <Badge variant={result.hasEvidence ? "default" : "outline"} className="text-[10px]">
+                    <Badge
+                      variant={result.hasEvidence ? "default" : "outline"}
+                      className="text-[10px]"
+                    >
                       模式: {mode}
                     </Badge>
                   </div>
@@ -229,7 +249,10 @@ export function RagSearchTestDialog({ open, onOpenChange }: RagSearchTestDialogP
                       <span className="font-semibold">检索流程执行明细</span>
                       <span className="text-muted-foreground/70">
                         {result.pipelineSteps.length} 个阶段 · 总耗时{" "}
-                        {(result.pipelineSteps.reduce((sum, s) => sum + s.durationMs, 0) / 1000).toFixed(1)}s
+                        {(
+                          result.pipelineSteps.reduce((sum, s) => sum + s.durationMs, 0) / 1000
+                        ).toFixed(1)}
+                        s
                       </span>
                       {stepsExpanded ? (
                         <ChevronUp className="h-3.5 w-3.5 ml-auto" />
@@ -253,7 +276,7 @@ export function RagSearchTestDialog({ open, onOpenChange }: RagSearchTestDialogP
                   匹配命中的源文件与片段 ({result.sources?.length || 0})
                 </h4>
 
-                {(!result.sources || result.sources.length === 0) ? (
+                {!result.sources || result.sources.length === 0 ? (
                   <div className="rounded-md border p-4 text-center text-xs text-muted-foreground">
                     未检索到任何符合条件的切片
                   </div>
@@ -266,7 +289,10 @@ export function RagSearchTestDialog({ open, onOpenChange }: RagSearchTestDialogP
                         (h) => h.citation_label != null && h.citation_label === src.label,
                       );
                       return (
-                        <div key={src.label || idx} className="rounded-lg border bg-card p-3.5 space-y-2 text-xs">
+                        <div
+                          key={src.label || idx}
+                          className="rounded-lg border bg-card p-3.5 space-y-2 text-xs"
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 space-y-1">
                               <div className="flex items-center gap-2 font-bold text-sm text-indigo-600 dark:text-indigo-400">
@@ -294,8 +320,14 @@ export function RagSearchTestDialog({ open, onOpenChange }: RagSearchTestDialogP
                                 <span>BM25: {traceHit.bm25_score?.toFixed(2)}</span>
                                 <span>向量: {traceHit.vector_score?.toFixed(2)}</span>
                                 <span>RRF: #{traceHit.rank}</span>
-                                <Badge variant="secondary" className="font-semibold text-indigo-600 dark:text-indigo-300">
-                                  重排: {traceHit.rerank_score != null ? traceHit.rerank_score.toFixed(2) : "—"}
+                                <Badge
+                                  variant="secondary"
+                                  className="font-semibold text-indigo-600 dark:text-indigo-300"
+                                >
+                                  重排:{" "}
+                                  {traceHit.rerank_score != null
+                                    ? traceHit.rerank_score.toFixed(2)
+                                    : "—"}
                                 </Badge>
                               </div>
                             )}

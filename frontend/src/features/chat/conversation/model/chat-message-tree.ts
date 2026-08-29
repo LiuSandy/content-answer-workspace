@@ -1,13 +1,7 @@
 export type ChatMessage = {
   messageId: string;
   role: "user" | "assistant" | "tool";
-  messageType:
-    | "text"
-    | "source_card"
-    | "source_list"
-    | "tool_status"
-    | "error"
-    | "choice_request";
+  messageType: "text" | "source_card" | "source_list" | "tool_status" | "error" | "choice_request";
   content: string | null;
   parentMessageId?: string | null;
   payload: any;
@@ -16,9 +10,7 @@ export type ChatMessage = {
 
 /** 为旧的线性消息补充父节点，同时保留真正的根级编辑分支。 */
 export function resolveParentIds(allMessages: ChatMessage[]): ChatMessage[] {
-  const resolved = [...allMessages]
-    .sort(compareCreatedAt)
-    .map((message) => ({ ...message }));
+  const resolved = [...allMessages].sort(compareCreatedAt).map((message) => ({ ...message }));
 
   for (let index = 0; index < resolved.length; index += 1) {
     const message = resolved[index];
@@ -41,9 +33,8 @@ export function resolveParentIds(allMessages: ChatMessage[]): ChatMessage[] {
       const databaseParent = allMessages.find(
         (item) => item.messageId === next.messageId,
       )?.parentMessageId;
-      message.parentMessageId = !databaseParent || databaseParent !== message.messageId
-        ? previous.messageId
-        : null;
+      message.parentMessageId =
+        !databaseParent || databaseParent !== message.messageId ? previous.messageId : null;
     } else {
       message.parentMessageId = previous.messageId;
     }
@@ -61,12 +52,14 @@ export function getActiveMessagePath(
   const parentIds = new Set(
     messages.map((message) => message.parentMessageId).filter(Boolean) as string[],
   );
-  const defaultLeafId = messages
-    .filter((message) => !parentIds.has(message.messageId))
-    .sort((left, right) => compareCreatedAt(right, left))[0]?.messageId ?? null;
-  const leafId = requestedLeafId && messages.some((message) => message.messageId === requestedLeafId)
-    ? requestedLeafId
-    : defaultLeafId;
+  const defaultLeafId =
+    messages
+      .filter((message) => !parentIds.has(message.messageId))
+      .sort((left, right) => compareCreatedAt(right, left))[0]?.messageId ?? null;
+  const leafId =
+    requestedLeafId && messages.some((message) => message.messageId === requestedLeafId)
+      ? requestedLeafId
+      : defaultLeafId;
 
   if (!leafId) return { path: [], leafId: null };
 
@@ -107,10 +100,7 @@ export function getUserMessageSiblings(
     .sort(compareCreatedAt);
 }
 
-export function findActiveLeafDescendant(
-  messages: ChatMessage[],
-  startId: string,
-): string {
+export function findActiveLeafDescendant(messages: ChatMessage[], startId: string): string {
   let currentId = startId;
   while (true) {
     const children = messages

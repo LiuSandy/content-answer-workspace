@@ -25,26 +25,13 @@ export const StreamingMessageCard = React.memo(function StreamingMessageCard({
     controller.getSnapshot,
   );
 
-  const {
-    visible,
-    agentStatus,
-    streamingText,
-    streamingSourceList,
-    streamingError,
-  } = snapshot;
+  const { visible, agentStatus, streamingText, streamingSourceList, streamingError } = snapshot;
   const decoratedText = decorateStreamingMarkdown(streamingText);
 
   // DOM 提交后通知滚动守卫；该回调只执行命令，不更新 ChatPanel state。
   useLayoutEffect(() => {
     if (visible) onContentChange?.();
-  }, [
-    visible,
-    agentStatus,
-    streamingText,
-    streamingSourceList,
-    streamingError,
-    onContentChange,
-  ]);
+  }, [visible, agentStatus, streamingText, streamingSourceList, streamingError, onContentChange]);
 
   if (!visible) return null;
 
@@ -60,9 +47,7 @@ export const StreamingMessageCard = React.memo(function StreamingMessageCard({
           )}
           {decoratedText ? (
             <div className="text-sm leading-relaxed max-w-none text-foreground/90">
-              <MarkdownContent components={markdownComponents}>
-                {decoratedText}
-              </MarkdownContent>
+              <MarkdownContent components={markdownComponents}>{decoratedText}</MarkdownContent>
             </div>
           ) : null}
           {streamingSourceList && renderSourceList ? (

@@ -1,5 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle2, ClipboardList, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ClipboardList,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +48,10 @@ function OverallScore({ score }: { score: number }) {
         <span className={`text-lg font-bold ${scoreColor(score)}`}>{score}</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div className={`h-full rounded-full ${scoreBarColor(score)}`} style={{ width: `${Math.min(score, 100)}%` }} />
+        <div
+          className={`h-full rounded-full ${scoreBarColor(score)}`}
+          style={{ width: `${Math.min(score, 100)}%` }}
+        />
       </div>
     </div>
   );
@@ -58,7 +68,10 @@ function DimensionBars({ dimensions }: { dimensions: Record<string, number> }) {
             <span className="text-[9px] text-muted-foreground">{label}</span>
             <span className={`text-[11px] font-semibold ${scoreColor(score)}`}>{score}</span>
             <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-              <div className={`h-full rounded-full ${scoreBarColor(score)}`} style={{ width: `${Math.min(score, 100)}%` }} />
+              <div
+                className={`h-full rounded-full ${scoreBarColor(score)}`}
+                style={{ width: `${Math.min(score, 100)}%` }}
+              />
             </div>
           </div>
         );
@@ -101,7 +114,9 @@ export function QualityReviewDialog({ open, onOpenChange, documentId }: QualityR
         <Button
           variant="outline"
           size="sm"
-          onClick={() => queryClient.invalidateQueries({ queryKey: ["quality-reviews", documentId] })}
+          onClick={() =>
+            queryClient.invalidateQueries({ queryKey: ["quality-reviews", documentId] })
+          }
         >
           <RefreshCw className="h-3 w-3" /> 重试
         </Button>
@@ -155,7 +170,11 @@ export function ReportCard({ report }: { report: QualityReviewRecordDTO }) {
         {typeof report.overallScore === "number" && <OverallScore score={report.overallScore} />}
         <DimensionBars dimensions={report.dimensionScores ?? {}} />
         <Badge variant={report.passed ? "default" : "secondary"} className="shrink-0">
-          {report.passed ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+          {report.passed ? (
+            <CheckCircle2 className="h-3 w-3" />
+          ) : (
+            <AlertCircle className="h-3 w-3" />
+          )}
           {report.passed ? "已达标" : "未达标"}
         </Badge>
       </div>
@@ -172,15 +191,21 @@ export function ReportCard({ report }: { report: QualityReviewRecordDTO }) {
         </div>
       )}
 
-      {report.summary && <p className="text-xs leading-relaxed text-muted-foreground">{report.summary}</p>}
+      {report.summary && (
+        <p className="text-xs leading-relaxed text-muted-foreground">{report.summary}</p>
+      )}
 
       {rounds.length > 0 && (
         <section className="space-y-2">
           <h4 className="text-xs font-semibold">评审历程</h4>
           <div className="flex flex-wrap gap-2">
             {rounds.map((round) => (
-              <Badge key={round.iteration} variant={round.iteration === report.selectedIteration ? "default" : "outline"}>
-                第 {round.iteration} 轮 · {round.overallScore} 分 · {round.passed ? "达标" : "未达标"}
+              <Badge
+                key={round.iteration}
+                variant={round.iteration === report.selectedIteration ? "default" : "outline"}
+              >
+                第 {round.iteration} 轮 · {round.overallScore} 分 ·{" "}
+                {round.passed ? "达标" : "未达标"}
               </Badge>
             ))}
           </div>
@@ -194,7 +219,10 @@ export function ReportCard({ report }: { report: QualityReviewRecordDTO }) {
         ) : (
           <ul className="space-y-2">
             {issues.map((issue, index) => (
-              <li key={`${issue.description}-${index}`} className="rounded-md border bg-muted/30 p-2.5 text-xs">
+              <li
+                key={`${issue.description}-${index}`}
+                className="rounded-md border bg-muted/30 p-2.5 text-xs"
+              >
                 <Badge variant="outline" className="mr-2 h-4 px-1.5 text-[9px]">
                   {issue.severity === "major" ? "主要" : "次要"}
                 </Badge>
@@ -211,7 +239,9 @@ export function ReportCard({ report }: { report: QualityReviewRecordDTO }) {
           <p className="text-xs text-muted-foreground">暂无优化建议。</p>
         ) : (
           <ul className="list-disc space-y-1.5 pl-5 text-xs text-muted-foreground">
-            {suggestions.map((suggestion, index) => <li key={`${suggestion}-${index}`}>{suggestion}</li>)}
+            {suggestions.map((suggestion, index) => (
+              <li key={`${suggestion}-${index}`}>{suggestion}</li>
+            ))}
           </ul>
         )}
       </section>

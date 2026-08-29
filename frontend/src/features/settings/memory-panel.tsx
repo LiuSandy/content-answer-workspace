@@ -13,11 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface UserMemoryDTO {
   id: string;
@@ -39,7 +35,9 @@ async function fetchMemories(workspaceId = "default"): Promise<UserMemoryDTO[]> 
 }
 
 async function deleteMemory(id: string, workspaceId = "default") {
-  await fetch(`/api/memories/${id}?workspaceId=${encodeURIComponent(workspaceId)}`, { method: "DELETE" });
+  await fetch(`/api/memories/${id}?workspaceId=${encodeURIComponent(workspaceId)}`, {
+    method: "DELETE",
+  });
 }
 
 async function clearAllMemories(workspaceId = "default") {
@@ -47,14 +45,29 @@ async function clearAllMemories(workspaceId = "default") {
 }
 
 const TYPE_LABEL: Record<string, { label: string; color: string }> = {
-  explicit: { label: "显式记忆", color: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400" },
-  implicit: { label: "隐式偏好", color: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400" },
-  work_pattern: { label: "工作习惯", color: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" },
+  explicit: {
+    label: "显式记忆",
+    color: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
+  },
+  implicit: {
+    label: "隐式偏好",
+    color: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400",
+  },
+  work_pattern: {
+    label: "工作习惯",
+    color: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
+  },
 };
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  pending_confirmation: { label: "待确认", color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400" },
-  rejected: { label: "已拒绝", color: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400" },
+  pending_confirmation: {
+    label: "待确认",
+    color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400",
+  },
+  rejected: {
+    label: "已拒绝",
+    color: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
+  },
 };
 
 export function MemoryPanel({ workspaceId = "default" }: { workspaceId?: string }) {
@@ -111,8 +124,8 @@ export function MemoryPanel({ workspaceId = "default" }: { workspaceId?: string 
                 <AlertDialogHeader>
                   <AlertDialogTitle>清空全部记忆</AlertDialogTitle>
                   <AlertDialogDescription>
-                    此操作不可恢复。所有偏好、隐式学习与工作习惯记录将被删除。
-                    Agent 后续将不再记得你的偏好，直到你再次告知或其重新学习。
+                    此操作不可恢复。所有偏好、隐式学习与工作习惯记录将被删除。 Agent
+                    后续将不再记得你的偏好，直到你再次告知或其重新学习。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -170,11 +183,15 @@ export function MemoryPanel({ workspaceId = "default" }: { workspaceId?: string 
           data.map((m) => (
             <div key={m.id} className="border border-border rounded p-2.5 bg-card">
               <div className="flex items-center gap-1.5 mb-1">
-                <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${TYPE_LABEL[m.memoryType]?.color || ""}`}>
+                <span
+                  className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${TYPE_LABEL[m.memoryType]?.color || ""}`}
+                >
                   {TYPE_LABEL[m.memoryType]?.label || m.memoryType}
                 </span>
                 {m.status !== "active" && STATUS_LABEL[m.status] && (
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${STATUS_LABEL[m.status].color}`}>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${STATUS_LABEL[m.status].color}`}
+                  >
                     {STATUS_LABEL[m.status].label}
                   </span>
                 )}

@@ -46,7 +46,9 @@ describe("chat message tree", () => {
 
     expect(resolved.find((item) => item.messageId === "u1")?.parentMessageId).toBeNull();
     expect(resolved.find((item) => item.messageId === "u1-branch")?.parentMessageId).toBeNull();
-    expect(resolved.find((item) => item.messageId === "a1-branch")?.parentMessageId).toBe("u1-branch");
+    expect(resolved.find((item) => item.messageId === "a1-branch")?.parentMessageId).toBe(
+      "u1-branch",
+    );
   });
 
   test("includes an optimistic message when it is the requested active leaf", () => {

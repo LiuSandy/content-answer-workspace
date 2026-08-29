@@ -71,7 +71,8 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
             {document.title}
           </div>
           <div className="text-[9px] text-[#8a96a5] dark:text-muted-foreground mt-0.75 truncate">
-            源文件：{document.sourceUrl || `sources/${document.id.slice(0, 4)}.../${document.title}`}
+            源文件：
+            {document.sourceUrl || `sources/${document.id.slice(0, 4)}.../${document.title}`}
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.75">
@@ -108,11 +109,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
             onClick={onDelete}
             className="h-7 text-[10px] px-2 min-w-[52px]"
           >
-            {isDeleting ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              "删除"
-            )}
+            {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : "删除"}
           </Button>
         </div>
       </div>
@@ -193,13 +190,13 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
             onChange={(e) => setEditorText(e.target.value)}
             disabled={isAnyBusy}
             className="flex-1 w-full p-4 font-mono text-xs leading-relaxed text-[#334155] dark:text-foreground bg-transparent border-0 outline-none resize-none overflow-y-auto whitespace-pre-wrap disabled:opacity-50 disabled:cursor-not-allowed"
-            placeholder={"---\ndocument_id: ...\nsource_type: ...\n---\n# 请在此编辑 Markdown 源码..."}
+            placeholder={
+              "---\ndocument_id: ...\nsource_type: ...\n---\n# 请在此编辑 Markdown 源码..."
+            }
           />
         ) : (
           <div className="flex-1 w-full p-5 overflow-y-auto prose dark:prose-invert max-w-none text-xs leading-normal">
-            <MarkdownContent>
-              {editorText}
-            </MarkdownContent>
+            <MarkdownContent>{editorText}</MarkdownContent>
           </div>
         )}
       </div>
@@ -207,9 +204,7 @@ export const KnowledgeDetail: React.FC<KnowledgeDetailProps> = ({
       {/* 5. 底部操作栏 */}
       <div className="h-[58px] border-t border-[#e5e9ef] dark:border-border mt-3 px-4 flex items-center shrink-0">
         <span className="text-[9px] text-[#8a96a5]">
-          {isCandidate
-            ? "仅保存为候选 Markdown，不会建立索引"
-            : "已成功建立向量与倒排索引"}
+          {isCandidate ? "仅保存为候选 Markdown，不会建立索引" : "已成功建立向量与倒排索引"}
         </span>
 
         <div className="ml-auto flex items-center gap-2">

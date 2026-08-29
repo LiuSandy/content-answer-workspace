@@ -1,5 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
-
 export interface Opportunity {
   id: string;
   platform: string;
@@ -18,7 +16,9 @@ interface OpportunitiesResponse {
 }
 
 async function fetchOpportunities(workspaceId = "default"): Promise<Opportunity[]> {
-  const res = await fetch(`/api/opportunities?workspaceId=${encodeURIComponent(workspaceId)}&limit=3`);
+  const res = await fetch(
+    `/api/opportunities?workspaceId=${encodeURIComponent(workspaceId)}&limit=3`,
+  );
   const json: OpportunitiesResponse = await res.json();
   return json.data || [];
 }

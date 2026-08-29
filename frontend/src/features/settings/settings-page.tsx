@@ -99,10 +99,10 @@ export function SettingsPage() {
             restartState === "idle"
               ? "border-amber-300 text-amber-700 hover:bg-amber-50"
               : restartState === "success"
-              ? "border-green-300 text-green-700"
-              : restartState === "error"
-              ? "border-red-300 text-red-700"
-              : "border-amber-300 text-amber-700 opacity-60"
+                ? "border-green-300 text-green-700"
+                : restartState === "error"
+                  ? "border-red-300 text-red-700"
+                  : "border-amber-300 text-amber-700 opacity-60"
           }
         >
           <RotateCw

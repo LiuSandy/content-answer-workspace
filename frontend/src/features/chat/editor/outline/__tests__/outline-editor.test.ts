@@ -32,10 +32,7 @@ describe("outline editor", () => {
       wordCountEstimate: 200,
     });
 
-    expect(removeSection(added, 1).map((section) => section.heading)).toEqual([
-      "开场",
-      "新章节",
-    ]);
+    expect(removeSection(added, 1).map((section) => section.heading)).toEqual(["开场", "新章节"]);
     expect(removeSection([sections[0]], 0)).toEqual([sections[0]]);
   });
 

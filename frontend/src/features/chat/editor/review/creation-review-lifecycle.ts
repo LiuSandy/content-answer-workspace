@@ -46,9 +46,10 @@ export function reduceCreationProgress(
     }
     case "review.completed": {
       const passed = data.passed === true;
-      const score = typeof data.overallScore === "number" && Number.isFinite(data.overallScore)
-        ? data.overallScore
-        : state.score;
+      const score =
+        typeof data.overallScore === "number" && Number.isFinite(data.overallScore)
+          ? data.overallScore
+          : state.score;
       return {
         ...state,
         running: true,
