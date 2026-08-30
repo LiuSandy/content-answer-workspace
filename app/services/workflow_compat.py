@@ -25,7 +25,6 @@ from .zhihu_service import (
     get_topic_preview,
     get_zhihu_question_web_url,
     map_search_item,
-    parse_json_response,
     question_matches_keyword,
     to_iso_time,
     unique_by,

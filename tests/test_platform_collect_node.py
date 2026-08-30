@@ -87,7 +87,32 @@ async def test_platform_collect_turns_tool_error_into_terminal_response(monkeypa
 
     assert tool.calls == [{"keyword": "热门", "limit": 10, "sort": "relevance"}]
     assert len(result["messages"]) == 1
-    assert result["messages"][0].content == "知乎检索失败：知乎登录凭据已失效，请更新凭据后重试。"
+    assert result["messages"][0].content == (
+        "知乎检索失败：知乎登录凭据已失效，请更新凭据后重试。"
+        "（错误码：zhihu_auth_invalid；原因：ERR_TICKET_NOT_EXIST）"
+    )
+
+
+@pytest.mark.asyncio
+async def test_platform_collect_exposes_generic_tool_error_reason(monkeypatch):
+    from app.agents.chat.nodes import platform_collect
+
+    tool = _FakeSearchTool(
+        {
+            "platform": "zhihu",
+            "error": "浏览器启动失败：未找到 Chromium",
+            "error_code": "zhihu_search_failed",
+            "retryable": False,
+            "message": "知乎检索失败，请稍后重试。",
+            "items": [],
+        }
+    )
+    monkeypatch.setattr(platform_collect, "ALL_TOOLS", [tool])
+
+    result = await platform_collect.platform_collect_node(_state())
+
+    assert "错误码：zhihu_search_failed" in result["messages"][0].content
+    assert "原因：浏览器启动失败：未找到 Chromium" in result["messages"][0].content
 
 
 def test_generic_chat_has_no_platform_search_route(monkeypatch):
