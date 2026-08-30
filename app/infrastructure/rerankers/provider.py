@@ -176,9 +176,16 @@ class DashScopeVLRerankerProvider:
 
 def get_reranker_provider() -> CrossEncoderRerankerProvider | DashScopeVLRerankerProvider:
     settings = get_knowledge_settings()
-    if not settings.reranker_api_key or not settings.reranker_base_url:
+    missing: list[str] = []
+    if not settings.reranker_api_key:
+        missing.append("RERANKER_API_KEY")
+    if not settings.reranker_base_url:
+        missing.append("RERANKER_BASE_URL")
+    if not settings.reranker_model:
+        missing.append("RERANKER_MODEL")
+    if missing:
         raise RerankerNotConfiguredError(
-            "Reranker 未配置：请设置独立的 RERANKER_API_KEY 和 RERANKER_BASE_URL"
+            f"Reranker 未配置：请设置 {', '.join(missing)}"
         )
     provider_class = (
         DashScopeVLRerankerProvider

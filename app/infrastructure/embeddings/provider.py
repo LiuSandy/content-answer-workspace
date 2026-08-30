@@ -133,6 +133,10 @@ def get_embedding_provider() -> "EmbeddingProviderPort":
         raise EmbeddingNotConfiguredError(
             "Embedding 未配置：请设置 EMBEDDING_API_KEY 或 OPENAI_API_KEY 后重试"
         )
+    if not settings.embedding_model:
+        raise EmbeddingNotConfiguredError(
+            "Embedding 未配置：请设置 EMBEDDING_MODEL 后重试"
+        )
     if settings.embedding_dimensions != 1536:
         raise ValueError(
             "EMBEDDING_DIMENSIONS must be 1536 to match PostgreSQL vector(1536)"

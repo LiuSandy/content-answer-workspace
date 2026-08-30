@@ -14,19 +14,29 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 def _build_database_url() -> str:
-    """从环境变量构建 asyncpg 连接 URL。"""
-    url = os.getenv("DATABASE_URL", "")
-    if url:
+    """从环境变量构建 asyncpg 连接 URL。
+
+    ``DATABASE_URL`` 与分项 ``DB_*`` 配置二选一；分项配置不提供任何默认值，
+    避免应用在错误的数据库上静默启动。
+    """
+    url = os.getenv("DATABASE_URL")
+    if url and url.strip():
         # 如果提供的是 postgres:// 或 postgresql:// 格式，统一转为 asyncpg 驱动格式
-        return url.replace("postgresql://", "postgresql+asyncpg://", 1).replace(
+        return url.strip().replace("postgresql://", "postgresql+asyncpg://", 1).replace(
             "postgres://", "postgresql+asyncpg://", 1
         )
-    # 本地 Docker Compose 默认值
-    host = os.getenv("DB_HOST", "localhost")
-    port = os.getenv("DB_PORT", "5432")
-    user = os.getenv("DB_USER", "dev")
-    password = os.getenv("DB_PASSWORD", "dev")
-    db = os.getenv("DB_NAME", "content_workspace")
+
+    required = ("DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME")
+    missing = [name for name in required if not (os.getenv(name) or "").strip()]
+    if missing:
+        raise RuntimeError(
+            "Missing required database environment variables: "
+            + ", ".join(missing)
+        )
+
+    host, port, user, password, db = (
+        os.environ[name].strip() for name in required
+    )
     return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
 
 

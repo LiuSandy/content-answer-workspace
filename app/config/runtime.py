@@ -158,12 +158,14 @@ class KnowledgeSettings:
     context_token_budget: int = 6000
     embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
     embedding_base_url: str = field(default_factory=lambda: os.getenv("EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
-    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"))
+    # 模型名称必须由部署环境提供；不设置供应商默认值，避免索引与查询使用错误模型。
+    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "").strip())
     # 单次 embedding 请求的批大小；默认 20 以兼容阿里云百炼等上限较低的服务
     embedding_batch_size: int = 20
     reranker_api_key: str = field(default_factory=lambda: os.getenv("RERANKER_API_KEY", ""), repr=False)
     reranker_base_url: str = field(default_factory=lambda: os.getenv("RERANKER_BASE_URL", ""))
-    reranker_model: str = field(default_factory=lambda: os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"))
+    # 模型名称必须由部署环境提供；不设置供应商默认值。
+    reranker_model: str = field(default_factory=lambda: os.getenv("RERANKER_MODEL", "").strip())
     reranker_timeout_seconds: float = 8.0
     reranker_max_documents: int = 32
     mineru_api_key: str = field(default_factory=lambda: os.getenv("MINERU_API_KEY", ""), repr=False)
@@ -214,7 +216,7 @@ def get_knowledge_settings() -> KnowledgeSettings:
         embedding_dimensions=embedding_dims,
         embedding_api_key=os.getenv("EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY", "")),
         embedding_base_url=os.getenv("EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
-        embedding_model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "").strip(),
         rrf_k=rrf_k,
         evidence_threshold=threshold,
         parent_chunk_max_tokens=parse_positive_int(os.getenv("KNOWLEDGE_PARENT_CHUNK_MAX_TOKENS"), 1200),
@@ -224,7 +226,7 @@ def get_knowledge_settings() -> KnowledgeSettings:
         embedding_batch_size=parse_positive_int(os.getenv("EMBEDDING_BATCH_SIZE"), 20),
         reranker_api_key=os.getenv("RERANKER_API_KEY", ""),
         reranker_base_url=os.getenv("RERANKER_BASE_URL", ""),
-        reranker_model=os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"),
+        reranker_model=os.getenv("RERANKER_MODEL", "").strip(),
         reranker_timeout_seconds=float(os.getenv("RERANKER_TIMEOUT_SECONDS", "8")),
         reranker_max_documents=parse_positive_int(os.getenv("RERANKER_MAX_DOCUMENTS"), 32),
     )
