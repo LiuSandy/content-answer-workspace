@@ -17,12 +17,7 @@ from app.services.rag.indexing_service import IndexingService
 from app.services.rag.trace_service import TraceService
 from app.infrastructure.database.repositories.knowledge_storage import KnowledgeStorage
 from app.infrastructure.files.ssrf import SSRFError, fetch_url_safely
-from app.infrastructure.files.parsers import (
-    HtmlCleanerParser,
-    MinerUCloudParser,
-    ParsedMarkdown,
-    _estimate_pdf_confidence,
-)
+from app.infrastructure.files.parsers import HtmlCleanerParser, MinerUCloudParser, ParsedMarkdown
 from app.config.runtime import get_knowledge_settings, is_truthy
 from app.infrastructure.database.session import get_db_session, get_session_factory
 from app.services.rag.ingestion_service import (
@@ -93,27 +88,18 @@ def _count_pdf_pages(file_bytes: bytes) -> int:
 
 
 async def _parse_pdf_to_markdown(file_bytes: bytes, filename: str, doc_id: str, settings) -> ParsedMarkdown:
-    """统一 PDF 解析入口:MinerU 优先,失败或未配置时降级为本地提取。
+    """使用 MinerU 将 PDF 转换为 Markdown；未配置或解析失败时直接抛错。"""
+    if not settings.mineru_api_key:
+        raise RuntimeError("MinerU 未配置，无法解析 PDF")
 
-    两条路径都基于已产出的 Markdown 与总页数估算置信度(而非硬编码 1.0)。
-    """
-    if settings.mineru_api_key:
-        try:
-            mineru_parser = MinerUCloudParser(
-                api_key=settings.mineru_api_key,
-                base_url=settings.mineru_api_base_url,
-                model_version=settings.mineru_model_version,
-                max_pages_per_chunk=settings.pdf_max_pages_per_chunk,
-                max_bytes_per_chunk=settings.pdf_max_bytes_per_chunk,
-            )
-            return await mineru_parser.parse_pdf(file_bytes, doc_id, filename)
-        except Exception:
-            logger.exception("MinerU 解析失败,降级为本地 PDF 解析: %s", filename)
-
-    md_text = _parse_pdf_locally(file_bytes, filename)
-    confidence = _estimate_pdf_confidence(md_text, _count_pdf_pages(file_bytes))
-    warnings = ["本地提取模式(MinerU 不可用或失败),识别质量有限"] if confidence < 0.7 else []
-    return ParsedMarkdown(markdown=md_text, confidence=confidence, warnings=warnings)
+    mineru_parser = MinerUCloudParser(
+        api_key=settings.mineru_api_key,
+        base_url=settings.mineru_api_base_url,
+        model_version=settings.mineru_model_version,
+        max_pages_per_chunk=settings.pdf_max_pages_per_chunk,
+        max_bytes_per_chunk=settings.pdf_max_bytes_per_chunk,
+    )
+    return await mineru_parser.parse_pdf(file_bytes, doc_id, filename)
 
 def _doc_to_dict(doc, source=None, job=None) -> dict:
     data = {
