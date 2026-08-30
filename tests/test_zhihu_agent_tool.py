@@ -70,7 +70,7 @@ async def test_zhihu_search_marks_authentication_failure_as_non_retryable(monkey
 
 
 @pytest.mark.asyncio
-async def test_zhihu_search_treats_missing_signature_as_authentication_failure(monkeypatch):
+async def test_zhihu_search_returns_a_stable_error_for_tool_failure(monkeypatch):
     monkeypatch.setattr(
         zhihu_tool,
         "search_zhihu_for_keyword",
@@ -80,9 +80,9 @@ async def test_zhihu_search_treats_missing_signature_as_authentication_failure(m
     raw = await zhihu_tool.zhihu_search.ainvoke({"keyword": "个人网站", "limit": 5})
     result = json.loads(raw)
 
-    assert result["error_code"] == "zhihu_auth_invalid"
+    assert result["error_code"] == "zhihu_search_failed"
     assert result["retryable"] is False
-    assert "登录凭据" in result["message"]
+    assert "知乎检索失败" in result["message"]
 
 
 @pytest.mark.asyncio

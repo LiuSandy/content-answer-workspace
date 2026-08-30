@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 from langchain_core.messages import AIMessage
 
 from app.state import ChatAgentState
 from app.agents._shared.tools import ALL_TOOLS
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -122,9 +125,20 @@ async def platform_collect_node(state: ChatAgentState) -> dict:
 
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     error = str(payload.get("error") or "").strip()
+    error_code = str(payload.get("error_code") or "platform_search_failed").strip()
     user_message = str(payload.get("message") or error).strip()
     if error and not items:
-        response = f"{label}检索失败：{user_message}"
+        # 工具已经将异常转成结构化结果；这里保留用户可读提示，同时补充
+        # 错误码和底层原因，避免前端只能看到“请稍后重试”。
+        logger.error(
+            "%s search returned an error: tool=%s query=%r error_code=%s error=%s",
+            label,
+            spec.tool_name,
+            query,
+            error_code,
+            error,
+        )
+        response = f"{label}检索失败：{user_message}（错误码：{error_code}；原因：{error}）"
     elif not items:
         response = f"未在{label}检索到与“{query}”相关的结果。"
     else:

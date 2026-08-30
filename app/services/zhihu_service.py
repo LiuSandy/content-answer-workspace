@@ -8,13 +8,14 @@ from functools import lru_cache
 from html import unescape
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
-import httpx
+from bs4 import BeautifulSoup
 
 from ..config.loader import get_settings
 from app.config.runtime import COOKIE_PATH_DEFAULT, get_default_topics, get_workflow_config, load_env_file
 from ..infrastructure.collectors.fetchers.playwright_fetcher import PlaywrightFetcher
-from app.api.schemas.workflow import QuestionItem, Topic, WorkflowResult, ZhihuSearchResponse
+from app.api.schemas.workflow import QuestionItem, Topic, WorkflowResult
 
 TOPIC_HINTS_PATH = Path(__file__).resolve().parent.parent / "config" / "defaults" / "topic_hints.json"
 
@@ -374,6 +375,49 @@ def extract_zhihu_question_snapshot_from_html(html: str, question_id: str | None
     return _merge_snapshot(state_snapshot, regex_snapshot)
 
 
+def extract_zhihu_search_items_from_html(
+    html: str, topic_name: str, limit: int = 20
+) -> list[QuestionItem]:
+    """从知乎搜索页渲染后的 HTML 提取问题链接和标题，不依赖知乎内部搜索 API。"""
+
+    soup = BeautifulSoup(html, "html.parser")
+    items: list[QuestionItem] = []
+    seen: set[str] = set()
+    for anchor in soup.select('a[href*="/question/"]'):
+        href = str(anchor.get("href") or "").strip()
+        question_id = extract_zhihu_question_id(href)
+        if not question_id or question_id in seen:
+            continue
+
+        title = clean_text(anchor.get_text(" ", strip=True))
+        if not title or is_zhihu_block_text(title):
+            continue
+
+        container = anchor.find_parent(["article", "div", "li"])
+        excerpt = ""
+        if container is not None:
+            container_text = clean_text(container.get_text(" ", strip=True))
+            if container_text.startswith(title):
+                excerpt = container_text[len(title):].strip()[:500]
+
+        seen.add(question_id)
+        items.append(
+            QuestionItem(
+                id=question_id,
+                platform="zhihu",
+                title=title,
+                url=get_zhihu_question_web_url(question_id),
+                answerCount=0,
+                excerpt=excerpt,
+                detail="",
+                topic=topic_name,
+            )
+        )
+        if len(items) >= max(1, min(20, limit)):
+            break
+    return items
+
+
 def get_zhihu_question_web_url(question_id: str) -> str:
     """生成知乎问题网页链接；这样内部只存问题 id 时也能提供前端可打开的原始地址。"""
 
@@ -384,7 +428,11 @@ def extract_zhihu_question_id(url: str) -> str | None:
     """从知乎问题链接中提取问题 id；这样前端粘贴不同格式的知乎 URL 时都能归一成同一个解析入口。"""
 
     normalized_url = str(url).strip()
-    match = re.search(r"zhihu\.com/question/(\d+)", normalized_url, re.I)
+    match = re.search(
+        r"(?:https?://(?:www\.)?zhihu\.com)?/question/(\d+)",
+        normalized_url,
+        re.I,
+    )
     return match.group(1) if match else None
 
 
@@ -468,25 +516,6 @@ def to_iso_time(value: Any) -> str | None:
         return None
 
 
-def parse_json_response(response: httpx.Response, label: str) -> dict[str, Any]:
-    """安全解析 HTTP JSON 响应；这样知乎风控返回 HTML 时能给出可诊断错误而不是静默失败。"""
-
-    content_type = response.headers.get("content-type", "")
-    text = response.text
-    if "application/json" not in content_type.lower():
-        preview = re.sub(r"\s+", " ", text[:300]).strip()
-        raise ValueError(
-            f"{label} returned non-JSON response: status={response.status_code} content-type={content_type or 'unknown'} body={preview}"
-        )
-    try:
-        return response.json()
-    except json.JSONDecodeError:
-        preview = re.sub(r"\s+", " ", text[:300]).strip()
-        raise ValueError(
-            f"{label} returned invalid JSON: status={response.status_code} content-type={content_type} body={preview}"
-        )
-
-
 def read_optional_file(file_path: Path) -> str | None:
     """读取可选文本文件；这样 cookie 文件不存在时采集流程可以继续按无 cookie 模式尝试。"""
 
@@ -503,108 +532,6 @@ def load_zhihu_cookie() -> str | None:
     cookie_path = Path(configured).resolve() if configured else COOKIE_PATH_DEFAULT
     content = read_optional_file(cookie_path)
     return content.strip() if content else None
-
-
-def get_zhihu_signature_header() -> str | None:
-    """读取知乎 x-zse-96 签名；这样采集前可以明确判断当前请求是否具备知乎接口所需凭据。"""
-
-    value = os.getenv("ZHIHU_X_ZSE_96", "").strip()
-    return value or None
-
-
-def ensure_zhihu_request_credentials(cookie: str | None, signature: str | None) -> None:
-    """校验知乎采集凭据；这样缺少 cookie 或签名时会返回可理解错误，而不是继续触发 400。"""
-
-    missing = []
-    if not cookie:
-        missing.append("ZHIHU_COOKIE_FILE")
-    if not signature:
-        missing.append("ZHIHU_X_ZSE_96")
-    if missing:
-        raise ValueError(
-            "知乎搜索接口需要有效的浏览器 Cookie 和 x-zse-96 签名；"
-            f"当前缺少：{', '.join(missing)}。请在 .env 中配置 ZHIHU_COOKIE_FILE 和 ZHIHU_X_ZSE_96 后重启后端。"
-        )
-
-
-def build_zhihu_headers(
-    user_agent: str,
-    *,
-    accept: str,
-    referer: str,
-    include_signature: bool,
-    include_requested_with: bool = False,
-) -> dict[str, str]:
-    """构建知乎请求头；这样搜索、详情接口和网页抓取可以共享同一套凭据与浏览器伪装规则。"""
-
-    cookie = load_zhihu_cookie()
-    signature = get_zhihu_signature_header()
-    headers = {
-        "User-Agent": user_agent,
-        "Accept": accept,
-        "Referer": referer,
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-    }
-    if cookie:
-        headers["Cookie"] = cookie
-    if include_requested_with:
-        headers["X-Requested-With"] = os.getenv("ZHIHU_X_REQUESTED_WITH", "fetch")
-    if include_signature:
-        if os.getenv("ZHIHU_X_ZSE_93", "").strip():
-            headers["x-zse-93"] = os.getenv("ZHIHU_X_ZSE_93", "").strip()
-        if signature:
-            headers["x-zse-96"] = signature
-    return headers
-
-
-def map_zhihu_question_detail_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """把知乎问题详情响应映射为内部字段；这样链接导入能优先使用结构化数据而不是依赖脆弱的页面标签。"""
-
-    return _snapshot_from_question_payload(payload)
-
-
-async def fetch_question_detail_payload(question_id: str, user_agent: str) -> dict[str, Any] | None:
-    """请求知乎结构化问题详情；这样导入问题时可以稳定拿到真实标题、摘要、描述和标签。"""
-
-    candidates = [
-        (
-            f"https://www.zhihu.com/api/v4/questions/{question_id}",
-            {},
-            False,
-        ),
-        (
-            f"https://api.zhihu.com/questions/{question_id}",
-            {},
-            False,
-        ),
-        (
-            f"https://api.zhihu.com/questions/{question_id}",
-            {"include": "answer_count,excerpt,detail,topics"},
-            True,
-        ),
-    ]
-
-    async with httpx.AsyncClient(
-        timeout=get_settings().http.client_timeout_seconds, follow_redirects=True
-    ) as client:
-        for detail_url, params, include_signature in candidates:
-            headers = build_zhihu_headers(
-                user_agent,
-                accept="*/*",
-                referer=get_zhihu_question_web_url(question_id),
-                include_signature=include_signature,
-                include_requested_with=True,
-            )
-            response = await client.get(detail_url, params=params, headers=headers)
-            if response.status_code >= 400:
-                continue
-            try:
-                payload = parse_json_response(response, "Zhihu question detail API")
-            except ValueError:
-                continue
-            if isinstance(payload, dict) and not payload.get("error"):
-                return payload
-    return None
 
 
 def map_search_item(raw: dict[str, Any], topic_name: str) -> QuestionItem | None:
@@ -645,87 +572,12 @@ def map_search_item(raw: dict[str, Any], topic_name: str) -> QuestionItem | None
     )
 
 
-async def fetch_question_details(
-    item: QuestionItem,
-    user_agent: str,
-    *,
-    render_fallback: bool = False,
-) -> QuestionItem:
-    """补抓知乎问题详情页信息；这样搜索结果缺失或不准的标题、时间和回答数可以被修正。"""
+def map_zhihu_question_detail_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """兼容旧调用方的字段映射；当前详情采集改为直接解析网页 HTML。"""
 
-    updates: dict[str, Any] = {}
+    return _snapshot_from_question_payload(payload)
 
-    payload = await fetch_question_detail_payload(item.id, user_agent)
-    if payload:
-        detail_snapshot = map_zhihu_question_detail_payload(payload)
-        if detail_snapshot.get("title"):
-            updates["title"] = detail_snapshot["title"]
-        if detail_snapshot.get("excerpt"):
-            updates["excerpt"] = detail_snapshot["excerpt"]
-        if detail_snapshot.get("detail"):
-            updates["detail"] = detail_snapshot["detail"]
-        if detail_snapshot.get("updated_time"):
-            updates["updated_time"] = detail_snapshot["updated_time"]
-        if detail_snapshot.get("answer_count") is not None:
-            updates["answer_count"] = detail_snapshot["answer_count"]
-        if detail_snapshot.get("topics"):
-            updates["topic"] = " / ".join(detail_snapshot["topics"])
 
-    headers = build_zhihu_headers(
-        user_agent,
-        accept="text/html,application/xhtml+xml",
-        referer="https://www.zhihu.com/",
-        include_signature=False,
-    )
-    async with httpx.AsyncClient(
-        timeout=get_settings().http.client_timeout_seconds, follow_redirects=True
-    ) as client:
-        response = await client.get(item.url, headers=headers)
-    html_text = response.text
-    if response.status_code < 400:
-        html_snapshot = extract_zhihu_question_snapshot_from_html(html_text, item.id)
-        if html_snapshot.get("title") and not updates.get("title"):
-            updates["title"] = html_snapshot["title"]
-        if html_snapshot.get("excerpt") and not updates.get("excerpt"):
-            updates["excerpt"] = html_snapshot["excerpt"]
-        if html_snapshot.get("detail") and not updates.get("detail"):
-            updates["detail"] = html_snapshot["detail"]
-        if html_snapshot.get("updated_time") and not updates.get("updated_time"):
-            updates["updated_time"] = html_snapshot["updated_time"]
-        if html_snapshot.get("answer_count") is not None and "answer_count" not in updates:
-            updates["answer_count"] = html_snapshot["answer_count"]
-        if html_snapshot.get("topics") and not updates.get("topic"):
-            updates["topic"] = " / ".join(html_snapshot["topics"])
-
-    resolved = item.model_copy(update=updates) if updates else item
-    if not render_fallback or not is_placeholder_question(resolved):
-        return resolved
-
-    if response.status_code >= 400 or is_zhihu_challenge_html(html_text):
-        cookie = load_zhihu_cookie()
-        if cookie:
-            rendered_html = await PlaywrightFetcher(cookie_string=cookie, cookie_domain=".zhihu.com").fetch(
-                item.url,
-                headers,
-            )
-            rendered_snapshot = extract_zhihu_question_snapshot_from_html(rendered_html, item.id)
-            rendered_updates: dict[str, Any] = {}
-            if rendered_snapshot.get("title"):
-                rendered_updates["title"] = rendered_snapshot["title"]
-            if rendered_snapshot.get("excerpt"):
-                rendered_updates["excerpt"] = rendered_snapshot["excerpt"]
-            if rendered_snapshot.get("detail"):
-                rendered_updates["detail"] = rendered_snapshot["detail"]
-            if rendered_snapshot.get("updated_time"):
-                rendered_updates["updated_time"] = rendered_snapshot["updated_time"]
-            if rendered_snapshot.get("answer_count") is not None:
-                rendered_updates["answer_count"] = rendered_snapshot["answer_count"]
-            if rendered_snapshot.get("topics"):
-                rendered_updates["topic"] = " / ".join(rendered_snapshot["topics"])
-            if rendered_updates:
-                return item.model_copy(update=rendered_updates)
-
-    return resolved
 
 
 async def fetch_zhihu_question_by_url(url: str, user_agent: str, topic_name: str = "链接导入") -> QuestionItem:
@@ -749,7 +601,7 @@ async def fetch_zhihu_question_by_url(url: str, user_agent: str, topic_name: str
     if is_placeholder_question(resolved):
         raise ValueError(
             "未能解析知乎问题内容：知乎返回了安全验证/异常访问页，或当前 Cookie 已失效。"
-            "请在浏览器确认该链接可打开，并更新 ZHIHU_COOKIE_FILE / ZHIHU_X_ZSE_96 后重试。"
+            "请在浏览器确认该链接可打开，并更新 ZHIHU_COOKIE_FILE 后重试。"
         )
     return resolved
 
@@ -763,56 +615,70 @@ def calculate_keyword_fetch_limit(total_limit: int, keyword_count: int) -> int:
     return min(20, max(5, per_keyword))
 
 
-async def search_zhihu_for_keyword(topic: Topic, keyword: str, user_agent: str, limit: int = 12) -> list[QuestionItem]:
-    """按单个关键词请求知乎搜索接口；这样批量检索时每个关键词都能复用相同的请求和解析逻辑。"""
+async def fetch_question_details(
+    item: QuestionItem,
+    user_agent: str,
+    *,
+    render_fallback: bool = False,
+) -> QuestionItem:
+    """通过 Playwright 渲染知乎问题页补齐详情，不调用知乎 JSON API。"""
 
-    cookie = load_zhihu_cookie()
-    signature = get_zhihu_signature_header()
-    ensure_zhihu_request_credentials(cookie, signature)
-    url_base = os.getenv("ZHIHU_API_URL", "https://api.zhihu.com/search_v3").strip()
-    referer_query = httpx.QueryParams({"type": "content", "q": keyword})
-    referer = os.getenv("ZHIHU_REFERER", f"https://www.zhihu.com/search?{referer_query}").strip()
-    params = {
-        "advert_count": "0",
-        "gk_version": "gz-gaokao",
-        "t": "general",
-        "q": keyword,
-        "correction": "1",
-        "offset": "0",
-        "limit": str(max(1, min(20, limit))),
-        "filter_fields": "",
-        "lc_idx": "0",
-        "show_all_topics": "0",
-        "search_source": "Normal",
-    }
-    headers = build_zhihu_headers(
-        user_agent,
-        accept="*/*",
-        referer=referer,
-        include_signature=True,
-        include_requested_with=True,
+    html = await PlaywrightFetcher(
+        cookie_string=load_zhihu_cookie(),
+        cookie_domain=".zhihu.com",
+    ).fetch(
+        item.url,
+        {
+            "User-Agent": user_agent,
+            "Accept": "text/html,application/xhtml+xml",
+            "Referer": "https://www.zhihu.com/",
+        },
     )
+    snapshot = extract_zhihu_question_snapshot_from_html(html, item.id)
+    updates: dict[str, Any] = {}
+    for key in ("title", "excerpt", "detail", "updated_time", "answer_count"):
+        value = snapshot.get(key)
+        if value not in (None, ""):
+            updates[key] = value
+    if snapshot.get("topics"):
+        updates["topic"] = " / ".join(snapshot["topics"])
 
-    async with httpx.AsyncClient(
-        timeout=get_settings().http.client_timeout_seconds, follow_redirects=True
-    ) as client:
-        response = await client.get(url_base, params=params, headers=headers)
+    return item.model_copy(update=updates) if updates else item
 
-    if response.status_code >= 400:
-        preview = re.sub(r"\s+", " ", response.text[:300]).strip()
-        raise ValueError(
-            f"Zhihu request failed: {response.status_code} {response.reason_phrase}; "
-            f"url={response.url}; body={preview or 'empty'}"
-        )
 
-    payload = ZhihuSearchResponse.model_validate(parse_json_response(response, "Zhihu API"))
-    keyword_hints = unique_by([topic.name, *topic.keywords, *get_topic_retrieval_keywords(topic), keyword], lambda item: item.lower())
-    items = [
-        item for item in
-        (map_search_item(row, topic.name) for row in payload.data)
-        if item and question_matches_keyword(item, keyword_hints)
-    ]
-    return unique_by(items, lambda item: item.id)
+async def search_zhihu_for_keyword(
+    topic: Topic, keyword: str, user_agent: str, limit: int = 12
+) -> list[QuestionItem]:
+    """通过 Playwright 渲染知乎搜索页并解析问题链接，不调用知乎 JSON API。"""
+
+    search_url = f"https://www.zhihu.com/search?type=content&q={quote(keyword, safe='')}"
+    html = await PlaywrightFetcher(
+        cookie_string=load_zhihu_cookie(),
+        cookie_domain=".zhihu.com",
+    ).fetch(
+        search_url,
+        {
+            "User-Agent": user_agent,
+            "Accept": "text/html,application/xhtml+xml",
+            "Referer": "https://www.zhihu.com/",
+        },
+    )
+    items = extract_zhihu_search_items_from_html(html, topic.name, limit)
+    if not items:
+        page_text = clean_text(BeautifulSoup(html, "html.parser").get_text(" ", strip=True))
+        if is_zhihu_challenge_html(html) or is_zhihu_block_text(page_text):
+            raise ValueError(
+                "知乎搜索页返回了安全验证或登录限制页面，请更新 ZHIHU_COOKIE_FILE 后重试。"
+            )
+        raise ValueError("知乎搜索页未解析到问题结果，可能是页面结构已变化。")
+
+    keyword_hints = unique_by(
+        [topic.name, *topic.keywords, *get_topic_retrieval_keywords(topic), keyword],
+        lambda item: item.lower(),
+    )
+    filtered = [item for item in items if question_matches_keyword(item, keyword_hints)]
+    return unique_by(filtered or items, lambda item: item.id)
+
 
 
 async def fetch_zhihu_results_for_topic(topic: Topic, user_agent: str, limit: int = 10) -> list[QuestionItem]:

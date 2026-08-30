@@ -63,7 +63,6 @@ async def zhihu_search(keyword: str, limit: int = 10, sort: str = "relevance") -
             "401",
             "ERR_TICKET",
             "AuthenticationInvalidRequest",
-            "ZHIHU_X_ZSE_96",
             "ZHIHU_COOKIE_FILE",
         )
         error_code = (
@@ -75,6 +74,12 @@ async def zhihu_search(keyword: str, limit: int = 10, sort: str = "relevance") -
             "知乎登录凭据已失效，请更新 Cookie 和请求签名后重试。"
             if error_code == "zhihu_auth_invalid"
             else "知乎检索失败，请稍后重试。"
+        )
+        logger.exception(
+            "Zhihu search failed: keyword=%r error_code=%s error=%s",
+            keyword,
+            error_code,
+            error,
         )
         return json.dumps(
             {
