@@ -6,7 +6,7 @@
 
   - 扫描页模拟 PDF（10 页只识别 50 字符 + 含 U+FFFD）→ confidence < 0.7
   - 富文本 PDF（MinerU 返回 5000 字符干净文本）→ confidence ≥ 0.9
-  - MinerU 未配置时降级本地提取，confidence 仍按启发式计算（非硬编码 1.0）
+  - MinerU 未配置时直接抛错，不走本地降级
 
 前置条件（spec 7.1 第 3 项）：真实 PDF 验证 conversion_confidence 非 NULL，
 低置信度时前端能看到警告。前端警告已在上一轮修复中完成，本测试聚焦后端链路。
@@ -77,28 +77,19 @@ async def test_rich_text_pdf_with_mineru_returns_high_confidence(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_local_fallback_still_estimates_confidence(monkeypatch):
-    """MinerU 不可用时降级本地提取，confidence 仍按启发式计算（非硬编码 1.0）。
-
-    本地提取（pymupdf4llm）对纯空白页 PDF 返回的 md_text 几乎为空，
-    estimator 应给出低分而非 1.0，证明降级路径不再硬编码。
-    """
+async def test_mineru_not_configured_raises():
+    """MinerU 未配置时直接失败，不使用本地 PDF 解析。"""
     pdf_bytes = _make_pdf_bytes(10)
 
-    settings = _make_settings(mineru_key="")  # 触发本地降级
+    settings = _make_settings(mineru_key="")
 
-    pm = await _parse_pdf_to_markdown(pdf_bytes, "blank.pdf", "doc-3", settings)
-
-    assert isinstance(pm, ParsedMarkdown)
-    # 空白页本地提取的 md 文本很短 → density 极低 → confidence < 0.7
-    assert pm.confidence < 0.7
-    # 关键断言：不再是硬编码 1.0
-    assert pm.confidence != 1.0
+    with pytest.raises(RuntimeError, match="MinerU 未配置"):
+        await _parse_pdf_to_markdown(pdf_bytes, "blank.pdf", "doc-3", settings)
 
 
 @pytest.mark.asyncio
-async def test_mineru_failure_falls_back_to_local_with_confidence(monkeypatch):
-    """MinerU 调用抛异常时降级本地提取，confidence 仍由 estimator 产出。"""
+async def test_mineru_failure_raises(monkeypatch):
+    """MinerU 调用失败时直接抛错，不使用本地 PDF 解析。"""
     pdf_bytes = _make_pdf_bytes(10)
 
     async def _raising_chunk(_self, _client, _chunk, _filename):
@@ -109,8 +100,5 @@ async def test_mineru_failure_falls_back_to_local_with_confidence(monkeypatch):
     )
 
     settings = _make_settings(mineru_key="fake-key")
-    pm = await _parse_pdf_to_markdown(pdf_bytes, "fail.pdf", "doc-4", settings)
-
-    assert isinstance(pm, ParsedMarkdown)
-    assert pm.confidence < 0.7  # 空白页降级
-    assert pm.confidence != 1.0  # 非硬编码
+    with pytest.raises(RuntimeError, match="MinerU API down"):
+        await _parse_pdf_to_markdown(pdf_bytes, "fail.pdf", "doc-4", settings)
