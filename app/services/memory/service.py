@@ -225,20 +225,40 @@ async def retrieve_memories(
     top_k: int = 5,
     scopes: set[str] | None = None,
 ) -> list[MemorySnippet]:
-    """优先用 pgvector cosine Top-K 检索 active 记忆，失败时文本降级。
+    """检索本次请求适用的长期记忆，并返回可注入 Prompt 的摘要对象。
 
-    200ms 预算仅约束数据库召回；远端查询向量化耗时独立于该预算。
+    处理流程：
+    1. 清理查询参数；空查询或非法 ``top_k`` 直接返回空列表。
+    2. 调用 Embedding Provider 把用户问题转换为查询向量。向量化失败不阻断
+       对话，后续会改用文本 ``LIKE`` 检索。
+    3. 在数据库中只召回当前 workspace 且 ``status='active'`` 的记忆；有
+       PostgreSQL + 查询向量时使用 pgvector cosine Top-K，否则使用 SQLite/
+       无向量环境的文本降级查询。``scopes`` 只允许 ``VALID_SCOPES`` 中的值。
+    4. 召回成功后更新每条记忆的激活次数和最后激活时间，再返回
+       ``MemorySnippet``；这些对象本身不会被写入聊天消息，调用方负责转换为
+       ``state['applied_memories']``。
+
+    失败策略：查询向量失败、数据库异常或数据库召回超过 200ms 都记录 warning
+    并返回 ``[]``，因此长期记忆检索不会阻断主对话流程。
+
+    注意：200ms 预算只约束数据库召回（``_do_query``），不约束远端查询向量化。
     """
     from app.infrastructure.database.session import get_session_factory
     factory = get_session_factory()
 
+    # 先做输入边界校验，避免空字符串触发无意义的 embedding/数据库请求。
     normalized_query = query.strip()
     if not normalized_query or top_k <= 0:
         return []
+
+    # 丢弃未知 scope，既防止调用方传入无效过滤条件，也避免把任意字符串
+    # 直接带入 SQL；排序后的集合便于测试和生成稳定的绑定参数。
     normalized_scopes = sorted(set(scopes or ()) & VALID_SCOPES)
 
     query_vector: list[float] | None = None
     try:
+        # 这里调用的是 Embedding 模型，不是负责生成回答的 Chat LLM。
+        # 向量只用于相似度排序，不会直接作为上下文传给 chat 节点。
         provider = _get_embedding_provider()
         vectors = await provider.embed([normalized_query])
         from app.infrastructure.embeddings.provider import validate_embeddings
@@ -253,6 +273,8 @@ async def retrieve_memories(
                 bind = session.get_bind()
                 dialect_name = getattr(getattr(bind, "dialect", None), "name", "")
                 if query_vector is not None and dialect_name == "postgresql":
+                    # 生产路径：pgvector 按 cosine distance 排序并取 Top-K。
+                    # SQL 使用绑定参数；workspace/status 条件保证租户和状态隔离。
                     result = await session.execute(
                         _memory_vector_search_sql(bool(normalized_scopes)),
                         {
@@ -276,6 +298,8 @@ async def retrieve_memories(
                     ]
                 else:
                     # SQLite 测试与 Provider/pgvector 不可用时的显式文本降级。
+                    # 这是关键词匹配，不等价于向量语义检索；只取查询拆分后的
+                    # 第一个 token，保持轻量且兼容没有 pgvector 的本地环境。
                     # 仍强制 workspace/status 隔离，绝不跨租户扩大召回。
                     like = f"%{normalized_query.split()[0]}%"
                     stmt = (
@@ -312,6 +336,8 @@ async def retrieve_memories(
                 if not snippets:
                     return []
 
+                # 召回本身是读操作，但“被使用过”的统计属于记忆运行状态。
+                # 二次查询仍重复校验 workspace/status，避免更新到越权或已失效的行。
                 memory_ids = [uuid.UUID(snippet.id) for snippet in snippets]
                 stmt = (
                     select(UserMemoryModel)
@@ -330,8 +356,10 @@ async def retrieve_memories(
             _do_query(), timeout=MEMORY_RETRIEVAL_TIMEOUT_MS / 1000
         )
     except asyncio.TimeoutError:
+        # 超时主动取消数据库协程，防止慢查询继续占用连接；上层按“无记忆”继续。
         logger.warning("Memory retrieval timed out after %dms", MEMORY_RETRIEVAL_TIMEOUT_MS)
     except Exception as e:
+        # 长期记忆是增强能力，不应让数据库、驱动或数据格式问题打断主流程。
         logger.warning("Memory retrieval failed: %s", e)
 
     return []
