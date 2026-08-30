@@ -40,6 +40,20 @@ def test_production_factory_rejects_missing_key(monkeypatch):
         get_embedding_provider()
 
 
+def test_production_factory_rejects_missing_model(monkeypatch):
+    settings = MagicMock(
+        embedding_api_key="secret",
+        embedding_model="",
+        embedding_dimensions=1536,
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.embeddings.provider.get_knowledge_settings",
+        lambda: settings,
+    )
+    with pytest.raises(EmbeddingNotConfiguredError, match="EMBEDDING_MODEL"):
+        get_embedding_provider()
+
+
 def test_memory_service_uses_knowledge_embedding_factory(monkeypatch):
     provider = MagicMock(dimensions=1536)
     factory = MagicMock(return_value=provider)

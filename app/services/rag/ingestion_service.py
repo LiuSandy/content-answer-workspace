@@ -89,6 +89,7 @@ def ingestion_job_to_dict(job: KnowledgeIngestionJobModel) -> dict:
 
 class SourceIngestionService:
     def __init__(self, session: AsyncSession, settings: KnowledgeSettings | None = None):
+        """初始化源文件登记服务，绑定数据库会话、知识库配置和文件存储。"""
         self.session = session
         self.settings = settings or get_knowledge_settings()
         self.files = SourceFileStorage(self.settings.source_files_dir)
@@ -99,13 +100,16 @@ class SourceIngestionService:
         owner_id: str = "default",
         ingest_source: str = "directory_scan",
     ) -> ScanResult:
+        """扫描 pending 目录，登记稳定的新文件并统计排队、重复和失败数量。"""
         discovered = queued = duplicates = failed = 0
         async with _scan_lock:
+            # 先获取待处理文件快照，避免文件仍在上传时被提前登记。
             paths = self.files.iter_pending()
             first_stats = {path: (path.stat().st_size, path.stat().st_mtime_ns) for path in paths}
             if paths and self.settings.source_file_stable_seconds:
                 await asyncio.sleep(self.settings.source_file_stable_seconds)
             for path in paths:
+                # 文件大小或修改时间变化，说明文件尚未写完，本轮跳过。
                 discovered += 1
                 try:
                     current = path.stat()
@@ -113,6 +117,7 @@ class SourceIngestionService:
                     continue
                 if first_stats[path] != (current.st_size, current.st_mtime_ns):
                     continue
+                # _register 会完成校验、去重和创建 queued 入库任务。
                 outcome, _ = await self._register(path, workspace_id, owner_id, ingest_source)
                 queued += outcome == "queued"
                 duplicates += outcome == "duplicate"
@@ -140,9 +145,13 @@ class SourceIngestionService:
         ingest_source: str,
         content_hash: str | None = None,
     ) -> tuple[str, KnowledgeSourceFileModel]:
+        """登记单个源文件，完成校验、哈希去重并创建文档与入库任务记录。"""
+        # 读取文件基础信息，并确定它在 pending 目录中的相对路径。
         pending_relative = self.files.pending_relative(path)
         extension = path.suffix.lower()
         size_bytes = path.stat().st_size
+
+        # 先登记源文件，记录文件本身的元数据和当前物理状态。
         source = KnowledgeSourceFileModel(
             workspace_id=workspace_id,
             owner_id=owner_id,
@@ -157,6 +166,8 @@ class SourceIngestionService:
         )
         self.session.add(source)
         await self.session.flush()
+
+        # 为该源文件创建一次入库任务，初始阶段是计算文件哈希。
         job = KnowledgeIngestionJobModel(
             source_file_id=source.id,
             status="running",
@@ -168,6 +179,7 @@ class SourceIngestionService:
         self.session.add(job)
         await self.session.flush()
 
+        # 入库前校验文件类型和大小；失败任务直接终止，不进入 worker 队列。
         if extension not in SUPPORTED_EXTENSIONS:
             reason = f"暂不支持 {extension or '无扩展名'}，当前支持 PDF、Markdown 和 TXT"
             await self._terminal_failure(source, "unsupported_file_type", reason, "validating", job)
@@ -177,10 +189,12 @@ class SourceIngestionService:
             await self._terminal_failure(source, "file_too_large", reason, "validating", job)
             return "failed", source
 
+        # 计算内容哈希，用于检测同一工作区内是否已经导入过相同文件。
         if content_hash is None:
             content_hash = await self._stream_hash(path, job)
         source.content_hash = content_hash
 
+        # 通过内容哈希去重；重复文件不会创建新的知识文档。
         existing = (
             await self.session.execute(
                 select(KnowledgeDocumentModel).where(
@@ -196,9 +210,12 @@ class SourceIngestionService:
             await self._terminal_failure(source, "duplicate_source", reason, "deduplicating", job)
             return "duplicate", source
 
+        # 将文件移动到 processing，表示它已经登记并等待后台 worker 处理。
         moved = self.files.move(source.current_relative_path, "processing", source.id)
         source.current_relative_path = str(moved)
         source.status = "processing"
+
+        # 创建与源文件对应的逻辑知识文档，后续解析结果会写入该文档。
         doc = KnowledgeDocumentModel(
             workspace_id=workspace_id,
             owner_id=owner_id,
@@ -212,6 +229,8 @@ class SourceIngestionService:
         self.session.add(doc)
         await self.session.flush()
         source.knowledge_document_id = doc.id
+
+        # 登记阶段完成，交由 IngestionExecutor 的 worker 异步执行实际解析。
         job.status = "queued"
         job.stage = "discovered"
         job.progress_current = 8
@@ -221,16 +240,19 @@ class SourceIngestionService:
         return "queued", source
 
     async def _stream_hash(self, path: Path, job: KnowledgeIngestionJobModel) -> str:
+        """分块计算文件 SHA-256，并把哈希计算进度写入入库任务。"""
         digest = hashlib.sha256()
         completed = 0
         last_saved = 0
         with path.open("rb") as handle:
+            # 分块读取，避免大文件一次性加载到内存。
             while chunk := await asyncio.to_thread(
                 handle.read, self.settings.source_file_buffer_bytes
             ):
                 digest.update(chunk)
                 completed += len(chunk)
                 if completed - last_saved >= 64 * 1024 * 1024 or completed == job.progress_total:
+                    # 哈希计算本身也属于入库进度的一部分，定期写回数据库。
                     job.progress_current = completed
                     job.progress_percent = 2 + min(6, int(completed / max(job.progress_total, 1) * 6))
                     await self.session.flush()
@@ -245,12 +267,15 @@ class SourceIngestionService:
         stage: str,
         job: KnowledgeIngestionJobModel | None = None,
     ) -> None:
+        """处理登记阶段的终止性失败，移动文件并将源文件与任务标记为失败。"""
+        # 失败文件移入 failed 目录，避免下次扫描时被重复处理。
         moved = self.files.move(source.current_relative_path, "failed", source.id)
         source.current_relative_path = str(moved)
         source.status = "failed"
         source.failure_code = code
         source.failure_reason = reason
         if job is None:
+            # 某些登记失败发生在任务创建前，因此这里补建失败任务记录。
             job = KnowledgeIngestionJobModel(
                 source_file_id=source.id,
             )
@@ -265,6 +290,7 @@ class SourceIngestionService:
         await self.session.commit()
 
     async def list_sources(self, workspace_id: str) -> list[dict]:
+        """查询工作区的源文件，并附带每个文件最新的一条入库任务信息。"""
         rows = (
             await self.session.execute(
                 select(KnowledgeSourceFileModel)
@@ -281,6 +307,7 @@ class SourceIngestionService:
 
     @staticmethod
     def _source_type(extension: str) -> str:
+        """根据文件扩展名映射知识库文档类型。"""
         if extension in {".md", ".markdown"}:
             return SourceType.MARKDOWN.value
         if extension == ".pdf":
@@ -290,6 +317,7 @@ class SourceIngestionService:
 
 class IngestionExecutor:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession], settings: KnowledgeSettings | None = None):
+        """初始化入库执行器，保存数据库会话工厂、文件存储和运行时控制状态。"""
         self.session_factory = session_factory
         self.settings = settings or get_knowledge_settings()
         self.files = SourceFileStorage(self.settings.source_files_dir)
@@ -300,6 +328,8 @@ class IngestionExecutor:
         self._scan_task: asyncio.Task | None = None
 
     async def start(self) -> None:
+        """启动入库运行时：恢复异常任务、修复文件状态，并创建后台扫描/处理 worker。"""
+        # 进程重启后先恢复数据库状态，再启动新的后台任务。
         await self.recover_stale_jobs(force=True)
         await self.reconcile_processing_files()
         self._workers = [
@@ -312,6 +342,7 @@ class IngestionExecutor:
         self.wake()
 
     async def _scan_on_startup(self) -> None:
+        """启动后扫描 pending 目录，将新发现的文件登记为可处理的入库任务。"""
         try:
             async with self.session_factory() as session:
                 await SourceIngestionService(session, self.settings).scan_pending()
@@ -344,6 +375,7 @@ class IngestionExecutor:
         return repaired
 
     async def stop(self) -> None:
+        """停止扫描任务和所有 worker，并等待它们退出。"""
         self._stop.set()
         self._wake.set()
         if self._scan_task:
@@ -356,14 +388,17 @@ class IngestionExecutor:
             await asyncio.gather(self._scan_task, return_exceptions=True)
 
     def wake(self) -> None:
+        """唤醒等待中的 worker，使其立即检查是否有新的入库任务。"""
         self._wake.set()
 
     async def recover_stale_jobs(self, force: bool = False) -> int:
+        """恢复遗留的运行中任务和页面任务，避免进程中断后任务永久卡住。"""
         now = datetime.now(timezone.utc)
         async with self.session_factory() as session:
             job_conditions = [KnowledgeIngestionJobModel.status == "running"]
             page_conditions = [KnowledgeIngestionPageModel.status == "running"]
             if not force:
+                # 正常巡检只恢复租约已过期的任务；启动时 force 会恢复所有 running 任务。
                 job_conditions.append(KnowledgeIngestionJobModel.lease_expires_at < now)
                 page_conditions.append(KnowledgeIngestionPageModel.lease_expires_at < now)
             jobs = (
@@ -372,6 +407,7 @@ class IngestionExecutor:
                 )
             ).scalars().all()
             for job in jobs:
+                # 将任务重新放回队列，由 worker 重新领取。
                 job.status = "queued"
                 job.stage = "recovering"
                 job.retry_count += 1
@@ -386,18 +422,22 @@ class IngestionExecutor:
             return len(jobs)
 
     async def _worker_loop(self) -> None:
+        """后台 worker 主循环：领取排队任务、执行任务，并定期恢复超时任务。"""
         while not self._stop.is_set():
+            # 一个循环只处理一个任务，处理完后继续领取下一个任务。
             job_id = await self._claim_next()
             if job_id:
                 await self._process(job_id)
                 continue
             self._wake.clear()
             try:
+                # 没有任务时等待唤醒；超时则顺便检查过期租约。
                 await asyncio.wait_for(self._wake.wait(), timeout=5)
             except TimeoutError:
                 await self.recover_stale_jobs()
 
     async def _claim_next(self) -> UUID | None:
+        """以行锁领取最早的 queued 任务，标记为 running 并写入租约信息。"""
         now = datetime.now(timezone.utc)
         async with self.session_factory() as session:
             job = (
@@ -411,6 +451,7 @@ class IngestionExecutor:
             ).scalar_one_or_none()
             if not job:
                 return None
+            # skip_locked 防止多个 worker 同时领取同一条任务。
             job.status = "running"
             job.stage = "preparing"
             job.progress_percent = max(job.progress_percent, 10)
@@ -423,11 +464,14 @@ class IngestionExecutor:
             return job.id
 
     async def _process(self, job_id: UUID) -> None:
+        """处理一个完整入库任务，按文件类型解析内容并更新文档及任务状态。"""
         heartbeat: asyncio.Task | None = None
         log_token = set_log_context(job_id=str(job_id))
         try:
+            # 任务执行期间持续刷新租约，防止其他 worker 将任务误判为超时。
             heartbeat = asyncio.create_task(self._heartbeat(job_id))
             async with self.session_factory() as session:
+                # 读取入库任务及其源文件，并找到对应的逻辑知识文档。
                 job = (
                     await session.execute(
                         select(KnowledgeIngestionJobModel)
@@ -443,6 +487,8 @@ class IngestionExecutor:
                 log_token = set_log_context(
                     job_id=str(job.id), source_file_id=str(source.id), document_id=str(doc.id)
                 )
+
+                # 根据数据库记录定位文件；若文件被移动，则同步修正数据库中的路径和状态。
                 path = self._locate_source(source)
                 actual_relative = str(path.relative_to(self.files.root))
                 if actual_relative != source.current_relative_path:
@@ -453,6 +499,8 @@ class IngestionExecutor:
                 storage = KnowledgeStorage(self.settings.sources_dir, self.settings.documents_dir)
                 documents = DocumentService(session, storage)
                 extension = f".{source.extension.lower()}"
+
+                # Markdown 可以直接发布，然后异步派发切块和向量索引任务。
                 if extension in {".md", ".markdown"}:
                     file_bytes = path.read_bytes()
                     await self._progress(session, job, "parsing", 25)
@@ -474,6 +522,8 @@ class IngestionExecutor:
                         _run_indexing_task(doc.id, source.workspace_id, source.owner_id),
                         name=f"knowledge-index-{doc.id}",
                     )
+
+                # PDF 先按页识别并合并为候选 Markdown，再由后续流程确认/索引。
                 elif extension == ".pdf":
                     completed_with_errors = await self._process_pdf(
                         session, job, source, doc, path, documents
@@ -484,6 +534,8 @@ class IngestionExecutor:
                         status="completed_with_errors" if completed_with_errors else "succeeded",
                     )
                     return
+
+                # TXT 根据编码读取后保存为候选 Markdown，等待后续确认。
                 else:
                     file_bytes = path.read_bytes()
                     await self._progress(session, job, "parsing", 25)
@@ -503,6 +555,7 @@ class IngestionExecutor:
 
                 await self._complete(session, job)
         except Exception as exc:
+            # 任意阶段失败都统一记录日志、移动失败文件并更新任务错误状态。
             logger.exception("Knowledge ingestion failed for job %s", job_id)
             await self._fail(job_id, exc)
         finally:
@@ -512,6 +565,8 @@ class IngestionExecutor:
             reset_log_context(log_token)
 
     def _locate_source(self, source: KnowledgeSourceFileModel) -> Path:
+        """根据数据库记录在文件存储的各状态目录中定位源文件。"""
+        # 优先使用数据库记录的当前路径，再按可能的状态目录进行恢复查找。
         configured = self.files.resolve_relative(source.current_relative_path)
         if configured.exists():
             return configured
@@ -526,9 +581,11 @@ class IngestionExecutor:
         raise FileNotFoundError(source.current_relative_path)
 
     async def _heartbeat(self, job_id: UUID) -> None:
+        """周期性刷新任务租约，表明当前 worker 仍在处理该任务。"""
         interval = max(5, self.settings.ingestion_lease_seconds // 3)
         while True:
             await asyncio.sleep(interval)
+            # 只更新仍由当前实例持有的 running 任务。
             now = datetime.now(timezone.utc)
             async with self.session_factory() as session:
                 await session.execute(
@@ -554,6 +611,8 @@ class IngestionExecutor:
         source_path: Path,
         documents: DocumentService,
     ) -> bool:
+        """处理 PDF：按页解析、校验和合并 Markdown，并保存待确认的候选文档。"""
+        # 处理前重新计算哈希，防止源文件在排队期间被替换。
         current_hash = await asyncio.to_thread(
             SourceFileStorage.stream_sha256,
             source_path,
@@ -578,6 +637,7 @@ class IngestionExecutor:
             )
         )).scalars().all())
         for page_number in range(1, total_pages + 1):
+            # 为尚未记录的页面创建可恢复的子任务。
             if page_number not in existing_numbers:
                 session.add(KnowledgeIngestionPageModel(
                     job_id=job.id,
@@ -613,6 +673,7 @@ class IngestionExecutor:
         await self._refresh_page_summary(session, job)
 
         while True:
+            # 按配置的并发数批量处理待识别页面。
             page_ids = list((
                 await session.execute(
                     select(KnowledgeIngestionPageModel.id)
@@ -646,6 +707,7 @@ class IngestionExecutor:
         job.progress_percent = 94
         await session.commit()
         merged = workspace.merge_pages(total_pages, failed_numbers)
+        # 将各页结果合并，并写入 PDF 来源信息和页面成功/失败统计。
         front_matter = (
             "---\n"
             f"doc_id: {doc.id}\n"
@@ -680,7 +742,9 @@ class IngestionExecutor:
         return bool(failed_numbers)
 
     async def _process_pdf_page_isolated(self, page_id: UUID, source_path: Path) -> None:
+        """为单个 PDF 页面创建独立数据库会话，隔离执行页面识别任务。"""
         async with self.session_factory() as session:
+            # 每页使用独立会话，避免并发页面互相污染事务状态。
             page = await session.get(KnowledgeIngestionPageModel, page_id)
             if not page or page.status != "pending":
                 return
@@ -712,6 +776,8 @@ class IngestionExecutor:
         source_path: Path,
         workspace: PdfPageWorkspace,
     ) -> None:
+        """执行单页 PDF 识别，保存页面 Markdown、置信度和失败/重试状态。"""
+        # 先占用页面租约，再执行耗时的 PDF 转 Markdown 操作。
         page.status = "running"
         page.attempt_count += 1
         page.lease_owner = self.instance_id
@@ -724,6 +790,7 @@ class IngestionExecutor:
         await session.commit()
 
         try:
+            # 抽取单页 PDF，交给 PDF 解析器识别为 Markdown。
             temporary_pdf = await asyncio.to_thread(
                 workspace.extract_single_page, source_path, page.page_number
             )
@@ -750,6 +817,7 @@ class IngestionExecutor:
             page.error_message = None
             page.completed_at = datetime.now(timezone.utc)
         except Exception:
+            # 未达到最大重试次数时回到 pending，否则记录为最终失败。
             logger.exception("PDF page conversion failed: job=%s page=%s", job.id, page.page_number)
             if page.attempt_count < self.settings.pdf_page_max_attempts:
                 page.status = "pending"
@@ -761,6 +829,7 @@ class IngestionExecutor:
                 page.error_message = "该页多次识别失败，请在确认前人工补充"
                 page.completed_at = datetime.now(timezone.utc)
         finally:
+            # 无论成功还是失败，都清理临时文件、释放租约并刷新总进度。
             workspace.remove_temporary_page(page.page_number)
             page.lease_owner = None
             page.lease_expires_at = None
@@ -772,6 +841,8 @@ class IngestionExecutor:
     async def _refresh_page_summary(
         self, session: AsyncSession, job: KnowledgeIngestionJobModel
     ) -> None:
+        """汇总 PDF 各页面状态，并更新任务的完成数量和进度百分比。"""
+        # 页面状态是 PDF 总体进度的来源，完成页和失败页都会计入已处理数量。
         rows = (await session.execute(
             select(KnowledgeIngestionPageModel.status, func.count())
             .where(KnowledgeIngestionPageModel.job_id == job.id)
@@ -787,6 +858,7 @@ class IngestionExecutor:
         await session.commit()
 
     async def _progress(self, session: AsyncSession, job: KnowledgeIngestionJobModel, stage: str, percent: int) -> None:
+        """更新任务阶段、进度和租约心跳，并立即提交到数据库。"""
         now = datetime.now(timezone.utc)
         job.stage = stage
         job.progress_percent = percent
@@ -801,6 +873,8 @@ class IngestionExecutor:
         job: KnowledgeIngestionJobModel,
         status: str = "succeeded",
     ) -> None:
+        """将任务标记为完成，写入最终进度和完成时间，并释放任务租约。"""
+        # 任务完成后不再由 worker 持有租约。
         job.status = status
         job.stage = "completed"
         job.progress_current = 100
@@ -812,7 +886,9 @@ class IngestionExecutor:
         await session.commit()
 
     async def _fail(self, job_id: UUID, exc: Exception) -> None:
+        """统一处理任务失败：移动源文件、记录安全错误信息并更新文档状态。"""
         async with self.session_factory() as session:
+            # 失败处理使用新会话，确保即使原处理事务回滚也能写入失败状态。
             job = (
                 await session.execute(
                     select(KnowledgeIngestionJobModel)

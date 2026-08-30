@@ -8,6 +8,7 @@ from app.infrastructure.rerankers import provider as reranker_module
 from app.infrastructure.rerankers.provider import (
     CrossEncoderRerankerProvider,
     DashScopeVLRerankerProvider,
+    RerankerNotConfiguredError,
     get_reranker_provider,
 )
 
@@ -133,3 +134,20 @@ def test_factory_selects_dashscope_vl_provider(monkeypatch):
         import asyncio
 
         asyncio.run(provider.aclose())
+
+
+def test_factory_rejects_missing_model(monkeypatch):
+    monkeypatch.setattr(
+        reranker_module,
+        "get_knowledge_settings",
+        lambda: SimpleNamespace(
+            reranker_api_key="secret",
+            reranker_base_url="https://rerank.test",
+            reranker_model="",
+            reranker_timeout_seconds=8.0,
+            reranker_max_documents=32,
+        ),
+    )
+
+    with pytest.raises(RerankerNotConfiguredError, match="RERANKER_MODEL"):
+        get_reranker_provider()
