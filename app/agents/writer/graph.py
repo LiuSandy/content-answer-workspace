@@ -71,7 +71,10 @@ def build_writer_graph():
     builder.add_edge("generate_document", END)
     builder.add_edge("inline_refine_document", END)
     builder.add_edge("rewrite_document", END)
-    return builder.compile()
+    agent = builder.compile()
+    # 输出实际编译后的 Writer Graph，便于核对节点和连线是否与代码一致。
+    print(agent.get_graph().draw_mermaid())
+    return agent
 
 
 writer_graph = build_writer_graph()
