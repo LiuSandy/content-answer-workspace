@@ -1,5 +1,9 @@
 # TODO
 
+## 接入 LangSmith Agent Trace
+
+- [ ] 配置 LangSmith 环境变量并接入 Agent 全链路 Trace，覆盖 HTTP 请求、LangGraph 节点、LLM 调用、RAG 检索、工具调用和最终结果；为自定义 RAG、采集器和 Memory 服务增加必要的手动埋点，并补充 `run_id`、`chat_id`、模型/Prompt 版本、Token、延迟、错误和成本等元数据，同时完成敏感信息脱敏验证。
+
 ## 使用 Tokenizers 优化 Token 计算
 
 - [ ] 使用 Hugging Face `tokenizers` 包替换 RAG 中基于字符比例的 `estimate_tokens()`，让分块和 `token_count` 使用模型对应的 Tokenizer；由于 `qwen3.7-text-embedding` 尚未公开官方 `tokenizer.json`，接入前需要用多语种样本与服务端返回的 `usage.prompt_tokens` 做一致性验证，不能直接假设公开的 `Qwen3-Embedding` Tokenizer 完全兼容。
@@ -33,3 +37,7 @@
 - [ ] 重新梳理 Adapter、Service、Port、Registry/Factory 的使用方式，形成清晰的依赖方向后再实施代码重构。
 - [ ] 记忆抽取必须改为结构化输出：使用明确的 Pydantic Schema 调用 `generate_structured()`，在通过 JSON 解析、Schema 校验和业务字段校验前不得写入 `user_memories`；校验失败需按统一策略重试或放弃本次保存，并记录失败原因。
 - [ ] 调整结构化输出方案：评估并使用 `from langchain_openai import ChatOpenAI` 构建统一模型客户端，结合 `with_structured_output()` 重新设计 Provider 适配、Schema 校验、降级策略和错误审计流程。
+
+## 重新设计 Writer 工作流
+
+- [ ] 重新梳理 Writer Graph 的工作流边界：当前 `retrieve_memory` 完成记忆召回后直接按 `operation` 分流，Compose 主线与直接文档操作分支的职责、命名和收尾机制不够清晰，需要重新设计节点职责、路由和持久化边界。
