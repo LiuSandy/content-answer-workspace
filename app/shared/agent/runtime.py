@@ -180,6 +180,12 @@ def _normalize_event(event: dict) -> list[tuple[str, dict]]:
             return events
 
     if kind == "on_chat_model_stream":
+        # route_intent 使用结构化输出调用模型。该模型的流片段（通常是
+        # IntentRoute JSON）只用于内部路由，不能作为 assistant 文本推送给前端。
+        # 仅透传真正负责生成用户回答的 chat/writer 模型事件。
+        langgraph_node = metadata.get("langgraph_node")
+        if langgraph_node in {"route_intent", "guard"}:
+            return []
         chunk = (event.get("data") or {}).get("chunk")
         if chunk is not None and getattr(chunk, "content", None):
             return [("message.delta", {"delta": chunk.content})]

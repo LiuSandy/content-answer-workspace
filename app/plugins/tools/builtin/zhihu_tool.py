@@ -1,4 +1,4 @@
-"""知乎搜索工具；使用网页采集模式获取知乎问题。"""
+"""知乎搜索工具；使用知乎开放平台站内搜索 API 获取内容。"""
 
 from __future__ import annotations
 
@@ -61,8 +61,10 @@ async def zhihu_search(keyword: str, limit: int = 10, sort: str = "relevance") -
         error = str(exc)
         auth_markers = (
             "401",
+            "20001",
             "ERR_TICKET",
             "AuthenticationInvalidRequest",
+            "ZHIHU_ACCESS_SECRET",
             "ZHIHU_COOKIE_FILE",
         )
         error_code = (

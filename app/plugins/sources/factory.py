@@ -21,10 +21,7 @@ class CollectorFactory:
         normalized_platform = (platform or "zhihu").strip().lower()
         normalized_source = (source or "auto").strip().lower()
 
-        if normalized_source == "official":
-            raise ValueError(f"official source is not supported for platform: {normalized_platform}")
-
-        if normalized_source not in {"auto", "web"}:
+        if normalized_source not in {"auto", "web", "official"}:
             raise ValueError(f"Unsupported collection source: {normalized_source}")
 
         collector_class = cls._collectors.get(normalized_platform)
