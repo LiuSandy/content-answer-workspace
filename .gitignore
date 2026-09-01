@@ -34,3 +34,4 @@ frontend/*.tsbuildinfo
 .claude/
 .gemini/
 docs/codebase
+/docs/zhihu/
