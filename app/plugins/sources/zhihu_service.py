@@ -693,6 +693,110 @@ async def search_zhihu_for_keyword(
     return unique_by(items, lambda item: item.id)
 
 
+async def search_zhihu_global(
+    query: str,
+    user_agent: str,
+    count: int = 10,
+    filter_expression: str = "",
+    search_db: str = "all",
+) -> dict[str, Any]:
+    """调用知乎全网搜索 API，返回保留原始内容类型的结构化结果。"""
+
+    load_env_file()
+    access_secret = os.getenv("ZHIHU_ACCESS_SECRET", "").strip()
+    if not access_secret:
+        raise ValueError("当前缺少：ZHIHU_ACCESS_SECRET")
+
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        raise ValueError("全网搜索关键词不能为空")
+    normalized_search_db = str(search_db or "all").strip().lower()
+    if normalized_search_db not in {"all", "realtime", "static"}:
+        normalized_search_db = "all"
+    requested_count = max(1, min(20, int(count)))
+    params: dict[str, Any] = {
+        "Query": normalized_query,
+        "Count": requested_count,
+        "SearchDB": normalized_search_db,
+    }
+    if filter_expression and str(filter_expression).strip():
+        params["Filter"] = str(filter_expression).strip()
+
+    async with httpx.AsyncClient(
+        timeout=get_settings().http.client_timeout_seconds
+    ) as client:
+        response = await client.get(
+            "https://developer.zhihu.com/api/v1/content/global_search",
+            params=params,
+            headers={
+                "Authorization": f"Bearer {access_secret}",
+                "X-Request-Timestamp": str(int(datetime.now().timestamp())),
+                "Content-Type": "application/json",
+                "User-Agent": user_agent,
+            },
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        response.raise_for_status()
+        raise ValueError("知乎全网搜索 API 返回了无法解析的响应") from exc
+
+    code = payload.get("Code")
+    message = str(payload.get("Message") or "知乎全网搜索 API 请求失败")
+    if response.is_error or code not in (0, "0", None):
+        raise ValueError(
+            f"知乎全网搜索 API 请求失败：HTTP {response.status_code}，Code {code}，{message}"
+        )
+
+    data = payload.get("Data") or {}
+    raw_items = data.get("Items") or []
+    if not isinstance(raw_items, list):
+        raise ValueError("知乎全网搜索 API 返回的 Items 格式无效")
+
+    items: list[dict[str, Any]] = []
+    for raw in raw_items[:requested_count]:
+        if not isinstance(raw, dict):
+            continue
+        title = clean_text(raw.get("Title"))
+        url = normalize_zhihu_content_url(raw.get("Url"))
+        content_id = str(raw.get("ContentID") or "").strip()
+        if not title or not url or not content_id:
+            continue
+        comments = raw.get("CommentInfoList") or []
+        comment_items = [
+            {"content": clean_text(comment.get("Content"))}
+            for comment in comments
+            if isinstance(comment, dict) and clean_text(comment.get("Content"))
+        ]
+        items.append(
+            {
+                "title": title,
+                "content_type": clean_text(raw.get("ContentType")),
+                "content_id": content_id,
+                "excerpt": clean_text(raw.get("ContentText"))[:1000],
+                "url": url,
+                "comment_count": raw.get("CommentCount", 0),
+                "vote_up_count": raw.get("VoteUpCount", 0),
+                "author_name": clean_text(raw.get("AuthorName")),
+                "author_avatar": str(raw.get("AuthorAvatar") or "").strip(),
+                "author_badge": str(raw.get("AuthorBadge") or "").strip(),
+                "author_badge_text": clean_text(raw.get("AuthorBadgeText")),
+                "edit_time": raw.get("EditTime"),
+                "comment_info_list": comment_items,
+                "authority_level": clean_text(raw.get("AuthorityLevel")),
+            }
+        )
+
+    return {
+        "query": normalized_query,
+        "count": len(items),
+        "has_more": bool(data.get("HasMore", False)),
+        "search_db": normalized_search_db,
+        "items": items,
+    }
+
+
 
 async def fetch_zhihu_results_for_topic(topic: Topic, user_agent: str, limit: int = 10) -> list[QuestionItem]:
     """按主题批量检索知乎问题；这样一个主题可以先扩展多个检索词，再聚合去重出候选问题。"""
