@@ -92,7 +92,7 @@ async def lifespan(app: FastAPI):
         try:
             from app.platform.scheduler import start_scheduler
 
-            await start_scheduler()
+            await start_scheduler(app.state.session_factory)
         except Exception as error:
             logging.warning("Scheduler startup warning (non-critical): %s", error)
 
