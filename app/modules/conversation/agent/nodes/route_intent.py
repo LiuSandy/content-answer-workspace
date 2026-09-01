@@ -110,6 +110,7 @@ async def _detect_intent(state: ChatAgentState) -> dict:
                 model=rendered.model,
                 temperature=rendered.temperature,
                 max_tokens=rendered.max_tokens,
+                structured_methods=tuple(rendered.structured_methods),
             ),
         )
         route = structured.value

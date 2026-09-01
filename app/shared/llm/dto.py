@@ -9,6 +9,7 @@ from typing import Any, Generic, Literal, TypeVar
 from pydantic import BaseModel, Field
 
 T = TypeVar("T", bound=BaseModel)
+StructuredMethod = Literal["json_schema", "json_mode", "function_calling"]
 
 
 class LLMMessage(BaseModel):
@@ -31,7 +32,6 @@ class ProviderLLMRequest(LLMRequest):
     """Plugin-internal request after purpose resolution."""
 
     model: str
-    response_format: dict[str, Any] | None = None
 
 
 class LLMResponse(BaseModel):
@@ -86,12 +86,13 @@ class StructuredLLMRequest(Generic[T]):
     temperature: float = 0.1
     max_tokens: int = 4096
     retries: int = 1
+    structured_methods: tuple[StructuredMethod, ...] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
 class StructuredLLMResponse(Generic[T]):
     value: T | None
-    method_used: Literal["json_schema", "json_mode", "generic_parse"] | None
+    method_used: StructuredMethod | None
     attempts: int
     degradation_reason: str | None = None

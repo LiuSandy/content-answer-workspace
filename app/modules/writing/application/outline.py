@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.shared.dto import (
     AgentError,
     ChatResponsePayload,
-    LLMMessage,
 )
+from app.shared.llm.dto import LLMMessage
 from app.shared.errors import DocumentConflictError
 from app.modules.conversation.adapters.db.sources import SourceItem
 from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument

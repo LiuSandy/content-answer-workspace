@@ -84,6 +84,7 @@ async def evaluate_content(
         model=rendered.model,
         temperature=rendered.temperature,
         max_tokens=rendered.max_tokens,
+        structured_methods=tuple(rendered.structured_methods),
     )
     if _audit_metadata is not None:
         _audit_metadata.update(

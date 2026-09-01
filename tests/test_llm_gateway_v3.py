@@ -24,6 +24,7 @@ from app.shared.llm.dto import (
     ProviderLLMRequest,
     StructuredLLMRequest,
 )
+from app.shared.llm.errors import LLMConfigurationError
 
 
 class _StructuredValue(BaseModel):
@@ -39,11 +40,17 @@ class _FakeProvider:
 
     @property
     def capabilities(self) -> LLMCapabilities:
-        return LLMCapabilities(structured_methods=("json_mode", "generic_parse"))
+        return LLMCapabilities(structured_methods=("json_mode", "function_calling"))
 
     async def generate(self, request: ProviderLLMRequest) -> LLMResponse:
         self.requests.append(request)
         return LLMResponse(content=self.responses.pop(0))
+
+    async def invoke_structured(self, request, *, schema, method):
+        import json
+
+        self.requests.append(request)
+        return schema.model_validate(json.loads(self.responses.pop(0)))
 
     async def stream(
         self, request: ProviderLLMRequest
@@ -170,6 +177,32 @@ async def test_prompt_route_can_select_another_provider() -> None:
     assert alternate_provider.requests[0].model == "prompt-selected-model"
 
 
+def test_prompt_route_rejects_unconfigured_provider() -> None:
+    gateway = _gateway(_FakeProvider())
+
+    with pytest.raises(LLMConfigurationError, match="No connection configuration"):
+        gateway._resolver.resolve(
+            "writing.generate",
+            provider="missing",
+            model="unknown-model",
+        )
+
+
+@pytest.mark.asyncio
+async def test_structured_request_rejects_unsupported_profile_method() -> None:
+    gateway = _gateway(_FakeProvider())
+
+    with pytest.raises(LLMConfigurationError, match="does not support"):
+        await gateway.generate_structured(
+            purpose="test.purpose",
+            request=StructuredLLMRequest(
+                messages=[{"role": "user", "content": "return json"}],
+                schema=_StructuredValue,
+                structured_methods=("json_schema",),
+            ),
+        )
+
+
 @pytest.mark.asyncio
 async def test_structured_generation_is_owned_by_gateway() -> None:
     provider = _FakeProvider(["not json", "{\"answer\": \"validated\"}"])
@@ -187,7 +220,6 @@ async def test_structured_generation_is_owned_by_gateway() -> None:
     assert result.value == _StructuredValue(answer="validated")
     assert result.method_used == "json_mode"
     assert result.attempts == 2
-    assert provider.requests[0].response_format == {"type": "json_object"}
 
 
 def test_bootstrap_registers_the_final_provider_set() -> None:

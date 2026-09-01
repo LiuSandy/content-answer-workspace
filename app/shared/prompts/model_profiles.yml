@@ -8,7 +8,7 @@ model_profiles:
     context_window: 64000
     output_reserve_tokens: 4096
     # DeepSeek 兼容端点不支持原生 json_schema 结构化输出，从 json_mode 开始
-    structured_methods: [json_mode, generic_parse]
+    structured_methods: [json_mode, function_calling]
 
   creative:
     provider: deepseek
@@ -17,7 +17,7 @@ model_profiles:
     max_tokens: 4096
     context_window: 64000
     output_reserve_tokens: 4096
-    structured_methods: [json_mode, generic_parse]
+    structured_methods: [json_mode, function_calling]
 
   reasoning:
     provider: deepseek
@@ -26,7 +26,7 @@ model_profiles:
     max_tokens: 8192
     context_window: 64000
     output_reserve_tokens: 8192
-    structured_methods: [json_mode, generic_parse]
+    structured_methods: [json_mode, function_calling]
 
   router:
     provider: deepseek
@@ -35,4 +35,4 @@ model_profiles:
     max_tokens: 512
     context_window: 64000
     output_reserve_tokens: 512
-    structured_methods: [json_mode, generic_parse]
+    structured_methods: [json_mode, function_calling]

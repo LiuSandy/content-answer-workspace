@@ -4,8 +4,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from langchain_core.messages import AIMessage
-
 from app.platform.config.runtime import AGENT_MAX_RECURSION
 
 
@@ -39,16 +37,16 @@ async def test_graph_recursion_error_caught_on_runaway_loop(monkeypatch):
     from app.modules.conversation.agent.graph import build_chat_agent_graph
 
     # LLM 永远要调工具，制造死循环
-    class RunawayProvider:
-        async def ainvoke(self, messages, tools):
-            return AIMessage(
-                content="",
-                tool_calls=[{
-                    "name": "get_current_datetime",
-                    "args": {},
-                    "id": "loop-call",
-                    "type": "tool_call",
-                }],
+    class RunawayGateway:
+        async def invoke_with_tools(self, *, purpose, request):
+            from app.shared.llm.dto import AgentLLMResponse, LLMToolCall
+
+            return AgentLLMResponse(
+                tool_calls=[LLMToolCall(
+                    name="get_current_datetime",
+                    arguments={},
+                    id="loop-call",
+                )],
             )
 
     from app.modules.conversation.agent.nodes import route_intent as ri
@@ -62,7 +60,7 @@ async def test_graph_recursion_error_caught_on_runaway_loop(monkeypatch):
     )
     ri.prompt_registry = MagicMock(render=MagicMock(return_value=fr))
     msvc.retrieve_memories = AsyncMock(return_value=[])
-    chat_mod._get_chat_provider = lambda: RunawayProvider()
+    chat_mod.get_llm_gateway = lambda: RunawayGateway()
 
     graph = build_chat_agent_graph(MemorySaver())
     base = {

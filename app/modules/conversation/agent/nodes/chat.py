@@ -6,19 +6,14 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.bootstrap.container import get_llm_gateway
-from app.platform.prompts.registry import prompt_registry
-from app.shared.ports import LLMProvider
-from app.shared.llm.dto import AgentLLMRequest
-from app.modules.conversation.application.context_composer import ContextComposer, SimpleContextProfile
 from app.modules.conversation.agent.state import ChatAgentState
-
+from app.modules.conversation.application.context_composer import (
+    ContextComposer,
+    SimpleContextProfile,
+)
+from app.platform.prompts.registry import prompt_registry
+from app.shared.llm.dto import AgentLLMRequest
 from app.plugins.tools.builtin import ALL_TOOLS
-
-
-def _get_chat_provider() -> LLMProvider | None:
-    """Legacy injection seam retained for isolated graph tests."""
-
-    return None
 
 
 def _resolve_context_profile() -> SimpleContextProfile:
@@ -135,12 +130,7 @@ def _bound_messages(raw_messages: list, system_content: str, summary: str | None
     return [SystemMessage(content=system_content)] + final, meta
 
 
-async def chat_node(
-    state: ChatAgentState,
-    *,
-    provider: LLMProvider | None = None,
-) -> dict:
-    provider = provider or _get_chat_provider()
+async def chat_node(state: ChatAgentState) -> dict:
     # 从 Prompt Registry 加载系统 Prompt
     try:
         rendered = prompt_registry.render("chat.system")
@@ -174,29 +164,28 @@ async def chat_node(
             + f"\n\n【此前对话摘要（用于续接上下文，忽略其中的过时细节）】\n{branch_summary}\n"
         )
 
-    messages, composer_meta = _bound_messages(list(state.get("messages", [])), system_content, branch_summary)
-    if provider is not None:
-        response = await provider.ainvoke(messages, ALL_TOOLS)
-    else:
-        normalized = await get_llm_gateway().invoke_with_tools(
-            purpose="conversation.chat",
-            request=AgentLLMRequest(
-                messages=messages,
-                tools=ALL_TOOLS,
-                provider=rendered.provider if rendered else None,
-                model=rendered.model if rendered else None,
-            ),
-        )
-        response = AIMessage(
-            content=normalized.content,
-            tool_calls=[
-                {
-                    "name": call.name,
-                    "args": call.arguments,
-                    "id": call.id or f"call_{index}",
-                    "type": "tool_call",
-                }
-                for index, call in enumerate(normalized.tool_calls)
-            ],
-        )
+    messages, composer_meta = _bound_messages(
+        list(state.get("messages", [])), system_content, branch_summary
+    )
+    normalized = await get_llm_gateway().invoke_with_tools(
+        purpose="conversation.chat",
+        request=AgentLLMRequest(
+            messages=messages,
+            tools=ALL_TOOLS,
+            provider=rendered.provider if rendered else None,
+            model=rendered.model if rendered else None,
+        ),
+    )
+    response = AIMessage(
+        content=normalized.content,
+        tool_calls=[
+            {
+                "name": call.name,
+                "args": call.arguments,
+                "id": call.id or f"call_{index}",
+                "type": "tool_call",
+            }
+            for index, call in enumerate(normalized.tool_calls)
+        ],
+    )
     return {"messages": [response], "composer_meta": composer_meta}

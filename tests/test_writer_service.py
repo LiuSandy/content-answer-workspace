@@ -50,7 +50,7 @@ async def _setup_doc(db) -> tuple[uuid.UUID, uuid.UUID]:
 
 def _fake_rendered():
     from app.platform.prompts.registry import RenderedPrompt
-    from app.shared.dto import LLMMessage
+    from app.shared.llm.dto import LLMMessage
     return RenderedPrompt(
         prompt_id="test",
         messages=[LLMMessage(role="system", content="system"), LLMMessage(role="user", content="user")],

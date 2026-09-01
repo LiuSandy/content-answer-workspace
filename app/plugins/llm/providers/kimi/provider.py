@@ -11,5 +11,5 @@ class KimiProvider(OpenAICompatibleProvider):
         super().__init__(
             key="kimi",
             config=config,
-            capabilities=LLMCapabilities(structured_methods=("generic_parse",)),
+            capabilities=LLMCapabilities(structured_methods=("function_calling",)),
         )

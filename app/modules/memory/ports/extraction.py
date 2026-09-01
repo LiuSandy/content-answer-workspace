@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.shared.llm.dto import LLMMessage
+from app.shared.llm.dto import LLMMessage, StructuredMethod
 
 from ..domain.extraction import ExtractedMemory
 
@@ -17,6 +17,7 @@ class MemoryExtractionPrompt:
     max_tokens: int
     provider: str | None = None
     model: str | None = None
+    structured_methods: tuple[StructuredMethod, ...] | None = None
 
 
 class MemoryExtractionPromptPort(Protocol):

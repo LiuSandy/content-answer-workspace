@@ -11,6 +11,7 @@ from .dto import (
     LLMToolCall,
     StructuredLLMRequest,
     StructuredLLMResponse,
+    StructuredMethod,
 )
 from .port import LLMGatewayPort
 
@@ -28,4 +29,5 @@ __all__ = [
     "LLMToolCall",
     "StructuredLLMRequest",
     "StructuredLLMResponse",
+    "StructuredMethod",
 ]

@@ -5,16 +5,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Literal
 
 import uuid
 from pydantic import BaseModel, Field
 from pydantic.alias_generators import to_camel
 from typing_extensions import TypedDict
-
-T = TypeVar("T")
-
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Content Source DTO
@@ -72,74 +68,6 @@ class ToolContext(BaseModel):
     run_id: str
     # 平台凭证 key 名（具体值从 secrets store 读取，不在 context 中传递）
     credential_key: str | None = None
-
-    model_config = {"populate_by_name": True}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# LLM Provider DTO
-# ─────────────────────────────────────────────────────────────────────────────
-
-class LLMMessage(BaseModel):
-    """单条 LLM 消息。"""
-
-    role: Literal["system", "user", "assistant"]
-    content: str
-
-
-class LLMRequest(BaseModel):
-    """LLM 调用请求；由 PromptRegistry 渲染后传给 LLMProvider。"""
-
-    messages: list[LLMMessage]
-    model: str
-    temperature: float = 0.7
-    max_tokens: int = 4096
-    # 结构化输出 JSON Schema（可选）
-    response_format: dict[str, Any] | None = None
-    # 额外供应商参数（透传，不做类型约束）
-    extra: dict[str, Any] = Field(default_factory=dict)
-
-    model_config = {"populate_by_name": True}
-
-
-class LLMResponse(BaseModel):
-    """LLM 同步调用完整响应。"""
-
-    content: str
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-    model: str | None = None
-    finish_reason: str | None = None
-
-    model_config = {"populate_by_name": True}
-
-
-class LLMStreamEvent(BaseModel):
-    """LLM 流式响应中的单个事件。"""
-
-    delta: str = ""  # 当前增量文本
-    finish_reason: str | None = None
-    input_tokens: int | None = None   # 仅在最后一个事件携带
-    output_tokens: int | None = None  # 仅在最后一个事件携带
-
-    model_config = {"populate_by_name": True}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 结构化输出公共类型（roadmap R1）
-# ─────────────────────────────────────────────────────────────────────────────
-
-class StructuredResult(BaseModel, Generic[T]):
-    """结构化输出结果；含降级元数据，底层不写 DB。
-
-    降级元数据（method_used / attempts / degradation_reason）由业务调用方
-    审计到各自 AIOperation.model_parameters。
-    """
-
-    value: T | None = None
-    method_used: Literal["json_schema", "json_mode", "generic_parse"] | None = None
-    attempts: int = 0
-    degradation_reason: str | None = None
 
     model_config = {"populate_by_name": True}
 

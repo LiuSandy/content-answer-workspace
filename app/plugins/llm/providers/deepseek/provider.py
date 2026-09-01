@@ -12,6 +12,6 @@ class DeepSeekProvider(OpenAICompatibleProvider):
             key="deepseek",
             config=config,
             capabilities=LLMCapabilities(
-                structured_methods=("json_mode", "generic_parse"),
+                structured_methods=("json_mode", "function_calling"),
             ),
         )
