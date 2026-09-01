@@ -4,7 +4,7 @@ import asyncio
 import json
 import sys
 
-from .services.workflow_compat import load_env_file, run_workflow, save_workflow_result
+from .modules.acquisition.application.workflow_compat import load_env_file, run_workflow, save_workflow_result
 
 
 def main() -> None:

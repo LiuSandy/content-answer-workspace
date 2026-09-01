@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.infrastructure.collectors.fetchers.playwright_fetcher import (
+from app.plugins.sources.fetchers.playwright_fetcher import (
     PlaywrightFetcher,
     parse_cookie_string,
 )
@@ -47,7 +47,7 @@ class PlaywrightFetcherTests(unittest.IsolatedAsyncioTestCase):
         fake_playwright_cm.__aexit__ = AsyncMock(return_value=None)
 
         with patch(
-            "app.infrastructure.collectors.fetchers.playwright_fetcher.async_playwright",
+            "app.plugins.sources.fetchers.playwright_fetcher.async_playwright",
             return_value=fake_playwright_cm,
         ):
             fetcher = PlaywrightFetcher(cookie_string="a=1", cookie_domain=".xiaohongshu.com")
@@ -78,7 +78,7 @@ class PlaywrightFetcherTests(unittest.IsolatedAsyncioTestCase):
         fake_playwright_cm.__aexit__ = AsyncMock(return_value=None)
 
         with patch(
-            "app.infrastructure.collectors.fetchers.playwright_fetcher.async_playwright",
+            "app.plugins.sources.fetchers.playwright_fetcher.async_playwright",
             return_value=fake_playwright_cm,
         ):
             fetcher = PlaywrightFetcher()

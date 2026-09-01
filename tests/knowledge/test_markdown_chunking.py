@@ -1,5 +1,5 @@
 import pytest
-from app.services.rag.chunking import ParentChildChunker
+from app.modules.knowledge.application.chunking import ParentChildChunker
 
 
 def test_parent_child_chunker():

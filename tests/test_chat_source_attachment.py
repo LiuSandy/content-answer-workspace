@@ -4,7 +4,7 @@ import json
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.api.routes.chats import _current_turn_platform_tool_result
+from app.modules.conversation.api.router import _current_turn_platform_tool_result
 
 
 def _tool_message(topic: str, title: str, call_id: str) -> ToolMessage:

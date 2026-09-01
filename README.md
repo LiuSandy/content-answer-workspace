@@ -12,25 +12,18 @@
 ### 1. 后端结构 (`app/`)
 ```text
 app/
-├── server.py                  # FastAPI 主程序入口
-├── graph.py                   # 多 Agent 系统顶层 Graph 入口
-├── state.py                   # 系统共享 State
-├── context.py                 # Graph 运行时上下文与输入组装
-├── api/                       # API 路由、Schema 与流式响应
-├── agents/                    # 独立 Agent：chat、orchestrator、researcher、writer、reviewer、memory
-│   └── _shared/               # Agent 公共工具、Prompt 与运行支持，不是独立 Agent
-├── services/                  # 业务逻辑与用例服务
-├── infrastructure/           # 数据库、采集器、文件、可观测性及外部能力
-│   └── llm/clients/           # 大模型底层客户端，与其他基础设施客户端隔离
-├── contracts/                # 跨层 DTO、Port 与业务错误契约
-├── prompts/                   # Prompt 加载、校验与渲染基础设施
-├── config/                    # 运行配置及默认配置文件
+├── bootstrap/                 # FastAPI 入口、依赖容器、路由和生命周期
+├── modules/                   # 按业务能力划分的模块及其 API/Application/Domain/Ports/Adapters
+├── plugins/                   # LLM、采集源、Embedding、Reranker 和工具插件
+├── platform/                  # 配置、数据库、文件、HTTP、可观测性、Prompt、调度和任务运行时
+├── shared/                    # 稳定的跨模块 DTO、错误和 Port 契约
 └── evaluation/                # 评测数据集、指标与运行器
 ```
 
-### 2. Agent Prompt 结构 (`app/agents/`)
-每个 Agent 的 YAML Prompt 放在自己的 `prompts/` 目录；公共 Prompt 和模型配置放在
-`app/agents/_shared/prompts/`。
+### 2. Agent Prompt 结构
+Conversation 与 Writing 的 Agent、State、Node 和 Prompt 分别归属
+`app/modules/conversation/agent/` 与 `app/modules/writing/agent/`；共享 Prompt 基础设施位于
+`app/platform/prompts/`。
 
 ### 3. 前端结构 (`frontend/`)
 ```text
@@ -92,7 +85,7 @@ uv run alembic upgrade head
 在根目录下运行：
 ```bash
 uv sync
-uv run python -m app.server
+uv run python -m app.bootstrap.server
 ```
 后端服务默认监听：`http://127.0.0.1:8000`。
 

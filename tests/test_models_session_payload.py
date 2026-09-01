@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.api.schemas.workflow import SessionPayload
+from app.modules.acquisition.domain.workflow import SessionPayload
 
 
 class SessionPayloadTests(unittest.TestCase):

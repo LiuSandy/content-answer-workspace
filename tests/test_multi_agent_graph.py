@@ -7,19 +7,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.agents.writer import graph as writer_graph_module
-from app.agents.writer import state as writer_state
-from app.agents.writer.nodes.pipeline import (
+from app.modules.writing.agent import graph as writer_graph_module
+from app.modules.writing.agent import state as writer_state
+from app.modules.writing.agent.nodes.pipeline import (
     research_node,
     review_node,
     write_node,
     writer_memory_node,
 )
-from app.agents.writer.nodes.planner import assign_node
-from app.agents.writer.runtime import run_writer_plan
-from app.agents.writer.state import MultiAgentState, SubAgentState
-from app.services.planning_service import SubTask, TaskPlan
-from app.contracts.dto import QualityReport
+from app.modules.writing.agent.nodes.planner import assign_node
+from app.modules.writing.agent.runtime import run_writer_plan
+from app.modules.writing.agent.state import MultiAgentState, SubAgentState
+from app.modules.writing.application.planning import SubTask, TaskPlan
+from app.shared.dto import QualityReport
 
 
 def _mock_plan() -> TaskPlan:
@@ -54,12 +54,15 @@ def test_writer_is_the_only_compiled_content_graph():
     }
 
 
-def test_agents_package_has_exactly_two_graph_modules():
+def test_business_modules_have_exactly_two_graph_modules():
     graph_files = sorted(
-        path.relative_to(path.parents[2]).as_posix()
-        for path in Path(__file__).parents[1].joinpath("app/agents").rglob("graph.py")
+        path.relative_to(Path(__file__).parents[1].joinpath("app")).as_posix()
+        for path in Path(__file__).parents[1].joinpath("app/modules").rglob("graph.py")
     )
-    assert graph_files == ["agents/chat/graph.py", "agents/writer/graph.py"]
+    assert graph_files == [
+        "modules/conversation/agent/graph.py",
+        "modules/writing/agent/graph.py",
+    ]
 
 
 @pytest.mark.asyncio
@@ -82,7 +85,7 @@ async def test_writing_agent_produces_draft(monkeypatch):
     fake_llm = MagicMock()
     fake_llm.analyze = AsyncMock(return_value="# 初稿\n\n正文内容...")
     monkeypatch.setattr(
-        "app.agents.writer.nodes.generate_draft._get_planner_llm",
+        "app.modules.writing.agent.nodes.generate_draft._get_planner_llm",
         lambda: fake_llm,
     )
     result = await write_node({
@@ -98,7 +101,7 @@ async def test_writing_agent_produces_draft(monkeypatch):
 async def test_review_agent_failure_does_not_block_final_output(monkeypatch):
     """spec 6.6 #2：单子 Agent 失败不影响其他。ReviewAgent 失败时初稿作终稿。"""
     monkeypatch.setattr(
-        "app.agents.writer.nodes.pipeline.evaluate_content",
+        "app.modules.writing.agent.nodes.pipeline.evaluate_content",
         AsyncMock(side_effect=RuntimeError("review failed")),
     )
     result = await review_node({
@@ -116,7 +119,7 @@ async def test_review_agent_failure_does_not_block_final_output(monkeypatch):
 async def test_memory_agent_failure_isolated(monkeypatch):
     """MemoryAgent 失败不影响整体协作状态。"""
     monkeypatch.setattr(
-        "app.services.memory.service.extract_memories",
+        "app.modules.memory.application.manage_memory.extract_memories",
         AsyncMock(side_effect=RuntimeError("memory store down")),
     )
     result = await writer_memory_node({
@@ -151,11 +154,11 @@ async def test_research_agent_concurrent_calls_gt_3(monkeypatch):
         return f"result-{subtask.task_id}"
 
     monkeypatch.setattr(
-        "app.services.planning_service.execute_subtask",
+        "app.modules.writing.application.planning.execute_subtask",
         fake_execute,
     )
     monkeypatch.setattr(
-        "app.services.planning_service._get_planner_llm",
+        "app.modules.writing.application.planning._get_planner_llm",
         lambda: MagicMock(),
     )
 
@@ -179,7 +182,7 @@ async def test_research_agent_with_no_tasks_preserves_legacy_empty_result():
 @pytest.mark.asyncio
 async def test_research_agent_failure_preserves_existing_report(monkeypatch):
     monkeypatch.setattr(
-        "app.services.planning_service.execute_task_plan",
+        "app.modules.writing.application.planning.execute_task_plan",
         AsyncMock(side_effect=RuntimeError("search failed")),
     )
     result = await research_node({
@@ -194,7 +197,7 @@ async def test_research_agent_failure_preserves_existing_report(monkeypatch):
 @pytest.mark.asyncio
 async def test_research_agent_failure_preserves_none_report(monkeypatch):
     monkeypatch.setattr(
-        "app.services.planning_service.execute_task_plan",
+        "app.modules.writing.application.planning.execute_task_plan",
         AsyncMock(side_effect=RuntimeError("search failed")),
     )
     result = await research_node({"plan": _mock_plan(), "sub_agent_states": {}})
@@ -208,18 +211,18 @@ async def test_run_writer_plan_end_to_end(monkeypatch):
     fake_llm = MagicMock()
     fake_llm.analyze = AsyncMock(return_value="初稿内容")
     monkeypatch.setattr(
-        "app.agents.writer.nodes.generate_draft._get_planner_llm",
+        "app.modules.writing.agent.nodes.generate_draft._get_planner_llm",
         lambda: fake_llm,
     )
     monkeypatch.setattr(
-        "app.agents.writer.nodes.planner.generate_plan",
+        "app.modules.writing.agent.nodes.planner.generate_plan",
         AsyncMock(return_value=_mock_plan()),
     )
     # mock execute_task_plan 避免真实 LLM
     async def fake_exec(plan):
         return {t.task_id: f"r-{t.task_id}" for t in plan.tasks}
     monkeypatch.setattr(
-        "app.services.planning_service.execute_task_plan",
+        "app.modules.writing.application.planning.execute_task_plan",
         fake_exec,
     )
     # mock 统一创作评审，首轮达标时不会触发重写
@@ -238,12 +241,12 @@ async def test_run_writer_plan_end_to_end(monkeypatch):
             summary="已达标",
         )
     monkeypatch.setattr(
-        "app.agents.writer.nodes.pipeline.evaluate_content",
+        "app.modules.writing.agent.nodes.pipeline.evaluate_content",
         fake_evaluate,
     )
     # mock memory
     monkeypatch.setattr(
-        "app.services.memory.service.extract_memories",
+        "app.modules.memory.application.manage_memory.extract_memories",
         AsyncMock(return_value=[]),
     )
 

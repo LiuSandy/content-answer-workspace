@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.api.routes.chats import _build_rag_payload
+from app.modules.conversation.api.router import _build_rag_payload
 
 
 def _fake_retrieval(has_evidence: bool, sources: list, fallback_reason: str | None = None):

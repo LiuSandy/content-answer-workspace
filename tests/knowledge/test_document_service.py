@@ -1,6 +1,6 @@
 import pytest
-from app.contracts.knowledge import KnowledgeDocumentStatus, SourceType
-from app.services.rag.document_service import DocumentService
+from app.modules.knowledge.domain.models import KnowledgeDocumentStatus, SourceType
+from app.modules.knowledge.application.document_service import DocumentService
 
 def test_determine_initial_status():
     md_status = DocumentService.determine_initial_status(SourceType.MARKDOWN)

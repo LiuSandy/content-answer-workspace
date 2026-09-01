@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.infrastructure.database import Base
-from app.infrastructure.database.models.chats import Chat, Message
-from app.services.chat_service import ChatService
+from app.platform.database import Base
+from app.modules.conversation.adapters.db.chats import Chat, Message
+from app.modules.conversation.application.chat_service import ChatService
 
 # SQLite compatible JSONB compilation rule
 @compiles(JSONB, "sqlite")
@@ -100,7 +100,7 @@ async def test_chat_branching_current_user_message_not_duplicated() -> None:
 
         # 用 ChatService 相同逻辑拼装 LangGraph 输入：历史 + 当前用户消息
         # 必须排除刚保存的当前用户消息（u2 不应出现在历史里）
-        from app.api.routes.chats import build_langgraph_history
+        from app.modules.conversation.api.router import build_langgraph_history
 
         history = build_langgraph_history(path_hist, str(u2.id))
         langgraph_messages = history + [{"role": "user", "content": "User Q2"}]

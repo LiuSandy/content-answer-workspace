@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.infrastructure.collectors.xiaohongshu_collector import XiaohongshuCollector
-from app.api.schemas.workflow import Topic, WorkflowConfig
-from app.services.xiaohongshu_service import XiaohongshuAccessError
+from app.plugins.sources.xiaohongshu_collector import XiaohongshuCollector
+from app.modules.acquisition.domain.workflow import Topic, WorkflowConfig
+from app.modules.acquisition.application.xiaohongshu import XiaohongshuAccessError
 
 SEARCH_HTML = """
 <html><body><script>
@@ -61,11 +61,11 @@ class XiaohongshuCollectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_imitate_mode_returns_one_item_per_note_with_full_detail(self) -> None:
         fetch_mock = AsyncMock(side_effect=[SEARCH_HTML, NOTE1_DETAIL_HTML, NOTE2_BROKEN_HTML])
         with patch(
-            "app.infrastructure.collectors.xiaohongshu_collector.load_xiaohongshu_cookie",
+            "app.plugins.sources.xiaohongshu_collector.load_xiaohongshu_cookie",
             return_value="a=1",
         ):
             collector = XiaohongshuCollector(fetcher=AsyncMock(fetch=fetch_mock))
-        with patch("app.infrastructure.collectors.xiaohongshu_collector.asyncio.sleep", new=AsyncMock()):
+        with patch("app.plugins.sources.xiaohongshu_collector.asyncio.sleep", new=AsyncMock()):
             items = await collector.collect([_topic()], _config("imitate"))
 
         self.assertEqual(len(items), 1)
@@ -76,11 +76,11 @@ class XiaohongshuCollectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_answer_mode_returns_items_only_for_question_like_comments(self) -> None:
         fetch_mock = AsyncMock(side_effect=[SEARCH_HTML, NOTE1_DETAIL_HTML, NOTE2_BROKEN_HTML])
         with patch(
-            "app.infrastructure.collectors.xiaohongshu_collector.load_xiaohongshu_cookie",
+            "app.plugins.sources.xiaohongshu_collector.load_xiaohongshu_cookie",
             return_value="a=1",
         ):
             collector = XiaohongshuCollector(fetcher=AsyncMock(fetch=fetch_mock))
-        with patch("app.infrastructure.collectors.xiaohongshu_collector.asyncio.sleep", new=AsyncMock()):
+        with patch("app.plugins.sources.xiaohongshu_collector.asyncio.sleep", new=AsyncMock()):
             items = await collector.collect([_topic()], _config("answer"))
 
         self.assertEqual(len(items), 1)
@@ -90,7 +90,7 @@ class XiaohongshuCollectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_login_wall_on_search_page_raises_access_error_without_swallowing(self) -> None:
         fetch_mock = AsyncMock(return_value=LOGIN_WALL_HTML)
         with patch(
-            "app.infrastructure.collectors.xiaohongshu_collector.load_xiaohongshu_cookie",
+            "app.plugins.sources.xiaohongshu_collector.load_xiaohongshu_cookie",
             return_value="a=1",
         ):
             collector = XiaohongshuCollector(fetcher=AsyncMock(fetch=fetch_mock))
@@ -99,7 +99,7 @@ class XiaohongshuCollectorTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_constructor_raises_when_cookie_missing(self) -> None:
         with patch(
-            "app.infrastructure.collectors.xiaohongshu_collector.load_xiaohongshu_cookie",
+            "app.plugins.sources.xiaohongshu_collector.load_xiaohongshu_cookie",
             return_value=None,
         ):
             with self.assertRaises(ValueError):

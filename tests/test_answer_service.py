@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.api.schemas.workflow import QuestionItem
-from app.services.answer_service import generate_answer_with_images
+from app.modules.acquisition.domain.workflow import QuestionItem
+from app.modules.writing.application.answer_service import generate_answer_with_images
 
 
 class AnswerServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -24,9 +24,9 @@ class AnswerServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with (
-            patch("app.services.answer_service.generate_answer", new=AsyncMock(return_value="这是一段测试回答")),
+            patch("app.modules.writing.application.answer_service.generate_answer", new=AsyncMock(return_value="这是一段测试回答")),
             patch(
-                "app.services.answer_service._image_generation_service.generate_images_for_answer",
+                "app.modules.writing.application.answer_service._image_generation_service.generate_images_for_answer",
                 new=AsyncMock(side_effect=ValueError("Missing required env: IMAGE_API_KEY")),
             ),
         ):

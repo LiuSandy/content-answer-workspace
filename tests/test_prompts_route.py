@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.server import app
-from app.prompts.registry import prompt_registry, warmup
+from app.bootstrap.server import app
+from app.platform.prompts.registry import prompt_registry, warmup
 
 
 @pytest.fixture(autouse=True)

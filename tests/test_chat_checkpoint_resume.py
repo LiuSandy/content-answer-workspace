@@ -14,11 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.context import branch_thread_id, compose_run_inputs
-from app.services.context.summary_updater import SummaryUpdater
-from app.infrastructure.database import Base
-from app.infrastructure.database.models.chats import Chat, Message
-from app.infrastructure.database.models.summaries import BranchSummary
+from app.modules.conversation.application.run_context import branch_thread_id, compose_run_inputs
+from app.modules.conversation.application.summary_updater import SummaryUpdater
+from app.platform.database import Base
+from app.modules.conversation.adapters.db.chats import Chat, Message
+from app.modules.conversation.adapters.db.summaries import BranchSummary
 
 try:
     from langgraph.graph.message import add_messages  # noqa: F401
@@ -59,7 +59,7 @@ def _make_graph(checkpointer):
 
 async def _build_branch(db, chat_id, n_msgs) -> list[Message]:
     """建立一条线性分支并返回分支消息。"""
-    from app.services.chat_service import ChatService
+    from app.modules.conversation.application.chat_service import ChatService
 
     async with db() as session:
         svc = ChatService(session)

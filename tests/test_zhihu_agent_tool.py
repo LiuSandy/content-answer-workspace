@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.agents._shared.tools import zhihu_tool
-from app.api.schemas.workflow import QuestionItem
+from app.plugins.tools.builtin import zhihu_tool
+from app.modules.acquisition.domain.workflow import QuestionItem
 
 
 @pytest.mark.asyncio

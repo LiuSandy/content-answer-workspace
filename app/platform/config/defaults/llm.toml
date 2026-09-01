@@ -1,0 +1,23 @@
+[llm.default]
+provider = "deepseek"
+model = "deepseek-v4-pro"
+
+[llm.providers.deepseek]
+base_url = "https://api.deepseek.com"
+default_model = "deepseek-v4-pro"
+timeout_seconds = 60.0
+
+[llm.providers.kimi]
+base_url = "https://api.moonshot.cn/v1"
+default_model = "kimi-k2.5"
+timeout_seconds = 60.0
+
+[llm.providers.minimax]
+base_url = "https://api.minimax.io/v1"
+default_model = "MiniMax-M3"
+timeout_seconds = 60.0
+
+[llm.providers.glm]
+base_url = "https://open.bigmodel.cn/api/paas/v4"
+default_model = "glm-4-flash"
+timeout_seconds = 60.0

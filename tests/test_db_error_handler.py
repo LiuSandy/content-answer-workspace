@@ -1,6 +1,6 @@
 import pytest
 from sqlalchemy.exc import DBAPIError
-from app.server import handle_db_exception
+from app.bootstrap.server import handle_db_exception
 
 
 @pytest.mark.asyncio

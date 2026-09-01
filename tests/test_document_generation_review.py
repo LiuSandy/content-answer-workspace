@@ -12,13 +12,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 
-from app.api.routes import documents as documents_route
-from app.contracts.dto import QualityReport
-from app.contracts.errors import LLMOutputError
-from app.infrastructure.database import Base
-from app.infrastructure.database.models.content import SourceItem
-from app.infrastructure.database.models.documents import AIOperation, AnswerDocument, AnswerVersion
-from app.infrastructure.database.models.quality_scores import QualityScoreModel
+from app.modules.documents.api import router as documents_route
+from app.shared.dto import QualityReport
+from app.shared.errors import LLMOutputError
+from app.platform.database import Base
+from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument, AnswerVersion
+from app.modules.writing.adapters.db.quality_scores import QualityScoreModel
 
 
 @compiles(JSONB, "sqlite")

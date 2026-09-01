@@ -6,8 +6,8 @@ import uuid
 import pytest
 from sqlalchemy import delete
 
-from app.services.memory.service import retrieve_memories
-from app.infrastructure.database.models.user_memories import UserMemoryModel
+from app.modules.memory.application.manage_memory import retrieve_memories
+from app.modules.memory.adapters.db.models import UserMemoryModel
 
 
 pytestmark = pytest.mark.skipif(
@@ -27,7 +27,7 @@ class _QueryEmbedder:
 
 @pytest.mark.asyncio
 async def test_memory_cosine_top_k_respects_workspace_and_status(monkeypatch):
-    from app.infrastructure.database.session import get_session_factory
+    from app.platform.database.session import get_session_factory
 
     factory = get_session_factory()
     workspace_id = f"memory-vector-test-{uuid.uuid4()}"
@@ -75,7 +75,7 @@ async def test_memory_cosine_top_k_respects_workspace_and_status(monkeypatch):
         await session.commit()
 
     monkeypatch.setattr(
-        "app.services.memory.service._get_embedding_provider",
+        "app.modules.memory.application.manage_memory._get_embedding_provider",
         lambda: _QueryEmbedder(),
     )
 

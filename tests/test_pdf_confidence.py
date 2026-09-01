@@ -2,7 +2,7 @@
 
 只覆盖高风险逻辑:启发式置信度函数的边界与基线行为,不依赖 MinerU 远端。
 """
-from app.infrastructure.files.parsers import _estimate_pdf_confidence, ParsedMarkdown
+from app.platform.files.parsers import _estimate_pdf_confidence, ParsedMarkdown
 
 
 def _norm_pages(text_len: int, pages: int, density_full: int = 500) -> float:

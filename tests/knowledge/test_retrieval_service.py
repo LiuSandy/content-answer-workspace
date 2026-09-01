@@ -1,5 +1,5 @@
 import pytest
-from app.services.rag.retrieval_service import (
+from app.modules.knowledge.application.retrieval_service import (
     SearchHit,
     compute_rrf,
     evaluate_evidence_threshold,

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.messages import AIMessage
 
-from app.config.runtime import AGENT_MAX_RECURSION
+from app.platform.config.runtime import AGENT_MAX_RECURSION
 
 
 def test_recursion_limit_constant_is_20():
@@ -16,7 +16,7 @@ def test_recursion_limit_constant_is_20():
 def test_chat_route_config_includes_recursion_limit():
     """chats.py 的 LangGraph config 携带集中配置的 recursion_limit。"""
     import inspect
-    import app.api.routes.chats as chats_mod
+    import app.modules.conversation.api.router as chats_mod
 
     source = inspect.getsource(chats_mod)
     assert "recursion_limit" in source
@@ -25,7 +25,7 @@ def test_chat_route_config_includes_recursion_limit():
 
 def test_run_service_config_includes_recursion_limit():
     import inspect
-    import app.services.chat_conversation_run_service as svc
+    import app.modules.conversation.application.run_service as svc
 
     source = inspect.getsource(svc)
     assert "recursion_limit" in source
@@ -36,7 +36,7 @@ def test_run_service_config_includes_recursion_limit():
 async def test_graph_recursion_error_caught_on_runaway_loop(monkeypatch):
     """ReAct 环死循环（LLM 永远返回 tool_calls）时，图在 recursion_limit 处被截断。"""
     from langgraph.checkpoint.memory import MemorySaver
-    from app.agents.chat.graph import build_chat_agent_graph
+    from app.modules.conversation.agent.graph import build_chat_agent_graph
 
     # LLM 永远要调工具，制造死循环
     class RunawayProvider:
@@ -51,15 +51,15 @@ async def test_graph_recursion_error_caught_on_runaway_loop(monkeypatch):
                 }],
             )
 
-    from app.agents.chat.nodes import route_intent as ri
-    from app.agents.chat.nodes import chat as chat_mod
-    import app.services.memory.service as msvc
+    from app.modules.conversation.agent.nodes import route_intent as ri
+    from app.modules.conversation.agent.nodes import chat as chat_mod
+    import app.modules.memory.application.manage_memory as msvc
 
     fr = MagicMock(); fr.to_llm_request.return_value = MagicMock()
-    fp = MagicMock()
-    fp.generate = AsyncMock(return_value=MagicMock(content='{"intent":"chat","knowledge_mode":"normal"}'))
-    frg = MagicMock(); frg.get.return_value = fp
-    ri.llm_provider_registry = frg
+    from tests.llm_fakes import structured_gateway
+    ri._get_intent_gateway = lambda: structured_gateway(
+        '{"intent":"chat","knowledge_mode":"normal"}'
+    )
     ri.prompt_registry = MagicMock(render=MagicMock(return_value=fr))
     msvc.retrieve_memories = AsyncMock(return_value=[])
     chat_mod._get_chat_provider = lambda: RunawayProvider()

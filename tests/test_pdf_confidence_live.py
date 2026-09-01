@@ -17,8 +17,8 @@ import fitz
 import pytest
 from unittest.mock import AsyncMock
 
-from app.api.routes.knowledge import _parse_pdf_to_markdown
-from app.infrastructure.files.parsers import ParsedMarkdown
+from app.modules.knowledge.api.router import _parse_pdf_to_markdown
+from app.platform.files.parsers import ParsedMarkdown
 
 
 def _make_pdf_bytes(num_pages: int = 10) -> bytes:
@@ -31,7 +31,7 @@ def _make_pdf_bytes(num_pages: int = 10) -> bytes:
 
 def _make_settings(mineru_key: str = "fake-key"):
     """构造带 MinerU 配置的 fake settings。"""
-    from app.config.runtime import KnowledgeSettings
+    from app.platform.config.runtime import KnowledgeSettings
     return KnowledgeSettings(mineru_api_key=mineru_key)
 
 
@@ -43,7 +43,7 @@ async def test_scan_like_pdf_with_mineru_returns_low_confidence(monkeypatch):
     async def _fake_single_chunk(_self, _client, _chunk, _filename):
         return "a" * 25 + "\ufffd" * 25  # 50 字符，一半替换字符
     monkeypatch.setattr(
-        "app.infrastructure.files.parsers.MinerUCloudParser._parse_single_chunk",
+        "app.platform.files.parsers.MinerUCloudParser._parse_single_chunk",
         _fake_single_chunk,
     )
 
@@ -65,7 +65,7 @@ async def test_rich_text_pdf_with_mineru_returns_high_confidence(monkeypatch):
     async def _fake_single_chunk(_self, _client, _chunk, _filename):
         return "x" * 5000  # 密度 500/页，纯净
     monkeypatch.setattr(
-        "app.infrastructure.files.parsers.MinerUCloudParser._parse_single_chunk",
+        "app.platform.files.parsers.MinerUCloudParser._parse_single_chunk",
         _fake_single_chunk,
     )
 
@@ -95,7 +95,7 @@ async def test_mineru_failure_raises(monkeypatch):
     async def _raising_chunk(_self, _client, _chunk, _filename):
         raise RuntimeError("MinerU API down")
     monkeypatch.setattr(
-        "app.infrastructure.files.parsers.MinerUCloudParser._parse_single_chunk",
+        "app.platform.files.parsers.MinerUCloudParser._parse_single_chunk",
         _raising_chunk,
     )
 

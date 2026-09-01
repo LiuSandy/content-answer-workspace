@@ -12,7 +12,8 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
-from app.agents.chat.graph import build_chat_agent_graph
+from app.modules.conversation.agent.graph import build_chat_agent_graph
+from tests.llm_fakes import structured_gateway
 
 
 def _tool_msg(content: str) -> ToolMessage:
@@ -23,21 +24,16 @@ def _tool_msg(content: str) -> ToolMessage:
 def graph(monkeypatch):
     fake_rendered = MagicMock()
     fake_rendered.to_llm_request.return_value = MagicMock()
-    fake_provider = MagicMock()
-    fake_provider.generate = AsyncMock(
-        return_value=MagicMock(content='{"intent": "chat", "knowledge_mode": "normal"}')
-    )
-    fake_registry = MagicMock()
-    fake_registry.get.return_value = fake_provider
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.llm_provider_registry", fake_registry
+        "app.modules.conversation.agent.nodes.route_intent._get_intent_gateway",
+        lambda: structured_gateway('{"intent": "chat", "knowledge_mode": "normal"}'),
     )
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.prompt_registry",
+        "app.modules.conversation.agent.nodes.route_intent.prompt_registry",
         MagicMock(render=MagicMock(return_value=fake_rendered)),
     )
     monkeypatch.setattr(
-        "app.services.memory.service.retrieve_memories", AsyncMock(return_value=[])
+        "app.modules.memory.application.manage_memory.retrieve_memories", AsyncMock(return_value=[])
     )
     return build_chat_agent_graph(MemorySaver())
 
@@ -93,7 +89,7 @@ async def test_graph_native_interrupt_resumes_without_repeating_tool(graph, monk
             # 第二次调用：直接回复
             return AIMessage(content="done")
 
-    from app.agents.chat.nodes import chat as chat_mod
+    from app.modules.conversation.agent.nodes import chat as chat_mod
     monkeypatch.setattr(chat_mod, "_get_chat_provider", lambda: FakeProvider())
 
     # mock 工具底层 _run 返回 YAML list（仅 1 条，触发 requested=5 但 total=1 的冲突）
@@ -103,7 +99,7 @@ async def test_graph_native_interrupt_resumes_without_repeating_tool(graph, monk
         tool_calls["n"] += 1
         return yaml_payload
     monkeypatch.setattr(
-        "app.agents._shared.tools.xiaohongshu_tool._run",
+        "app.plugins.tools.builtin.xiaohongshu_tool._run",
         fake_run,
     )
 
@@ -131,7 +127,7 @@ async def test_graph_normal_chat_no_hitl(graph, monkeypatch):
             calls["n"] += 1
             return AIMessage(content="普通回答")
 
-    from app.agents.chat.nodes import chat as chat_mod
+    from app.modules.conversation.agent.nodes import chat as chat_mod
     monkeypatch.setattr(chat_mod, "_get_chat_provider", lambda: FakeProvider())
 
     base = _base_state("你好")

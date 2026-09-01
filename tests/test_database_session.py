@@ -1,6 +1,6 @@
 import pytest
 
-from app.infrastructure.database.session import _build_database_url
+from app.platform.database.session import _build_database_url
 
 
 def _clear_database_env(monkeypatch: pytest.MonkeyPatch) -> None:

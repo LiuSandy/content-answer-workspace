@@ -11,12 +11,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.services.outline_service import OutlineService
-from app.contracts.errors import DocumentConflictError
-from app.infrastructure.database import Base
-from app.infrastructure.database.models.content import SourceItem
-from app.services.document_service import DocumentService
-from app.infrastructure.database.models.documents import AIOperation, AnswerDocument
+from app.modules.writing.application.outline import OutlineService
+from app.shared.errors import DocumentConflictError
+from app.platform.database import Base
+from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.documents.application.documents import DocumentService
+from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument
 
 
 @compiles(JSONB, "sqlite")
@@ -80,7 +80,7 @@ async def test_generate_produces_viewpoint_and_outline(monkeypatch):
         questions=["偏好什么风格？"],
         sections=[{"heading":"开场","keyPoints":["h1"],"wordCountEstimate":100}],
     )
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: fake_llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: fake_llm)
 
     async with db() as session:
         svc = OutlineService(session)
@@ -98,7 +98,7 @@ async def test_generate_persists_operation_before_linking_document(monkeypatch):
     db, engine = await _make_fk_db()
     doc_id, si_id, lv = await _setup_doc(db)
     fake_llm = _mock_outline_llm()
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: fake_llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: fake_llm)
 
     async with db() as session:
         result = await OutlineService(session).generate(doc_id, si_id, "default", lv)
@@ -117,7 +117,7 @@ async def test_generate_with_answers_injects_context(monkeypatch):
     db, engine = await _make_db()
     doc_id, si_id, lv = await _setup_doc(db)
     llm = _mock_outline_llm(questions=None)
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: llm)
 
     async with db() as session:
         svc = OutlineService(session)
@@ -135,7 +135,7 @@ async def test_edit_outline_updates_sections(monkeypatch):
     db, engine = await _make_db()
     doc_id, si_id, lv = await _setup_doc(db)
     fake_llm = _mock_outline_llm()
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: fake_llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: fake_llm)
 
     async with db() as session:
         svc = OutlineService(session)
@@ -155,7 +155,7 @@ async def test_edit_outline_creates_new_version_and_keeps_original(monkeypatch):
     fake_llm = _mock_outline_llm(
         sections=[{"heading": "原始大纲", "keyPoints": [], "wordCountEstimate": 100}]
     )
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: fake_llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: fake_llm)
 
     async with db() as session:
         svc = OutlineService(session)
@@ -186,7 +186,7 @@ async def test_restoring_answer_version_selects_its_outline(monkeypatch):
     db, engine = await _make_db()
     doc_id, si_id, lv = await _setup_doc(db)
     fake_llm = _mock_outline_llm()
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: fake_llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: fake_llm)
 
     async with db() as session:
         outline_service = OutlineService(session)
@@ -229,7 +229,7 @@ async def test_regenerate_replaces_outline(monkeypatch):
     db, engine = await _make_db()
     doc_id, si_id, lv = await _setup_doc(db)
     llm1 = _mock_outline_llm(sections=[{"heading":"旧","keyPoints":[],"wordCountEstimate":50}])
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: llm1)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: llm1)
 
     async with db() as session:
         svc = OutlineService(session)
@@ -237,7 +237,7 @@ async def test_regenerate_replaces_outline(monkeypatch):
         assert r1.outline[0]["heading"] == "旧"
 
     llm2 = _mock_outline_llm(sections=[{"heading":"新","keyPoints":[],"wordCountEstimate":50}])
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: llm2)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: llm2)
 
     async with db() as session:
         svc = OutlineService(session)
@@ -252,7 +252,7 @@ async def test_confirm_sets_confirmed_and_lock(monkeypatch):
     db, engine = await _make_db()
     doc_id, si_id, lv = await _setup_doc(db)
     llm = _mock_outline_llm()
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: llm)
 
     async with db() as session:
         svc = OutlineService(session)
@@ -268,9 +268,9 @@ async def test_confirm_on_confirmed_raises(monkeypatch):
     db, engine = await _make_db()
     doc_id, si_id, lv = await _setup_doc(db)
     llm = _mock_outline_llm()
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: llm)
 
-    from app.services.outline_service import OutlineError
+    from app.modules.writing.application.outline import OutlineError
 
     async with db() as session:
         svc = OutlineService(session)
@@ -287,7 +287,7 @@ async def test_get_current_restores_outline(monkeypatch):
     db, engine = await _make_db()
     doc_id, si_id, lv = await _setup_doc(db)
     llm = _mock_outline_llm(questions=["Q?"])
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: llm)
 
     async with db() as session:
         svc = OutlineService(session)
@@ -308,7 +308,7 @@ async def test_generate_with_document_lock_conflict(monkeypatch):
     db, engine = await _make_db()
     doc_id, si_id, lv = await _setup_doc(db)
     llm = _mock_outline_llm()
-    monkeypatch.setattr("app.services.llm_service.LLMServiceAdapter", lambda: llm)
+    monkeypatch.setattr("app.modules.writing.application.outline.get_writing_llm", lambda: llm)
 
     async with db() as session:
         svc = OutlineService(session)

@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.agents.chat.nodes.route_intent import route_intent_node
+from app.modules.conversation.agent.nodes.route_intent import route_intent_node
+from tests.llm_fakes import structured_gateway
 
 
 def _make_mock_deps(monkeypatch, llm_content: str):
@@ -17,19 +18,14 @@ def _make_mock_deps(monkeypatch, llm_content: str):
     fake_rendered = MagicMock()
     fake_rendered.structured_methods = ["json_mode", "generic_parse"]
     fake_rendered.to_llm_request.return_value = MagicMock()
-    fake_provider = MagicMock()
-    fake_provider.generate = AsyncMock(
-        return_value=MagicMock(content=llm_content)
-    )
-    fake_registry = MagicMock()
-    fake_registry.get_default.return_value = fake_provider
     fake_prompt_registry = MagicMock()
     fake_prompt_registry.render.return_value = fake_rendered
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.llm_provider_registry", fake_registry
+        "app.modules.conversation.agent.nodes.route_intent._get_intent_gateway",
+        lambda: structured_gateway(llm_content),
     )
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.prompt_registry", fake_prompt_registry
+        "app.modules.conversation.agent.nodes.route_intent.prompt_registry", fake_prompt_registry
     )
 
 

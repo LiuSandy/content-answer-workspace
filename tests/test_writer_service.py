@@ -10,20 +10,20 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.services.context.writing_background import WritingBackground
-from app.services.document_service import DocumentService
-from app.services.writing_service import (
+from app.modules.writing.application.context import WritingBackground
+from app.modules.documents.application.documents import DocumentService
+from app.modules.writing.application.writing_service import (
     WriterRunCapture,
     _version_type_for,
     finalize_deferred_writer_run,
     run_writer_stream,
 )
-from app.contracts.knowledge import SourceType
-from app.infrastructure.database import Base
-from app.infrastructure.database.models.content import SourceItem
-from app.infrastructure.database.models.documents import AIOperation, AnswerDocument, AnswerVersion
+from app.modules.knowledge.domain.models import SourceType
+from app.platform.database import Base
+from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument, AnswerVersion
 
-from app.prompts.registry import prompt_registry, RenderedPrompt
+from app.platform.prompts.registry import prompt_registry, RenderedPrompt
 
 
 @compiles(JSONB, "sqlite")
@@ -49,8 +49,8 @@ async def _setup_doc(db) -> tuple[uuid.UUID, uuid.UUID]:
 
 
 def _fake_rendered():
-    from app.prompts.registry import RenderedPrompt
-    from app.contracts.dto import LLMMessage
+    from app.platform.prompts.registry import RenderedPrompt
+    from app.shared.dto import LLMMessage
     return RenderedPrompt(
         prompt_id="test",
         messages=[LLMMessage(role="system", content="system"), LLMMessage(role="user", content="user")],
@@ -69,8 +69,8 @@ def _mock_provider(monkeypatch, content="streamed text"):
         yield SimpleNamespace(delta=content, input_tokens=10, output_tokens=5)
     fake.stream.return_value = _event_gen()
     monkeypatch.setattr(
-        "app.services.writing_service.llm_provider_registry.get",
-        lambda _k: fake,
+        "app.modules.writing.application.writing_service._get_llm_gateway",
+        lambda: fake,
     )
     return fake
 
@@ -126,7 +126,7 @@ async def test_run_writer_stream_refine_with_assembler(monkeypatch):
 
         # 验证版本保存了完整内容
         from sqlalchemy import select
-        from app.infrastructure.database.models.documents import AnswerVersion
+        from app.modules.documents.adapters.db.models import AnswerVersion
         versions = (await session.execute(
             select(AnswerVersion).where(AnswerVersion.document_id == doc_id)
         )).scalars().all()
@@ -380,7 +380,7 @@ async def test_finalize_deferred_writer_retries_lock_conflict_without_duplicate_
         )]
 
         async with db() as competing_session:
-            from app.services.document_service import DocumentService
+            from app.modules.documents.application.documents import DocumentService
 
             await DocumentService(competing_session).update_content(
                 doc_id, "concurrent edit", expected_lock_version=1

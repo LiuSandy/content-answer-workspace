@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.services.workflow_service import WorkflowService
-from app.api.schemas.workflow import ParseQuestionUrlPayload, QuestionItem, Topic
-from app.services.zhihu_service import (
+from app.modules.acquisition.application.workflow import WorkflowService
+from app.modules.acquisition.domain.workflow import ParseQuestionUrlPayload, QuestionItem, Topic
+from app.modules.acquisition.application.zhihu import (
     extract_zhihu_question_id,
     extract_zhihu_question_snapshot_from_html,
     extract_zhihu_question_snapshot_from_state,
@@ -47,7 +47,7 @@ class ZhihuImportTests(unittest.IsolatedAsyncioTestCase):
             excerpt="",
             detail="",
         )
-        with patch("app.services.zhihu_service.fetch_question_details", new=AsyncMock(return_value=fallback_item)):
+        with patch("app.modules.acquisition.application.zhihu.fetch_question_details", new=AsyncMock(return_value=fallback_item)):
             with self.assertRaisesRegex(ValueError, "未能解析知乎问题内容"):
                 await fetch_zhihu_question_by_url(
                     "https://www.zhihu.com/question/4497183579",
@@ -67,7 +67,7 @@ class ZhihuImportTests(unittest.IsolatedAsyncioTestCase):
             excerpt="除了网站本身外，还需要做那些工作。",
             detail="除了网站本身外，还需要做那些工作。",
         )
-        with patch("app.services.zhihu_service.fetch_question_details", new=AsyncMock(return_value=resolved_item)):
+        with patch("app.modules.acquisition.application.zhihu.fetch_question_details", new=AsyncMock(return_value=resolved_item)):
             item = await fetch_zhihu_question_by_url(
                 "https://www.zhihu.com/question/4497183579",
                 "Mozilla/5.0",
@@ -254,7 +254,7 @@ class ZhihuImportTests(unittest.IsolatedAsyncioTestCase):
             topic=Topic(id="algo", name="数据结构与算法", keywords=["算法"]),
         )
 
-        with patch("app.services.workflow_service.fetch_zhihu_question_by_url", new=AsyncMock(return_value=imported_item)):
+        with patch("app.modules.acquisition.application.workflow.fetch_zhihu_question_by_url", new=AsyncMock(return_value=imported_item)):
             item = await service.parse_question_url(payload)
 
         self.assertEqual(item.topic, "个人网站 / Web 开发")

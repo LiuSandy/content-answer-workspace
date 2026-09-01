@@ -1,5 +1,5 @@
 import pytest
-from app.agents.chat.nodes.knowledge_decision import make_knowledge_decision
+from app.modules.conversation.agent.nodes.knowledge_decision import make_knowledge_decision
 
 
 def test_knowledge_decision_node():

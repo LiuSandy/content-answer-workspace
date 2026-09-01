@@ -16,10 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.api.routes.chats import router as chats_router
-from app.agents._shared.runtime import ChatRuntime
-from app.services.chat_service import ChatService
-from app.infrastructure.database import Base
+from app.modules.conversation.api.router import router as chats_router
+from app.shared.agent.runtime import ChatRuntime
+from app.modules.conversation.application.chat_service import ChatService
+from app.platform.database import Base
 
 _RECORDED_RUNS: list[dict] = []
 
@@ -185,7 +185,7 @@ async def test_per_chat_run_lock_serializes_runs():
 @pytest.mark.asyncio
 async def test_route_intent_keeps_hitl_selection():
     """续跑轮意图入口不清空 hitl_selection，只重置本轮 pending/choice。"""
-    from app.agents.chat.nodes.route_intent import route_intent_node
+    from app.modules.conversation.agent.nodes.route_intent import route_intent_node
 
     result = await route_intent_node(
         {

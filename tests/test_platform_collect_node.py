@@ -29,7 +29,7 @@ def _state() -> dict:
 
 
 def test_explicit_zhihu_query_has_deterministic_platform_route(monkeypatch):
-    from app.agents.chat.nodes import platform_collect
+    from app.modules.conversation.agent.nodes import platform_collect
 
     tool = _FakeSearchTool({"platform": "zhihu", "items": []})
     monkeypatch.setattr(platform_collect, "ALL_TOOLS", [tool])
@@ -39,7 +39,7 @@ def test_explicit_zhihu_query_has_deterministic_platform_route(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_platform_collect_invokes_only_matching_tool_once(monkeypatch):
-    from app.agents.chat.nodes import platform_collect
+    from app.modules.conversation.agent.nodes import platform_collect
 
     tool = _FakeSearchTool(
         {
@@ -69,7 +69,7 @@ async def test_platform_collect_invokes_only_matching_tool_once(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_platform_collect_turns_tool_error_into_terminal_response(monkeypatch):
-    from app.agents.chat.nodes import platform_collect
+    from app.modules.conversation.agent.nodes import platform_collect
 
     tool = _FakeSearchTool(
         {
@@ -95,7 +95,7 @@ async def test_platform_collect_turns_tool_error_into_terminal_response(monkeypa
 
 @pytest.mark.asyncio
 async def test_platform_collect_exposes_generic_tool_error_reason(monkeypatch):
-    from app.agents.chat.nodes import platform_collect
+    from app.modules.conversation.agent.nodes import platform_collect
 
     tool = _FakeSearchTool(
         {
@@ -116,7 +116,7 @@ async def test_platform_collect_exposes_generic_tool_error_reason(monkeypatch):
 
 
 def test_generic_chat_has_no_platform_search_route(monkeypatch):
-    from app.agents.chat.nodes import platform_collect
+    from app.modules.conversation.agent.nodes import platform_collect
 
     monkeypatch.setattr(
         platform_collect,
@@ -131,7 +131,7 @@ def test_generic_chat_has_no_platform_search_route(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_platform_collect_passes_parsed_limit_and_sort(monkeypatch):
-    from app.agents.chat.nodes import platform_collect
+    from app.modules.conversation.agent.nodes import platform_collect
 
     tool = _FakeSearchTool({"platform": "zhihu", "items": []})
     monkeypatch.setattr(platform_collect, "ALL_TOOLS", [tool])

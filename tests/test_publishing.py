@@ -10,10 +10,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.api.routes.publishing import router
-from app.infrastructure.database import Base
-from app.infrastructure.database.models.content import SourceItem
-from app.infrastructure.database.models.documents import AnswerDocument
+from app.modules.publishing.api.router import router
+from app.platform.database import Base
+from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.documents.adapters.db.models import AnswerDocument
 
 
 @compiles(JSONB, "sqlite")
@@ -48,7 +48,7 @@ async def _setup(db):
 async def test_draft_to_ready(monkeypatch):
     db, engine = await _make_db()
     monkeypatch.setattr(
-        "app.api.routes.publishing.get_session_factory", lambda: db
+        "app.modules.publishing.api.router.get_session_factory", lambda: db
     )
     did = await _setup(db)
     app = _make_app(db)
@@ -70,7 +70,7 @@ async def test_draft_to_ready(monkeypatch):
 async def test_ready_to_published_with_url(monkeypatch):
     db, engine = await _make_db()
     monkeypatch.setattr(
-        "app.api.routes.publishing.get_session_factory", lambda: db
+        "app.modules.publishing.api.router.get_session_factory", lambda: db
     )
     did = await _setup(db)
     app = _make_app(db)
@@ -91,7 +91,7 @@ async def test_ready_to_published_with_url(monkeypatch):
 async def test_invalid_transition_rejected(monkeypatch):
     db, engine = await _make_db()
     monkeypatch.setattr(
-        "app.api.routes.publishing.get_session_factory", lambda: db
+        "app.modules.publishing.api.router.get_session_factory", lambda: db
     )
     did = await _setup(db)
     app = _make_app(db)
@@ -108,7 +108,7 @@ async def test_invalid_transition_rejected(monkeypatch):
 async def test_metrics_crud(monkeypatch):
     db, engine = await _make_db()
     monkeypatch.setattr(
-        "app.api.routes.publishing.get_session_factory", lambda: db
+        "app.modules.publishing.api.router.get_session_factory", lambda: db
     )
     did = await _setup(db)
     app = _make_app(db)

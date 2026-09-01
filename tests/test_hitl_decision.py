@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
-from app.agents.chat.nodes.hitl_decision import (
+from app.modules.conversation.agent.nodes.hitl_decision import (
     _build_choice_message,
     _find_conflict,
     hitl_decision_node,
@@ -80,7 +80,7 @@ async def test_hitl_decision_node_resumes_with_native_selection(monkeypatch):
     })
     state = {"messages": [_tool_msg(conflict_payload)]}
     monkeypatch.setattr(
-        "app.agents.chat.nodes.hitl_decision.interrupt",
+        "app.modules.conversation.agent.nodes.hitl_decision.interrupt",
         lambda payload: "use_found",
     )
     out = await hitl_decision_node(state)

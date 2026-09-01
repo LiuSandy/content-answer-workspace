@@ -1,5 +1,5 @@
 import pytest
-from app.infrastructure.files.parsers import MarkdownParser, TextParser, HtmlCleanerParser
+from app.platform.files.parsers import MarkdownParser, TextParser, HtmlCleanerParser
 
 
 @pytest.mark.asyncio
@@ -33,7 +33,7 @@ async def test_html_cleaner_parser():
 
 def test_pdf_splitter():
     import fitz
-    from app.infrastructure.files.parsers import PdfSplitter
+    from app.platform.files.parsers import PdfSplitter
 
     # 创建一个 5 页的测试 PDF
     doc = fitz.open()

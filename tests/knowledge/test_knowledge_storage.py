@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import uuid4
 import pytest
-from app.infrastructure.database.repositories.knowledge_storage import KnowledgeStorage
+from app.modules.knowledge.adapters.db.storage import KnowledgeStorage
 
 
 def test_knowledge_storage_paths(tmp_path: Path):

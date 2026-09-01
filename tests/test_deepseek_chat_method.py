@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.contracts.dto import LLMResponse
-from app.services.llm.answer_generator import AnswerGenerationService
+from app.shared.llm.dto import LLMResponse
+from app.modules.writing.application.answer_generator import AnswerGenerationService
 
 
 class DeepSeekChatMethodTests(unittest.IsolatedAsyncioTestCase):
@@ -12,11 +12,10 @@ class DeepSeekChatMethodTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_chat_passes_messages_through_and_returns_content(self) -> None:
         provider = MagicMock()
-        provider.default_model = "model-x"
         provider.generate = AsyncMock(
             return_value=LLMResponse(content="你好，我能帮你梳理选题思路。")
         )
-        generator = AnswerGenerationService(provider=provider)
+        generator = AnswerGenerationService(gateway=provider)
 
         messages = [
             {"role": "system", "content": "你是内容策略助手"},
@@ -25,15 +24,13 @@ class DeepSeekChatMethodTests(unittest.IsolatedAsyncioTestCase):
         reply = await generator.chat(messages)
 
         self.assertEqual(reply, "你好，我能帮你梳理选题思路。")
-        request = provider.generate.await_args.args[0]
-        self.assertEqual(request.model, "model-x")
+        request = provider.generate.await_args.kwargs["request"]
         self.assertEqual([message.model_dump() for message in request.messages], messages)
 
     async def test_chat_raises_when_content_empty(self) -> None:
         provider = MagicMock()
-        provider.default_model = "model-x"
         provider.generate = AsyncMock(return_value=LLMResponse(content=""))
-        generator = AnswerGenerationService(provider=provider)
+        generator = AnswerGenerationService(gateway=provider)
 
         with self.assertRaises(ValueError):
             await generator.chat([{"role": "user", "content": "hi"}])

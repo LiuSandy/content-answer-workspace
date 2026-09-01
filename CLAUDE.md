@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 uv sync                                        # 安装依赖
-uv run python -m app.server                    # 启动后端 http://127.0.0.1:8000
+uv run python -m app.bootstrap.server                    # 启动后端 http://127.0.0.1:8000
 uv run pytest tests/                           # 运行所有测试
 uv run pytest tests/test_answer_service.py -v  # 运行单个测试文件
 ```
@@ -52,19 +52,17 @@ mv frontend/@/components/ui/<component>.tsx frontend/src/components/ui/<componen
 
 ```
 app/
-├── server.py              # FastAPI 入口，挂载路由，托管 frontend/dist
-├── models.py              # 全局 Pydantic 模型（Topic, QuestionItem, WorkflowConfig…）
-├── core/config.py         # 环境变量读取与 WorkflowConfig 构建
-├── application/
-│   └── workflow_service.py  # 用例编排：collect / generate_one / generate_many / run
-├── api/routes/            # workflow.py / session.py / config.py
-├── services/              # zhihu_service / answer_service / session_service / topic_expansion
-└── infrastructure/
-    ├── collectors/factory.py   # CollectorFactory（按 platform 实例化）
-    └── llm/deepseek_client.py  # OpenAI-compatible LLM 客户端
+├── bootstrap/             # FastAPI composition root、依赖容器、路由与生命周期
+├── modules/               # 业务模块：conversation / writing / memory / knowledge 等
+├── plugins/               # 可替换能力：LLM / sources / embeddings / rerankers / tools
+├── platform/              # 配置、数据库、文件、HTTP、可观测性、Prompt、调度与任务运行时
+├── shared/                # 稳定 DTO、错误与 Port 契约
+└── evaluation/            # 检索评测数据、指标与运行器
 ```
 
-`WorkflowService`（`application/`）是核心编排层：串联采集器 → 主题扩展 → 去重截断 → 回答生成。
+业务编排归属各模块的 `application/`。Application 调用 LLM 时只能依赖
+`LLMGatewayPort`；Resolver、Registry、Provider 和 SDK 均封装在 `plugins/llm/`。
+业务模型由 Prompt 的 `model.profile` 选择，未指定时使用全局默认模型。
 
 ### 前端状态流
 
@@ -129,9 +127,10 @@ cp .env.example .env
 
 | 变量 | 说明 |
 |------|------|
-| `OPENAI_API_KEY` | 必填 |
-| `OPENAI_BASE_URL` | 默认：智谱 AI `https://open.bigmodel.cn/api/paas/v4/` |
-| `OPENAI_MODEL` | 默认：`GLM-4.7` |
+| `DEEPSEEK_API_KEY` | 默认 Provider 凭据 |
+| `KIMI_API_KEY` | Kimi Provider 凭据（按 purpose 启用） |
+| `MINIMAX_API_KEY` | MiniMax Provider 凭据（按 purpose 启用） |
+| `OPENAI_API_KEY` | GLM/OpenAI-compatible Provider 凭据（按 purpose 启用） |
 | `ZHIHU_COOKIE_FILE` | 知乎 cookie 文件路径（默认 `.secrets/zhihu.cookie`） |
 | `TEST_MODE` | `true` 时不追加公众号 CTA 文本 |
 | `MAX_PUSH_COUNT` | 单次采集上限，最大 100 |
@@ -139,6 +138,6 @@ cp .env.example .env
 ## 扩展平台
 
 新增采集平台只需：
-1. 实现 `domain/ports.py` 中的 `Collector` 接口
-2. 放入 `infrastructure/collectors/`
-3. 在 `infrastructure/collectors/factory.py` 的 `CollectorFactory.create()` 中注册 platform 名称
+1. 实现 `app/shared/ports.py` 中的 Collector Port
+2. 将适配器放入 `app/plugins/sources/`
+3. 在 `app/plugins/sources/factory.py` 注册 platform 名称

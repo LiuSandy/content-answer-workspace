@@ -8,17 +8,17 @@ import fitz
 import pytest
 from sqlalchemy import delete, select
 
-from app.services.rag.ingestion_service import IngestionExecutor, SourceIngestionService
-from app.config.runtime import get_knowledge_settings
-from app.infrastructure.files.parsers import ParsedMarkdown
-from app.infrastructure.files.source_files import SourceFileStorage
-from app.infrastructure.database.models.knowledge import (
+from app.modules.knowledge.application.ingestion_service import IngestionExecutor, SourceIngestionService
+from app.platform.config.runtime import get_knowledge_settings
+from app.platform.files.parsers import ParsedMarkdown
+from app.platform.files.source_files import SourceFileStorage
+from app.modules.knowledge.adapters.db.models import (
     KnowledgeDocumentModel,
     KnowledgeIngestionJobModel,
     KnowledgeIngestionPageModel,
     KnowledgeSourceFileModel,
 )
-from app.infrastructure.database.session import get_session_factory
+from app.platform.database.session import get_session_factory
 
 
 pytestmark = pytest.mark.skipif(
@@ -80,7 +80,7 @@ async def test_page_ingestion_persists_pages_and_skips_successes_after_resume(tm
             markdown=f"---\ndoc_id: {doc_id}\n---\n\n{filename}", confidence=0.9
         )
 
-    monkeypatch.setattr("app.api.routes.knowledge._parse_pdf_to_markdown", fake_parse)
+    monkeypatch.setattr("app.modules.knowledge.api.router._parse_pdf_to_markdown", fake_parse)
     factory = get_session_factory()
     source_id = document_id = None
     try:
@@ -147,7 +147,7 @@ async def test_failed_page_does_not_block_candidate_merge(tmp_path, monkeypatch)
             markdown=f"---\ndoc_id: {doc_id}\n---\n\n{filename}", confidence=0.8
         )
 
-    monkeypatch.setattr("app.api.routes.knowledge._parse_pdf_to_markdown", fake_parse)
+    monkeypatch.setattr("app.modules.knowledge.api.router._parse_pdf_to_markdown", fake_parse)
     factory = get_session_factory()
     source_id = document_id = None
     try:

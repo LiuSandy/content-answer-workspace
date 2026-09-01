@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.api.schemas.workflow import Topic
-from app.services import zhihu_service
+from app.modules.acquisition.domain.workflow import Topic
+from app.modules.acquisition.application import zhihu as zhihu_service
 
 
 def test_extract_zhihu_search_items_from_rendered_html() -> None:

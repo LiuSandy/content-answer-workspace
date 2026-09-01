@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from app.agents._shared.tools.xiaohongshu_tool import (
+from app.plugins.tools.builtin.xiaohongshu_tool import (
     _dedupe,
     _normalize_item,
     _sort_by_recent,
@@ -78,5 +78,5 @@ def test_sort_then_dedupe_then_truncate():
 
 def test_search_tool_limit_clamps():
     """limit 参数被钳制在 1..20 之间。"""
-    from app.agents._shared.tools.xiaohongshu_tool import _MAX_ITEMS
+    from app.plugins.tools.builtin.xiaohongshu_tool import _MAX_ITEMS
     assert _MAX_ITEMS == 20
