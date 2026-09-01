@@ -8,9 +8,9 @@ from typing import Any, Literal
 
 from app.platform.config.runtime import get_workflow_config, load_env_file
 from app.modules.writing.application.answer_generator import AnswerGenerationService
-from app.modules.acquisition.domain.workflow import RegeneratePayload
+from app.shared.content import RegeneratePayload
 from app.modules.documents.application.images import GeneratedImagePayload, ImageGenerationService
-from app.modules.acquisition.application.workflow import normalize_platform
+from app.shared.content import normalize_platform
 from app.platform.observability.context import reset_log_context, set_log_context
 
 JobStatus = Literal["pending", "running", "done", "error", "canceled"]

@@ -12,7 +12,7 @@ from app.platform.prompts.registry import PromptRegistry, RenderedPrompt
 from app.platform.prompts.errors import PromptVariableMissingError, PromptNotFoundError
 from app.shared.errors import DocumentConflictError, ValidationError
 from app.platform.database import Base
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.modules.documents.application.documents import DocumentService
 from app.shared.dto import SelectionDTO
 

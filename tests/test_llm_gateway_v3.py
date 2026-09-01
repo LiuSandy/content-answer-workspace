@@ -104,7 +104,7 @@ default_model = "provider-model"
     ).model == "prompt-model"
     assert resolver.resolve("unknown").model == "provider-model"
     assert config.providers["deepseek"].api_key == "secret"
-    assert config.providers["deepseek"].base_url == "https://override.test"
+    assert config.providers["deepseek"].base_url == "https://default.test"
 
 
 @pytest.mark.asyncio

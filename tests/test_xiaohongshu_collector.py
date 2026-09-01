@@ -4,8 +4,8 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from app.plugins.sources.xiaohongshu_collector import XiaohongshuCollector
-from app.modules.acquisition.domain.workflow import Topic, WorkflowConfig
-from app.modules.acquisition.application.xiaohongshu import XiaohongshuAccessError
+from app.shared.content import Topic, WorkflowConfig
+from app.plugins.sources.xiaohongshu_service import XiaohongshuAccessError
 
 SEARCH_HTML = """
 <html><body><script>

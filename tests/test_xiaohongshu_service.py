@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.modules.acquisition.application.xiaohongshu import (
+from app.plugins.sources.xiaohongshu_service import (
     XiaohongshuAccessError,
     ensure_usable_xiaohongshu_page,
     ensure_xiaohongshu_cookie,

@@ -457,7 +457,6 @@ save_chat_message(
 当前以下位置存在不同的 `ChatMessage`：
 
 - `frontend/src/features/chat/conversation/model/chat-message-tree.ts`
-- `frontend/src/types/workflow.ts`
 
 统一到：
 

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.errors import DocumentConflictError
 from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument, AnswerVersion
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.shared.dto import DocumentStateDTO, VersionSummaryDTO, SourceItemInfoDTO
 
 

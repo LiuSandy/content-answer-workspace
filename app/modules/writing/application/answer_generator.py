@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from app.modules.acquisition.domain.workflow import QuestionItem
+from app.shared.content import QuestionItem
 from app.platform.prompts.registry import prompt_registry
 from app.shared.llm.dto import LLMMessage, LLMRequest
 from app.shared.llm.port import LLMGatewayPort

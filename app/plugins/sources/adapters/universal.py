@@ -7,7 +7,7 @@ from app.shared.dto import (
     CollectionRequest,
     ToolContext,
 )
-from app.modules.acquisition.domain.workflow import QuestionItem, Topic
+from app.shared.content import QuestionItem, Topic
 from app.platform.config.runtime import get_workflow_config
 from app.shared.errors import UnsupportedSourceError, ValidationError
 from app.plugins.sources.platform_config_loader import PlatformConfigLoader

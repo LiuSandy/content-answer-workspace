@@ -25,17 +25,6 @@ class LlmSettingsPayload(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class CollectSettingsPayload(BaseModel):
-    """采集默认值更新请求体。"""
-    default_platform: str | None = Field(alias="defaultPlatform", default=None)
-    max_push_count: int | None = Field(alias="maxPushCount", default=None)
-    sort_modes: list[str] | None = Field(alias="sortModes", default=None)
-    user_agent: str | None = Field(alias="userAgent", default=None)
-    skip_answer_generation: bool | None = Field(alias="skipAnswerGeneration", default=None)
-
-    model_config = {"populate_by_name": True}
-
-
 class PublishSettingsPayload(BaseModel):
     """发布配置更新请求体。"""
     test_mode: bool | None = Field(alias="testMode", default=None)
@@ -59,16 +48,6 @@ class GroqKeyPayload(BaseModel):
     key: str = ""
 
 
-class TopicPayload(BaseModel):
-    """单个主题的创建/更新请求体。"""
-    id: str = ""
-    name: str = ""
-    keywords: list[str] = Field(default_factory=list)
-    expanded_hints: list[str] = Field(alias="expandedHints", default_factory=list)
-
-    model_config = {"populate_by_name": True}
-
-
 # ── 端点实现 ──────────────────────────────────────────────────────────────
 
 @router.get("")
@@ -84,27 +63,6 @@ async def update_llm(payload: LlmSettingsPayload) -> JSONResponse:
         _service.update_llm(payload.base_url, payload.model)
         if payload.api_key is not None:
             _service.update_api_key(payload.api_key)
-        return JSONResponse({"ok": True})
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.post("/collect")
-async def update_collect(payload: CollectSettingsPayload) -> JSONResponse:
-    """更新采集默认值。"""
-    try:
-        data: dict[str, Any] = {}
-        if payload.default_platform is not None:
-            data["defaultPlatform"] = payload.default_platform
-        if payload.max_push_count is not None:
-            data["maxPushCount"] = payload.max_push_count
-        if payload.sort_modes is not None:
-            data["sortModes"] = payload.sort_modes
-        if payload.user_agent is not None:
-            data["userAgent"] = payload.user_agent
-        if payload.skip_answer_generation is not None:
-            data["skipAnswerGeneration"] = payload.skip_answer_generation
-        _service.update_collect(data)
         return JSONResponse({"ok": True})
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -182,61 +140,6 @@ async def save_twitter_auth(payload: TwitterAuthPayload) -> JSONResponse:
     try:
         _service.save_twitter_auth(payload.auth_token, payload.ct0)
         return JSONResponse({"ok": True})
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.get("/topics")
-async def get_topics() -> JSONResponse:
-    """返回主题列表（回落到默认主题）。"""
-    return JSONResponse({"ok": True, "data": _service.get_topics()})
-
-
-@router.post("/topics")
-async def create_topic(payload: TopicPayload) -> JSONResponse:
-    """新增主题。"""
-    try:
-        topics = _service.get_topics()
-        if any(t.get("id") == payload.id for t in topics):
-            raise HTTPException(status_code=400, detail=f"主题 ID '{payload.id}' 已存在。")
-        topics.append(payload.model_dump(by_alias=True))
-        _service.save_topics(topics)
-        return JSONResponse({"ok": True, "data": topics})
-    except HTTPException:
-        raise
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.put("/topics/{topic_id}")
-async def update_topic(topic_id: str, payload: TopicPayload) -> JSONResponse:
-    """编辑主题。"""
-    try:
-        topics = _service.get_topics()
-        idx = next((i for i, t in enumerate(topics) if t.get("id") == topic_id), None)
-        if idx is None:
-            raise HTTPException(status_code=404, detail=f"主题 '{topic_id}' 不存在。")
-        topics[idx] = {**payload.model_dump(by_alias=True), "id": topic_id}
-        _service.save_topics(topics)
-        return JSONResponse({"ok": True, "data": topics})
-    except HTTPException:
-        raise
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.delete("/topics/{topic_id}")
-async def delete_topic(topic_id: str) -> JSONResponse:
-    """删除主题。"""
-    try:
-        topics = _service.get_topics()
-        filtered = [t for t in topics if t.get("id") != topic_id]
-        if len(filtered) == len(topics):
-            raise HTTPException(status_code=404, detail=f"主题 '{topic_id}' 不存在。")
-        _service.save_topics(filtered)
-        return JSONResponse({"ok": True, "data": filtered})
-    except HTTPException:
-        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e)) from e
 

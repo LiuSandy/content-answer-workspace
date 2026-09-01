@@ -868,13 +868,6 @@ content-answer-workspace/
 │   │   │   ├── ports/
 │   │   │   └── adapters/
 │   │   │
-│   │   ├── acquisition/
-│   │   │   ├── api/
-│   │   │   ├── application/
-│   │   │   ├── domain/
-│   │   │   ├── ports/
-│   │   │   └── adapters/
-│   │   │
 │   │   ├── documents/
 │   │   │   ├── api/
 │   │   │   ├── application/
@@ -1484,9 +1477,9 @@ KnowledgeRepositoryPort
 
 ## Phase 7
 
-迁移 Acquisition。
+Acquisition 已移除，平台来源适配器保留在 Plugins 中供 Conversation Agent 使用。
 
-将：
+当前来源实现：
 
 ```text
 ZhihuSource
@@ -1683,7 +1676,6 @@ flowchart TB
         W["Writing"]
         K["Knowledge"]
         M["Memory"]
-        A["Acquisition"]
         D["Documents"]
         P["Publishing"]
         S["Settings"]
@@ -1763,7 +1755,7 @@ flowchart TB
 1. v3 当前真实目录结构
 
 2. 当前 Conversation / Writing / Memory / Knowledge /
-   Acquisition / Documents / Publishing / Settings 的文件归属
+   Documents / Publishing / Settings 的文件归属
 
 3. 当前所有 LLM 调用点
 

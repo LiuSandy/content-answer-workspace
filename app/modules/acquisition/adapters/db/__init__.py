@@ -1,1 +1,0 @@
-"""Acquisition persistence adapters."""

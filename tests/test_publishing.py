@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.modules.publishing.api.router import router
 from app.platform.database import Base
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.modules.documents.adapters.db.models import AnswerDocument
 
 

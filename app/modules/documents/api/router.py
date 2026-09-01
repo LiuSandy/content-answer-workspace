@@ -16,7 +16,7 @@ from app.modules.writing.application.outline import OutlineService, OutlineError
 from app.modules.writing.application.review import evaluate_content, persist_creation_review
 from app.shared.dto import InlineRefineRequest, SelectionDTO
 from app.platform.database.session import get_db_session, get_session_factory
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.modules.writing.agent.nodes.answer_generation import generate_answer_workflow
 from app.modules.writing.agent.nodes.inline_refinement import inline_refinement_workflow
 from app.modules.writing.agent.nodes.full_rewrite import full_rewrite_workflow

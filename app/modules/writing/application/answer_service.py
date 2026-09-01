@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.modules.writing.application.answer_generator import AnswerGenerationService
-from app.modules.acquisition.domain.workflow import QuestionItem
+from app.shared.content import QuestionItem
 from app.modules.documents.application.images import GeneratedImagePayload, ImageGenerationService
 
 _answer_generator = AnswerGenerationService()

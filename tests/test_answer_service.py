@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.modules.acquisition.domain.workflow import QuestionItem
+from app.shared.content import QuestionItem
 from app.modules.writing.application.answer_service import generate_answer_with_images
 
 

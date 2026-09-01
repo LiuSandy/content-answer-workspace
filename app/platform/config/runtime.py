@@ -6,8 +6,9 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from app.platform.config.loader import get_settings, load_default_topics
-from app.modules.acquisition.domain.workflow import Topic, WorkflowConfig
+from app.platform.config.llm import load_llm_service_config
+from app.platform.config.loader import get_settings
+from app.shared.content import WorkflowConfig
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 ENV_PATH = ROOT_DIR / ".env"
@@ -68,21 +69,6 @@ def is_rag_source_display_enabled() -> bool:
 
     load_env_file()
     return is_truthy(os.getenv("RAG_SOURCE_DISPLAY", "true"))
-
-
-def get_default_topics() -> list[Topic]:
-    """提供后端默认主题；主题定义已外置到 default_topics.toml，这里只负责按 preset 组装成 Topic。"""
-
-    topics: list[Topic] = []
-    for entry in load_default_topics():
-        topics.append(
-            Topic(
-                id=entry["id"],
-                name=entry["name"],
-                keywords=entry.get("keywords", []),
-            )
-        )
-    return topics
 
 
 def get_workflow_config(overrides: dict[str, Any] | None = None) -> WorkflowConfig:
@@ -157,20 +143,20 @@ class KnowledgeSettings:
     evidence_threshold: float = 0.55
     context_token_budget: int = 6000
     embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY", "")), repr=False)
-    embedding_base_url: str = field(default_factory=lambda: os.getenv("EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")))
+    embedding_base_url: str = field(default_factory=lambda: str(load_llm_service_config("embedding").get("base_url", "")))
     # 模型名称必须由部署环境提供；不设置供应商默认值，避免索引与查询使用错误模型。
-    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "").strip())
+    embedding_model: str = field(default_factory=lambda: str(load_llm_service_config("embedding").get("model", "")).strip())
     # 单次 embedding 请求的批大小；默认 20 以兼容阿里云百炼等上限较低的服务
     embedding_batch_size: int = 20
     reranker_api_key: str = field(default_factory=lambda: os.getenv("RERANKER_API_KEY", ""), repr=False)
-    reranker_base_url: str = field(default_factory=lambda: os.getenv("RERANKER_BASE_URL", ""))
+    reranker_base_url: str = field(default_factory=lambda: str(load_llm_service_config("reranker").get("base_url", "")))
     # 模型名称必须由部署环境提供；不设置供应商默认值。
-    reranker_model: str = field(default_factory=lambda: os.getenv("RERANKER_MODEL", "").strip())
+    reranker_model: str = field(default_factory=lambda: str(load_llm_service_config("reranker").get("model", "")).strip())
     reranker_timeout_seconds: float = 8.0
     reranker_max_documents: int = 32
     mineru_api_key: str = field(default_factory=lambda: os.getenv("MINERU_API_KEY", ""), repr=False)
-    mineru_api_base_url: str = field(default_factory=lambda: os.getenv("MINERU_API_BASE_URL", "https://mineru.net/api/v4"))
-    mineru_model_version: str = field(default_factory=lambda: os.getenv("MINERU_MODEL_VERSION", "vlm"))
+    mineru_api_base_url: str = field(default_factory=lambda: str(load_llm_service_config("mineru").get("base_url", "")))
+    mineru_model_version: str = field(default_factory=lambda: str(load_llm_service_config("mineru").get("model", "")))
     pdf_max_pages_per_chunk: int = 150
     pdf_max_bytes_per_chunk: int = 150 * 1024 * 1024
     # 单文件上传上限；防止超大文件全量读入内存造成 DoS
@@ -215,8 +201,8 @@ def get_knowledge_settings() -> KnowledgeSettings:
         pdf_page_max_attempts=parse_positive_int(os.getenv("KNOWLEDGE_PDF_PAGE_MAX_ATTEMPTS"), 3),
         embedding_dimensions=embedding_dims,
         embedding_api_key=os.getenv("EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY", "")),
-        embedding_base_url=os.getenv("EMBEDDING_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
-        embedding_model=os.getenv("EMBEDDING_MODEL", "").strip(),
+        embedding_base_url=str(load_llm_service_config("embedding").get("base_url", "")),
+        embedding_model=str(load_llm_service_config("embedding").get("model", "")).strip(),
         rrf_k=rrf_k,
         evidence_threshold=threshold,
         parent_chunk_max_tokens=parse_positive_int(os.getenv("KNOWLEDGE_PARENT_CHUNK_MAX_TOKENS"), 1200),
@@ -225,8 +211,8 @@ def get_knowledge_settings() -> KnowledgeSettings:
         max_upload_bytes=parse_positive_int(os.getenv("KNOWLEDGE_MAX_UPLOAD_BYTES"), 50 * 1024 * 1024),
         embedding_batch_size=parse_positive_int(os.getenv("EMBEDDING_BATCH_SIZE"), 20),
         reranker_api_key=os.getenv("RERANKER_API_KEY", ""),
-        reranker_base_url=os.getenv("RERANKER_BASE_URL", ""),
-        reranker_model=os.getenv("RERANKER_MODEL", "").strip(),
+        reranker_base_url=str(load_llm_service_config("reranker").get("base_url", "")),
+        reranker_model=str(load_llm_service_config("reranker").get("model", "")).strip(),
         reranker_timeout_seconds=float(os.getenv("RERANKER_TIMEOUT_SECONDS", "8")),
         reranker_max_documents=parse_positive_int(os.getenv("RERANKER_MAX_DOCUMENTS"), 32),
     )

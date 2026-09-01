@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Sequence
 
 from app.shared.ports import CollectorPort
-from app.modules.acquisition.domain.workflow import QuestionItem, Topic, WorkflowConfig
+from app.shared.content import QuestionItem, Topic, WorkflowConfig
 from .extractors.llm_extractor import LLMExtractor
 from .fetchers.http_fetcher import HttpFetcher
 from .html_cleaner import HtmlCleaner

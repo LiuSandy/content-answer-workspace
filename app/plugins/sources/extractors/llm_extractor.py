@@ -24,7 +24,7 @@ class LLMExtractor:
         system = "你只返回 JSON 数组，不要任何额外说明。数组为空时返回 []。"
         user = f"{prompt}\n\n---\n{text}"
         response = await self._get_gateway().generate(
-            purpose="acquisition.extract",
+            purpose="sources.extract",
             request=LLMRequest(
                 messages=[
                     LLMMessage(role="system", content=system),

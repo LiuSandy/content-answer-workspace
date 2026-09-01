@@ -5,6 +5,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+def normalize_platform(value: str | None) -> str:
+    """Normalize a source platform identifier for conversational collection."""
+
+    return (value or "").strip().lower()
+
+
 class Topic(BaseModel):
     """表示前端选择的采集主题；定义成模型是为了统一校验主题名称、关键词和前后端字段别名。"""
 

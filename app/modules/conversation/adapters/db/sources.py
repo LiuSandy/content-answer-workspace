@@ -1,4 +1,4 @@
-"""SourceItem、ChatSourceItem 和 CollectionRun 领域模型；对应平台内容采集的核心表。"""
+"""Chat 关联的外部内容来源模型。"""
 from __future__ import annotations
 
 import uuid
@@ -81,33 +81,6 @@ class ChatSourceItem(Base):
         Index("ix_chat_source_items_chat_id", "chat_id"),
         Index("ix_chat_source_items_source_item_id", "source_item_id"),
     )
-
-
-class CollectionRun(Base):
-    """一次主题采集请求的执行记录；记录状态、平台和参数，供前端显示进度和历史。"""
-
-    __tablename__ = "collection_runs"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    chat_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("chats.id", ondelete="CASCADE"), nullable=False
-    )
-    platform: Mapped[str] = mapped_column(String(50), nullable=False)
-    query: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # pending / running / completed / failed
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    result_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # 幂等键，防止重试产生重复采集记录
-    idempotency_key: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    __table_args__ = (Index("ix_collection_runs_chat_id", "chat_id"),)
 
 
 # 注册跨模块 ORM 关系；导入发生在本模块所有 class 声明完成之后。

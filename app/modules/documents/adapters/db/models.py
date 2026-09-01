@@ -213,4 +213,4 @@ class AIOperation(Base):
 
 
 # 注册跨模块 ORM 关系；导入发生在本模块所有 class 声明完成之后。
-from app.modules.acquisition.adapters.db.models import SourceItem  # noqa: E402,F401
+from app.modules.conversation.adapters.db.sources import SourceItem  # noqa: E402,F401

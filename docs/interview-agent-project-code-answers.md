@@ -460,10 +460,10 @@ Writer 不是这 15 个节点全部展开在同一张图里，而是一张独立
 |---|---:|---|---:|
 | documents | 17 | settings | 14 |
 | knowledge | 12 | chats | 8 |
-| memories | 7 | opportunities | 6 |
-| task-plans | 6 | publishing | 6 |
-| multi-agent | 5 | source-items | 2 |
-| prompts | 2 | health/config/ai-operations/retrieval-traces | 各 1 |
+| memories | 7 | task-plans | 6 |
+| publishing | 6 | multi-agent | 5 |
+| source-items | 2 | prompts | 2 |
+| health/config/ai-operations/retrieval-traces | 各 1 |  |  |
 
 不要死背“89”作为长期不变的产品指标；新增或删除路由后它会变化。面试更重要的是能按聊天、文档、知识库、记忆、任务计划、多 Agent 和发布域解释 API 边界。
 

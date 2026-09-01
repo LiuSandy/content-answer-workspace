@@ -16,7 +16,7 @@ from app.modules.memory.application.style_learning import (
 )
 from app.platform.database import Base
 from app.modules.documents.adapters.db.models import AnswerDocument, AnswerVersion
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 
 
 @compiles(JSONB, "sqlite")

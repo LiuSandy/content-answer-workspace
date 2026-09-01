@@ -79,7 +79,6 @@
 - **多 Agent** `GET /api/multi-agent/{run_id}/stream`（multi_agent.py:104-121）：`run.started` / `agent.status`（含 agents 明细）/ `run.completed` / `run.interrupted`；每秒 `sleep(1)` 重推 status 充当心跳。
 - **任务计划** `POST /api/task-plans/{plan_id}/stream`（task_plans.py:116-165）：`layer.started/completed`、`task.completed/failed`、`plan.interrupted/completed`（**前端未消费**，卡片走轮询 task-plan-api.ts:63）。
 - **文档生成/精修/重写**（documents.py:343-555）：`document.delta`、`document.completed`、`review.started/completed`、`rewrite.started`、`run.*`。
-- **opportunities.py:122-135**：未走 sse.py 的手工 SSE（`opportunities`/`error` 事件，轮询推送）。
 
 ### 3.3 心跳与结束
 

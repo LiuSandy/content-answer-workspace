@@ -12,7 +12,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversation.adapters.db.chats import Chat, Message
-from app.modules.acquisition.adapters.db.models import SourceItem, ChatSourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem, ChatSourceItem
 from app.shared.dto import SourceItemDTO
 
 

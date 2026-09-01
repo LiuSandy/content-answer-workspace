@@ -10,7 +10,7 @@ from typing import Any
 from openai import OpenAI
 
 from app.platform.config.runtime import GENERATED_IMAGES_DIR, get_required_env
-from app.modules.acquisition.domain.workflow import QuestionItem
+from app.shared.content import QuestionItem
 
 
 class GeneratedImagePayload(dict):

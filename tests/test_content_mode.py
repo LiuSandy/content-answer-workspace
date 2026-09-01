@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from app.platform.config.runtime import get_workflow_config
-from app.modules.acquisition.domain.workflow import QuestionItem, RunPayload
+from app.shared.content import QuestionItem, RunPayload
 
 
 class ContentModeDefaultsTests(unittest.TestCase):
