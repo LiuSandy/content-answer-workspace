@@ -8,8 +8,8 @@ import logging
 from langchain_core.tools import tool
 
 from app.platform.config.loader import get_settings
-from app.modules.acquisition.domain.workflow import Topic
-from app.modules.acquisition.application.zhihu import search_zhihu_for_keyword
+from app.shared.content import Topic
+from app.plugins.sources.zhihu_service import search_zhihu_for_keyword
 
 logger = logging.getLogger(__name__)
 

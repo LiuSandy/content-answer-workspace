@@ -1,1 +1,0 @@
-"""Acquisition HTTP adapters."""

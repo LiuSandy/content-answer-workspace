@@ -7,9 +7,9 @@ from app.shared.dto import (
     CollectionRequest,
     ToolContext,
 )
-from app.modules.acquisition.domain.workflow import QuestionItem, Topic
+from app.shared.content import QuestionItem, Topic
 from app.platform.config.runtime import get_workflow_config
-from app.modules.acquisition.application.zhihu import fetch_zhihu_question_by_url
+from app.plugins.sources.zhihu_service import fetch_zhihu_question_by_url
 from app.plugins.sources.zhihu_collector import ZhihuCollector
 
 

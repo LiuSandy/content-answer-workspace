@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.dto import QualityReport
 from app.shared.errors import LLMOutputError
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.modules.documents.adapters.db.models import (
     VERSION_TYPE_INLINE_REFINEMENT,
     AIOperation,

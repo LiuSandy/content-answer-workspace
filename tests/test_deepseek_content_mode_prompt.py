@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.modules.acquisition.domain.workflow import QuestionItem
+from app.shared.content import QuestionItem
 from app.shared.llm.dto import LLMResponse
 from app.platform.prompts import warmup
 from app.modules.writing.application.answer_generator import AnswerGenerationService

@@ -13,9 +13,9 @@ from urllib.parse import quote
 from bs4 import BeautifulSoup
 
 from app.platform.config.loader import get_settings
-from app.platform.config.runtime import COOKIE_PATH_DEFAULT, get_default_topics, get_workflow_config, load_env_file
+from app.platform.config.runtime import COOKIE_PATH_DEFAULT, load_env_file
 from app.plugins.sources.fetchers.playwright_fetcher import PlaywrightFetcher
-from app.modules.acquisition.domain.workflow import QuestionItem, Topic, WorkflowResult
+from app.shared.content import QuestionItem, Topic
 
 TOPIC_HINTS_PATH = Path(__file__).resolve().parent.parent / "config" / "defaults" / "topic_hints.json"
 
@@ -695,26 +695,3 @@ async def fetch_zhihu_results_for_topic(topic: Topic, user_agent: str, limit: in
     for item in deduplicated:
         detailed.append(await fetch_question_details(item, user_agent))
     return detailed
-
-
-async def collect_questions(options: dict[str, Any] | None = None) -> WorkflowResult:
-    """执行旧版知乎采集流程；这样历史导入仍能工作，同时新架构可以逐步迁移到采集器策略。"""
-
-    load_env_file()
-    options = options or {}
-    config = get_workflow_config(options)
-    topics = (
-        [get_topic_preview(Topic.model_validate(topic)) for topic in options.get("topics", [])]
-        if options.get("topics")
-        else [get_topic_preview(topic) for topic in get_default_topics()]
-    )
-
-    all_items: list[QuestionItem] = []
-    for topic in topics:
-        all_items.extend(await fetch_zhihu_results_for_topic(topic, config.user_agent, config.max_push_count))
-
-    deduplicated = unique_by(all_items, lambda item: f"{item.topic}:{item.id}")[: config.max_push_count]
-    if not deduplicated:
-        raise ValueError("No matching questions fetched")
-
-    return WorkflowResult(config=config, topics=topics, items=deduplicated)

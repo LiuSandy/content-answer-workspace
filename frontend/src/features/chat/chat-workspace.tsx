@@ -4,7 +4,6 @@ import { useParams } from "react-router-dom";
 import { ChatSidebar } from "./sessions/chat-sidebar";
 import { ChatPanel } from "./conversation/components/chat-panel";
 import { EditorPanel } from "./editor/components/editor-panel";
-import { TodayOpportunitiesBanner } from "./components/today-opportunities-banner";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useChatStore } from "@/store/chat-store";
 
@@ -19,7 +18,6 @@ export function ChatWorkspace() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <TodayOpportunitiesBanner />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <ChatSidebar />
         {showEditor ? (

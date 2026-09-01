@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from app.modules.conversation.adapters.db.chats import Chat, Message
-from app.modules.acquisition.adapters.db.models import ChatSourceItem, CollectionRun, SourceItem
+from app.modules.conversation.adapters.db.sources import ChatSourceItem, SourceItem
 from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument, AnswerVersion
 from app.modules.knowledge.adapters.db.models import (
     KnowledgeChunkModel,
@@ -14,7 +14,6 @@ from app.modules.knowledge.adapters.db.models import (
     RetrievalTraceModel,
 )
 from app.modules.writing.adapters.db.quality_scores import QualityScoreModel
-from app.modules.acquisition.adapters.db.opportunity_models import OpportunityFeedModel, AgentSettingsModel
 from app.modules.writing.adapters.db.task_plans import TaskPlanModel, SubTaskModel
 from app.modules.memory.adapters.db.models import UserMemoryModel
 from app.modules.settings.adapters.db.models import AppSettings
@@ -26,7 +25,6 @@ __all__ = [
     "Message",
     "SourceItem",
     "ChatSourceItem",
-    "CollectionRun",
     "AnswerDocument",
     "AnswerVersion",
     "AIOperation",
@@ -39,8 +37,6 @@ __all__ = [
     "RetrievalTraceModel",
     "RetrievalHitModel",
     "QualityScoreModel",
-    "OpportunityFeedModel",
-    "AgentSettingsModel",
     "TaskPlanModel",
     "SubTaskModel",
     "UserMemoryModel",

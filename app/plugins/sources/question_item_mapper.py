@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.acquisition.domain.workflow import QuestionItem
+from app.shared.content import QuestionItem
 
 
 class QuestionItemMapper:

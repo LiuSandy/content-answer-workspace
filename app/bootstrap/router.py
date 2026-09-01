@@ -8,13 +8,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 
-from app.modules.acquisition.api.router import router as opportunities_router
 from app.modules.conversation.api.router import router as chats_router
 from app.modules.documents.api.router import router as documents_router
 from app.modules.knowledge.api.router import router as knowledge_router
 from app.modules.memory.api.router import router as memories_router
 from app.modules.publishing.api.router import router as publishing_router
-from app.modules.settings.api.config import router as config_router
 from app.modules.settings.api.prompts import router as prompts_router
 from app.modules.settings.api.settings import router as settings_router
 from app.modules.writing.api.multi_agent import router as multi_agent_router
@@ -91,11 +89,9 @@ def register_http(app: FastAPI) -> None:
     for router in (
         chats_router,
         documents_router,
-        config_router,
         settings_router,
         prompts_router,
         knowledge_router,
-        opportunities_router,
         task_plans_router,
         memories_router,
         multi_agent_router,

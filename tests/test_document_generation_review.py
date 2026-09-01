@@ -16,7 +16,7 @@ from app.modules.documents.api import router as documents_route
 from app.shared.dto import QualityReport
 from app.shared.errors import LLMOutputError
 from app.platform.database import Base
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument, AnswerVersion
 from app.modules.writing.adapters.db.quality_scores import QualityScoreModel
 

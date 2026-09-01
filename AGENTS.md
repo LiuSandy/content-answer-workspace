@@ -54,7 +54,7 @@ bun run build
 ```text
 app/
 ├── bootstrap/                 # FastAPI composition root、依赖容器、路由与生命周期
-├── modules/                   # conversation、writing、memory、knowledge、acquisition、
+├── modules/                   # conversation、writing、memory、knowledge、
 │                              # documents、publishing、settings 业务模块
 ├── plugins/                   # LLM、采集源、Embedding、Reranker 与内置工具适配器
 ├── platform/                  # config、database、files、http、observability、prompts、
@@ -70,7 +70,7 @@ frontend/src/
 ├── features/settings/         # 设置页
 ├── store/chat-store.ts        # 唯一 Zustand store
 ├── lib/                       # api.ts（REST 信封封装）、sse.ts（流式客户端）
-├── types/workflow.ts
+├── types/                     # 前端 API 与领域类型
 └── components/ui/             # shadcn/ui 组件库
 ```
 
@@ -79,7 +79,7 @@ frontend/src/
 - 路由保持轻薄；采集、导入、生成、润色等编排放在对应模块的 `application/`。
 - Pydantic 模型使用 `alias="camelCase"` 和 `populate_by_name=True`；返回前端时使用
   `model_dump(by_alias=True)`。
-- 新增后端字段时同步更新对应模块的 API schema、`frontend/src/types/workflow.ts`
+- 新增后端字段时同步更新对应模块的 API schema 和前端类型
   和相关测试。
 - API 响应保持 `{"ok": true, "data": ...}`；异常由后端统一包装为
   `{"ok": false, "error": ...}`。

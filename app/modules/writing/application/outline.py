@@ -21,7 +21,7 @@ from app.shared.dto import (
     LLMMessage,
 )
 from app.shared.errors import DocumentConflictError
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument
 from .llm import get_writing_llm
 

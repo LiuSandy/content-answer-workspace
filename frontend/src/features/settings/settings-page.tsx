@@ -9,14 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { checkHealth, restartServer } from "./settings-api";
 import { AgentReachSettings } from "./agent-reach-settings";
-import { CollectSettings } from "./collect-settings";
 import { LlmSettings } from "./llm-settings";
 import { PublishSettings } from "./publish-settings";
-import { TopicsSettings } from "./topics-settings";
-import { AgentSettingsPanel } from "./agent-settings-panel";
 import { MemoryPanel } from "./memory-panel";
 
-type Section = "llm" | "agent-reach" | "topics" | "publish" | "collect" | "agent" | "memory";
+type Section = "llm" | "agent-reach" | "publish" | "memory";
 
 interface NavItem {
   id: Section;
@@ -27,20 +24,14 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: "llm", label: "LLM 配置", description: "Base URL、模型、API Key" },
   { id: "agent-reach", label: "Agent-Reach", description: "平台工具开关与诊断" },
-  { id: "topics", label: "主题管理", description: "采集主题的增删改" },
   { id: "publish", label: "发布配置", description: "测试模式与 CTA 文本" },
-  { id: "collect", label: "采集默认值", description: "平台、上限、排序模式" },
-  { id: "agent", label: "主动感知", description: "热榜机会扫描与推送开关" },
   { id: "memory", label: "我的记忆", description: "Agent 记录的用户偏好" },
 ];
 
 const SECTION_COMPONENTS: Record<Section, React.FC> = {
   llm: LlmSettings,
   "agent-reach": AgentReachSettings,
-  topics: TopicsSettings,
   publish: PublishSettings,
-  collect: CollectSettings,
-  agent: AgentSettingsPanel,
   memory: MemoryPanel,
 };
 

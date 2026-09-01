@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import threading
 import tomllib
-from functools import lru_cache
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -13,7 +12,6 @@ from pydantic import BaseModel, Field
 CONFIG_DIR = Path(__file__).resolve().parent
 DEFAULTS_DIR = CONFIG_DIR / "defaults"
 SETTINGS_FILE = DEFAULTS_DIR / "settings.toml"
-DEFAULT_TOPICS_FILE = DEFAULTS_DIR / "default_topics.toml"
 
 
 class CollectSettings(BaseModel):
@@ -85,19 +83,7 @@ def _load_settings() -> Settings:
     return Settings.model_validate(raw)
 
 
-
-
-@lru_cache(maxsize=1)
-def load_default_topics() -> list[dict]:
-    """加载默认主题定义；preset 字段指向 topic_presets，由调用方组装成 Topic。"""
-
-    with DEFAULT_TOPICS_FILE.open("rb") as f:
-        data = tomllib.load(f)
-    return data.get("topics", [])
-
-
 def warmup() -> None:
-    """启动时一次性预加载并校验所有必需配置；缺文件会在此处尽早暴露而非延迟到请求时。"""
+    """启动时预加载并校验静态运行配置。"""
 
     get_settings()
-    load_default_topics()

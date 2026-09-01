@@ -9,21 +9,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from app.platform.config.loader import get_settings
-from app.platform.config.llm import load_llm_runtime_config
-from app.platform.config.runtime import (
-    ENV_PATH,
-    ROOT_DIR,
-    get_default_topics,
-    is_truthy,
-    load_env_file,
-)
-from app.modules.acquisition.domain.workflow import Topic
+from app.platform.config.llm import load_llm_runtime_config, update_default_provider_config
+from app.platform.config.runtime import ENV_PATH, ROOT_DIR, is_truthy, load_env_file
 
 DATA_DIR = ROOT_DIR / ".data"
 SETTINGS_FILE = DATA_DIR / "settings.json"
 AGENT_REACH_CONFIG_FILE = DATA_DIR / "agent_reach_config.json"
-TOPICS_FILE = DATA_DIR / "topics.json"
 
 _AGENT_REACH_PLATFORMS = ["bilibili", "youtube", "twitter", "xiaohongshu", "reddit", "github", "rss", "v2ex", "web"]
 _TWITTER_ENV_KEYS = ("TWITTER_AUTH_TOKEN", "TWITTER_CT0")
@@ -94,7 +85,6 @@ class SettingsService:
         load_env_file()
         settings = _read_json(SETTINGS_FILE)
 
-        collect = settings.get("collect", {})
         publish = settings.get("publish", {})
         prompts = settings.get("prompts", {})
 
@@ -109,15 +99,6 @@ class SettingsService:
                 "model": default_model,
                 "apiKey": _mask_key(default_provider.api_key),
             },
-            "collect": {
-                "defaultPlatform": collect.get("defaultPlatform")
-                or os.getenv("DEFAULT_PLATFORM", get_settings().collect.default_platform),
-                "maxPushCount": collect.get("maxPushCount")
-                or int(os.getenv("MAX_PUSH_COUNT", str(get_settings().collect.default_max_push_count))),
-                "sortModes": collect.get("sortModes") or list(get_settings().collect.default_sort_modes),
-                "userAgent": collect.get("userAgent") or os.getenv("HTTP_USER_AGENT", get_settings().http.user_agent),
-                "skipAnswerGeneration": collect.get("skipAnswerGeneration", False),
-            },
             "publish": {
                 "testMode": publish.get("testMode", is_truthy(os.getenv("TEST_MODE", "true"))),
                 "officialAccountName": publish.get("officialAccountName") or os.getenv("OFFICIAL_ACCOUNT_NAME", "你的公众号"),
@@ -129,20 +110,12 @@ class SettingsService:
         }
 
     def update_llm(self, base_url: str, model: str) -> None:
-        """更新 LLM 非敏感配置到 settings.json。"""
-        data = _read_json(SETTINGS_FILE)
-        data["llm"] = {**data.get("llm", {}), "baseUrl": base_url, "model": model}
-        _write_json(SETTINGS_FILE, data)
+        """更新 LLM 非敏感配置到 llm.toml。"""
+        update_default_provider_config(base_url=base_url, model=model)
 
     def update_api_key(self, api_key: str) -> None:
         """写入 OPENAI_API_KEY 到 .env 文件。"""
         _write_env_value("OPENAI_API_KEY", api_key)
-
-    def update_collect(self, payload: dict[str, Any]) -> None:
-        """更新采集默认值到 settings.json。"""
-        data = _read_json(SETTINGS_FILE)
-        data["collect"] = {**data.get("collect", {}), **payload}
-        _write_json(SETTINGS_FILE, data)
 
     def update_publish(self, payload: dict[str, Any]) -> None:
         """更新发布配置到 settings.json。"""
@@ -171,21 +144,6 @@ class SettingsService:
         data = _read_json(AGENT_REACH_CONFIG_FILE)
         data["groqApiKey"] = key
         _write_json(AGENT_REACH_CONFIG_FILE, data)
-
-    def get_topics(self) -> list[dict[str, Any]]:
-        """读取 topics.json；不存在时回落到 get_default_topics()。"""
-        if TOPICS_FILE.exists():
-            try:
-                raw = json.loads(TOPICS_FILE.read_text(encoding="utf-8"))
-                if isinstance(raw, list) and raw:
-                    return raw
-            except (json.JSONDecodeError, ValueError):
-                pass
-        return [t.model_dump(by_alias=True) for t in get_default_topics()]
-
-    def save_topics(self, topics: list[dict[str, Any]]) -> None:
-        """覆盖写入 topics.json。"""
-        _write_json(TOPICS_FILE, topics)
 
     def get_agent_reach_status(self) -> dict[str, Any]:
         """执行 agent-reach doctor --json，返回各平台健康状态；CLI 不存在时返回错误信息。"""

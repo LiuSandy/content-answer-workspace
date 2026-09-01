@@ -23,7 +23,7 @@ from app.modules.writing.application.review import QualityService, ReviewContext
 from app.shared.dto import QualityReport, QualitySuggestion, StructuredResult
 from app.shared.errors import DocumentConflictError, LLMOutputError
 from app.platform.database import Base
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument, AnswerVersion
 
 

@@ -4,26 +4,18 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CollectConfig,
   PublishConfig,
-  TopicItem,
   configureGroqKey,
-  createTopic,
-  deleteTopic,
   getAgentReachStatus,
   getSettings,
-  getTopics,
   getTwitterAuth,
   saveTwitterAuth,
   updateAgentReachPlatforms,
-  updateCollectSettings,
   updateLlmSettings,
   updatePublishSettings,
-  updateTopic,
 } from "./settings-api";
 
 export const SETTINGS_QUERY_KEY = ["settings"];
-export const TOPICS_QUERY_KEY = ["settings-topics"];
 export const AGENT_REACH_STATUS_QUERY_KEY = ["agent-reach-status"];
 export const TWITTER_AUTH_QUERY_KEY = ["agent-reach-twitter-auth"];
 
@@ -31,14 +23,6 @@ export function useSettings() {
   return useQuery({
     queryKey: SETTINGS_QUERY_KEY,
     queryFn: getSettings,
-    staleTime: 30_000,
-  });
-}
-
-export function useTopics() {
-  return useQuery({
-    queryKey: TOPICS_QUERY_KEY,
-    queryFn: getTopics,
     staleTime: 30_000,
   });
 }
@@ -57,14 +41,6 @@ export function useUpdateLlm() {
   return useMutation({
     mutationFn: (payload: { baseUrl: string; model: string; apiKey?: string }) =>
       updateLlmSettings(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
-  });
-}
-
-export function useUpdateCollect() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: Partial<CollectConfig>) => updateCollectSettings(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
   });
 }
@@ -90,30 +66,6 @@ export function useConfigureGroqKey() {
   return useMutation({
     mutationFn: (key: string) => configureGroqKey(key),
     onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
-  });
-}
-
-export function useCreateTopic() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (topic: TopicItem) => createTopic(topic),
-    onSuccess: () => qc.invalidateQueries({ queryKey: TOPICS_QUERY_KEY }),
-  });
-}
-
-export function useUpdateTopic() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, topic }: { id: string; topic: TopicItem }) => updateTopic(id, topic),
-    onSuccess: () => qc.invalidateQueries({ queryKey: TOPICS_QUERY_KEY }),
-  });
-}
-
-export function useDeleteTopic() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (topicId: string) => deleteTopic(topicId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: TOPICS_QUERY_KEY }),
   });
 }
 

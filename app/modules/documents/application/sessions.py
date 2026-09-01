@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.platform.config.runtime import OUTPUT_DIR
-from app.modules.acquisition.domain.workflow import SessionPayload, WorkflowResult
+from app.shared.content import SessionPayload, WorkflowResult
 
 SESSIONS_DIR = OUTPUT_DIR / "sessions"
 

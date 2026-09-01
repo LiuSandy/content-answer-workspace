@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Sequence
 
 from app.shared.ports import CollectorPort
-from app.modules.acquisition.domain.workflow import QuestionItem, Topic, WorkflowConfig
-from app.modules.acquisition.application.zhihu import fetch_zhihu_results_for_topic
+from app.shared.content import QuestionItem, Topic, WorkflowConfig
+from app.plugins.sources.zhihu_service import fetch_zhihu_results_for_topic
 
 
 class ZhihuCollector(CollectorPort):

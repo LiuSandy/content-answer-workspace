@@ -20,7 +20,7 @@ from app.modules.writing.application.writing_service import (
 )
 from app.modules.knowledge.domain.models import SourceType
 from app.platform.database import Base
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.modules.documents.adapters.db.models import AIOperation, AnswerDocument, AnswerVersion
 
 from app.platform.prompts.registry import prompt_registry, RenderedPrompt

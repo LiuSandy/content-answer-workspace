@@ -8,14 +8,6 @@ export interface LlmConfig {
   apiKey: string;
 }
 
-export interface CollectConfig {
-  defaultPlatform: string;
-  maxPushCount: number;
-  sortModes: string[];
-  userAgent: string;
-  skipAnswerGeneration: boolean;
-}
-
 export interface PublishConfig {
   testMode: boolean;
   officialAccountName: string;
@@ -29,16 +21,8 @@ export interface AgentReachConfig {
 
 export interface AllSettings {
   llm: LlmConfig;
-  collect: CollectConfig;
   publish: PublishConfig;
   agentReach: AgentReachConfig;
-}
-
-export interface TopicItem {
-  id: string;
-  name: string;
-  keywords: string[];
-  expandedHints: string[];
 }
 
 export interface AgentReachStatus {
@@ -74,14 +58,6 @@ export async function updateLlmSettings(payload: {
   });
 }
 
-export async function updateCollectSettings(payload: Partial<CollectConfig>): Promise<void> {
-  await fetchJson("/api/settings/collect", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
-
 export async function updatePublishSettings(payload: Partial<PublishConfig>): Promise<void> {
   await fetchJson("/api/settings/publish", {
     method: "POST",
@@ -108,40 +84,6 @@ export async function configureGroqKey(key: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key }),
   });
-}
-
-export async function getTopics(): Promise<TopicItem[]> {
-  const res = await fetchJson<{ ok: boolean; data: TopicItem[] }>("/api/settings/topics");
-  return res.data;
-}
-
-export async function createTopic(topic: TopicItem): Promise<TopicItem[]> {
-  const res = await fetchJson<{ ok: boolean; data: TopicItem[] }>("/api/settings/topics", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(topic),
-  });
-  return res.data;
-}
-
-export async function updateTopic(topicId: string, topic: TopicItem): Promise<TopicItem[]> {
-  const res = await fetchJson<{ ok: boolean; data: TopicItem[] }>(
-    `/api/settings/topics/${topicId}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(topic),
-    },
-  );
-  return res.data;
-}
-
-export async function deleteTopic(topicId: string): Promise<TopicItem[]> {
-  const res = await fetchJson<{ ok: boolean; data: TopicItem[] }>(
-    `/api/settings/topics/${topicId}`,
-    { method: "DELETE" },
-  );
-  return res.data;
 }
 
 export interface TwitterAuth {

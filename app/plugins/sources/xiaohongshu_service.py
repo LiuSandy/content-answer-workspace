@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from app.platform.config.runtime import XIAOHONGSHU_COOKIE_PATH_DEFAULT
-from .zhihu import clean_text, read_optional_file
+from .zhihu_service import clean_text, read_optional_file
 
 
 class XiaohongshuAccessError(RuntimeError):

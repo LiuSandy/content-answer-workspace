@@ -5,8 +5,8 @@ from typing import Sequence
 
 from app.platform.config.loader import get_settings
 from app.shared.ports import CollectorPort
-from app.modules.acquisition.domain.workflow import QuestionItem, Topic, WorkflowConfig
-from app.modules.acquisition.application.xiaohongshu import (
+from app.shared.content import QuestionItem, Topic, WorkflowConfig
+from app.plugins.sources.xiaohongshu_service import (
     ensure_usable_xiaohongshu_page,
     ensure_xiaohongshu_cookie,
     extract_initial_state,

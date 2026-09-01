@@ -21,3 +21,16 @@ timeout_seconds = 60.0
 base_url = "https://open.bigmodel.cn/api/paas/v4"
 default_model = "glm-4-flash"
 timeout_seconds = 60.0
+
+# Auxiliary model services use the same non-secret configuration file.
+[llm.services.embedding]
+base_url = "https://ws-ft8ryk3ypnxfgzyc.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+model = "qwen3.7-text-embedding"
+
+[llm.services.reranker]
+base_url = "https://ws-ft8ryk3ypnxfgzyc.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+model = "qwen3-vl-rerank"
+
+[llm.services.mineru]
+base_url = "https://mineru.net/api/v4"
+model = "vlm"

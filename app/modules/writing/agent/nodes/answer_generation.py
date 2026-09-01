@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.writing.application.writing_service import WriterRunCapture, run_writer_stream
-from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.conversation.adapters.db.sources import SourceItem
 from app.platform.prompts.composer import compose_writing_prompt
 from app.platform.prompts.registry import prompt_registry
 
