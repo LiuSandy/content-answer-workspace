@@ -41,3 +41,10 @@
 ## 重新设计 Writer 工作流
 
 - [ ] 重新梳理 Writer Graph 的工作流边界：当前 `retrieve_memory` 完成记忆召回后直接按 `operation` 分流，Compose 主线与直接文档操作分支的职责、命名和收尾机制不够清晰，需要重新设计节点职责、路由和持久化边界。
+
+## 接入知乎开放平台能力
+
+- [x] 知乎内容搜索；使用知乎搜索 API，并清理返回链接中的 `utm_medium`、`utm_source` 跟踪参数；涉及 `docs/zhihu/知乎搜索API.md`、`app/plugins/tools/builtin/zhihu_tool.py`、`app/plugins/sources/`、`frontend/src/features/chat/`。
+- [ ] 全网资料搜索；涉及 `docs/zhihu/全网搜索API.md`、`app/plugins/tools/`、`app/modules/conversation/`、`frontend/src/features/chat/`。
+- [ ] 知乎知识库管理；涉及 `docs/zhihu/知识库列表API.md`、`docs/zhihu/知识库内容列表 API.md`、`app/modules/knowledge/`、`frontend/src/features/knowledge/`。
+- [ ] 基于知乎知识库的 RAG 问答与写作辅助；涉及 `docs/zhihu/知识库检索 API.md`、`app/modules/knowledge/`、`app/modules/conversation/`、`app/modules/writing/`、`frontend/src/features/chat/`。

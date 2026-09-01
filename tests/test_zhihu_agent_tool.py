@@ -10,13 +10,13 @@ from app.shared.content import QuestionItem
 
 
 @pytest.mark.asyncio
-async def test_zhihu_search_uses_web_collector(monkeypatch):
-    """明确的知乎搜索必须使用 tools 中配置的网页采集路径。"""
+async def test_zhihu_search_preserves_existing_output(monkeypatch):
+    """官方 API 替换后仍保持工具的结构化输出。"""
 
     web_item = QuestionItem(
         id="42",
         platform="zhihu",
-        title="知乎网页采集结果",
+        title="知乎官方 API 结果",
         url="https://www.zhihu.com/question/42",
         answerCount=8,
         excerpt="网页摘要",
@@ -38,7 +38,7 @@ async def test_zhihu_search_uses_web_collector(monkeypatch):
         "topic": "知乎热门问题",
         "items": [
             {
-                "title": "知乎网页采集结果",
+                "title": "知乎官方 API 结果",
                 "url": "https://www.zhihu.com/question/42",
                 "excerpt": "网页摘要",
                 "answer_count": 8,
@@ -74,7 +74,7 @@ async def test_zhihu_search_returns_a_stable_error_for_tool_failure(monkeypatch)
     monkeypatch.setattr(
         zhihu_tool,
         "search_zhihu_for_keyword",
-        AsyncMock(side_effect=ValueError("当前缺少：ZHIHU_X_ZSE_96")),
+        AsyncMock(side_effect=ValueError("upstream timeout")),
     )
 
     raw = await zhihu_tool.zhihu_search.ainvoke({"keyword": "个人网站", "limit": 5})

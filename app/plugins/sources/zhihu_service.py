@@ -8,9 +8,9 @@ from functools import lru_cache
 from html import unescape
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from bs4 import BeautifulSoup
+import httpx
 
 from app.platform.config.loader import get_settings
 from app.platform.config.runtime import COOKIE_PATH_DEFAULT, load_env_file
@@ -46,6 +46,28 @@ def clean_text(value: Any) -> str:
         .replace("&amp;", "&")
     )
     return re.sub(r"\s+", " ", text).strip()
+
+
+def normalize_zhihu_content_url(value: Any) -> str:
+    """移除知乎开放平台追加的跟踪参数，保留内容的完整路由。"""
+
+    url = str(value or "").strip()
+    if not url:
+        return ""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url
+
+    tracking_parameters = {"utm_medium", "utm_source"}
+    query = urlencode(
+        [
+            (key, item)
+            for key, item in parse_qsl(parts.query, keep_blank_values=True)
+            if key.lower() not in tracking_parameters
+        ]
+    )
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 
 
 def is_zhihu_block_text(value: str) -> bool:
@@ -375,49 +397,6 @@ def extract_zhihu_question_snapshot_from_html(html: str, question_id: str | None
     return _merge_snapshot(state_snapshot, regex_snapshot)
 
 
-def extract_zhihu_search_items_from_html(
-    html: str, topic_name: str, limit: int = 20
-) -> list[QuestionItem]:
-    """从知乎搜索页渲染后的 HTML 提取问题链接和标题，不依赖知乎内部搜索 API。"""
-
-    soup = BeautifulSoup(html, "html.parser")
-    items: list[QuestionItem] = []
-    seen: set[str] = set()
-    for anchor in soup.select('a[href*="/question/"]'):
-        href = str(anchor.get("href") or "").strip()
-        question_id = extract_zhihu_question_id(href)
-        if not question_id or question_id in seen:
-            continue
-
-        title = clean_text(anchor.get_text(" ", strip=True))
-        if not title or is_zhihu_block_text(title):
-            continue
-
-        container = anchor.find_parent(["article", "div", "li"])
-        excerpt = ""
-        if container is not None:
-            container_text = clean_text(container.get_text(" ", strip=True))
-            if container_text.startswith(title):
-                excerpt = container_text[len(title):].strip()[:500]
-
-        seen.add(question_id)
-        items.append(
-            QuestionItem(
-                id=question_id,
-                platform="zhihu",
-                title=title,
-                url=get_zhihu_question_web_url(question_id),
-                answerCount=0,
-                excerpt=excerpt,
-                detail="",
-                topic=topic_name,
-            )
-        )
-        if len(items) >= max(1, min(20, limit)):
-            break
-    return items
-
-
 def get_zhihu_question_web_url(question_id: str) -> str:
     """生成知乎问题网页链接；这样内部只存问题 id 时也能提供前端可打开的原始地址。"""
 
@@ -649,35 +628,69 @@ async def fetch_question_details(
 async def search_zhihu_for_keyword(
     topic: Topic, keyword: str, user_agent: str, limit: int = 12
 ) -> list[QuestionItem]:
-    """通过 Playwright 渲染知乎搜索页并解析问题链接，不调用知乎 JSON API。"""
+    """通过知乎开放平台站内搜索 API 获取内容，并映射为现有 QuestionItem。"""
 
-    search_url = f"https://www.zhihu.com/search?type=content&q={quote(keyword, safe='')}"
-    html = await PlaywrightFetcher(
-        cookie_string=load_zhihu_cookie(),
-        cookie_domain=".zhihu.com",
-    ).fetch(
-        search_url,
-        {
-            "User-Agent": user_agent,
-            "Accept": "text/html,application/xhtml+xml",
-            "Referer": "https://www.zhihu.com/",
-        },
-    )
-    items = extract_zhihu_search_items_from_html(html, topic.name, limit)
-    if not items:
-        page_text = clean_text(BeautifulSoup(html, "html.parser").get_text(" ", strip=True))
-        if is_zhihu_challenge_html(html) or is_zhihu_block_text(page_text):
-            raise ValueError(
-                "知乎搜索页返回了安全验证或登录限制页面，请更新 ZHIHU_COOKIE_FILE 后重试。"
+    load_env_file()
+    access_secret = os.getenv("ZHIHU_ACCESS_SECRET", "").strip()
+    if not access_secret:
+        raise ValueError("当前缺少：ZHIHU_ACCESS_SECRET")
+
+    requested_limit = max(1, min(10, int(limit)))
+    api_url = "https://developer.zhihu.com/api/v1/content/zhihu_search"
+    headers = {
+        "Authorization": f"Bearer {access_secret}",
+        "X-Request-Timestamp": str(int(datetime.now().timestamp())),
+        "Content-Type": "application/json",
+        "User-Agent": user_agent,
+    }
+    params = {"Query": keyword, "Count": requested_limit}
+
+    async with httpx.AsyncClient(
+        timeout=get_settings().http.client_timeout_seconds
+    ) as client:
+        response = await client.get(api_url, params=params, headers=headers)
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        response.raise_for_status()
+        raise ValueError("知乎搜索 API 返回了无法解析的响应") from exc
+
+    code = payload.get("Code")
+    message = str(payload.get("Message") or "知乎搜索 API 请求失败")
+    if response.is_error or code not in (0, "0", None):
+        raise ValueError(
+            f"知乎搜索 API 请求失败：HTTP {response.status_code}，Code {code}，{message}"
+        )
+
+    data = payload.get("Data") or {}
+    raw_items = data.get("Items") or []
+    if not isinstance(raw_items, list):
+        raise ValueError("知乎搜索 API 返回的 Items 格式无效")
+
+    items: list[QuestionItem] = []
+    for raw in raw_items[:requested_limit]:
+        if not isinstance(raw, dict):
+            continue
+        title = clean_text(raw.get("Title"))
+        url = normalize_zhihu_content_url(raw.get("Url"))
+        content_id = str(raw.get("ContentID") or "").strip()
+        if not title or not url or not content_id:
+            continue
+        items.append(
+            QuestionItem(
+                id=content_id,
+                platform="zhihu",
+                title=title,
+                url=url,
+                answerCount=0,
+                updatedTime=to_iso_time(raw.get("EditTime")),
+                excerpt=clean_text(raw.get("ContentText"))[:500],
+                detail="",
+                topic=topic.name,
             )
-        raise ValueError("知乎搜索页未解析到问题结果，可能是页面结构已变化。")
-
-    keyword_hints = unique_by(
-        [topic.name, *topic.keywords, *get_topic_retrieval_keywords(topic), keyword],
-        lambda item: item.lower(),
-    )
-    filtered = [item for item in items if question_matches_keyword(item, keyword_hints)]
-    return unique_by(filtered or items, lambda item: item.id)
+        )
+    return unique_by(items, lambda item: item.id)
 
 
 
@@ -691,7 +704,4 @@ async def fetch_zhihu_results_for_topic(topic: Topic, user_agent: str, limit: in
         aggregated.extend(await search_zhihu_for_keyword(topic, keyword, user_agent, limit=per_keyword_limit))
 
     deduplicated = unique_by(aggregated, lambda item: item.id)[: max(limit, 1)]
-    detailed: list[QuestionItem] = []
-    for item in deduplicated:
-        detailed.append(await fetch_question_details(item, user_agent))
-    return detailed
+    return deduplicated

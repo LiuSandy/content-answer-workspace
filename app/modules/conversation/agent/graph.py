@@ -33,7 +33,10 @@ def _route_after_intent(state: ChatAgentState) -> str:
     if intent == "parse_url":
         return "parse_url"
     if intent == "collect":
-        return "platform_collect"
+        # 只有完整的平台检索路由才允许进入终态采集节点。
+        # 意图模型可能会判定为 collect，但没有解析出平台或 query；
+        # 此时不能让 platform_collect 产生误导性的“工具未启用”提示。
+        return "platform_collect" if has_platform_search_route(state) else "knowledge_decision"
     if intent == "task_plan":
         return "writer"
     if intent == "multi_agent":

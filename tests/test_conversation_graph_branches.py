@@ -24,6 +24,18 @@ def test_route_after_intent_selects_platform_collect_for_explicit_zhihu_search(m
     }) == "platform_collect"
 
 
+def test_route_after_intent_does_not_collect_without_platform_query(monkeypatch):
+    from app.modules.conversation.agent import graph as conversation
+
+    monkeypatch.setattr(conversation, "has_platform_search_route", lambda state: False)
+
+    assert conversation._route_after_intent({
+        "intent": "collect",
+        "intent_platform": None,
+        "intent_query": None,
+    }) == "knowledge_decision"
+
+
 @pytest.fixture
 def graph(monkeypatch):
     """编译图；mock route_intent 的 LLM 依赖与 memory retriever，避免真实调用。"""

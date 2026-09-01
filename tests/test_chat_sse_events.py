@@ -41,8 +41,13 @@ def _on_chain_end(name: str, output: dict, metadata: dict | None = None) -> dict
     return {"event": "on_chain_end", "name": name, "data": {"output": output}, "metadata": metadata or {}}
 
 
-def _on_chat_model_stream(delta: str) -> dict:
-    return {"event": "on_chat_model_stream", "name": "ChatModel", "data": {"chunk": SimpleNamespace(content=delta)}}
+def _on_chat_model_stream(delta: str, metadata: dict | None = None) -> dict:
+    return {
+        "event": "on_chat_model_stream",
+        "name": "ChatModel",
+        "data": {"chunk": SimpleNamespace(content=delta)},
+        "metadata": metadata or {},
+    }
 
 
 def _collect(events) -> list[tuple[str, dict]]:
@@ -126,6 +131,16 @@ def test_message_delta_event():
     events = _collect([_on_chat_model_stream("你好"), _on_chat_model_stream("世界")])
     deltas = [d["delta"] for n, d in events if n == "message.delta"]
     assert deltas == ["你好", "世界"]
+
+
+def test_structured_intent_model_stream_is_not_user_visible():
+    events = _collect([
+        _on_chat_model_stream(
+            '{"intent":"chat","platform":null}',
+            metadata={"langgraph_node": "route_intent"},
+        )
+    ])
+    assert events == []
 
 
 def test_platform_collect_terminal_message_becomes_sse_delta():
