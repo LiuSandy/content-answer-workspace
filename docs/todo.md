@@ -1,5 +1,9 @@
 # TODO
 
+## 调研 AI 回复耗时统计
+
+- [ ] 调研并重新设计 AI 回复耗时的起止时间、统计口径和持久化方式；涉及 `app/modules/conversation/`、`app/shared/agent/runtime.py`、`frontend/src/features/chat/`。
+
 ## 接入 LangSmith Agent Trace
 
 - [ ] 配置 LangSmith 环境变量并接入 Agent 全链路 Trace，覆盖 HTTP 请求、LangGraph 节点、LLM 调用、RAG 检索、工具调用和最终结果；为自定义 RAG、采集器和 Memory 服务增加必要的手动埋点，并补充 `run_id`、`chat_id`、模型/Prompt 版本、Token、延迟、错误和成本等元数据，同时完成敏感信息脱敏验证。
@@ -10,11 +14,11 @@
 
 ## 优化 Markdown 读取性能
 
-- [ ] 优化 Markdown 的读取与 SHA-256 计算流程，避免大文件同时完整驻留在内存并额外创建 UTF-8 字节副本；评估采用分块读取或流式处理。
+- [x] 优化 Markdown 的读取与 SHA-256 计算流程，避免大文件同时完整驻留在内存并额外创建 UTF-8 字节副本；采用分块读取和流式处理。
 
 ## 清理 RAG 入库任务记录
 
-- [ ] 为 `knowledge_ingestion_jobs` 和 `knowledge_ingestion_pages` 增加数据清理策略：定时清理已完成/失败且超过保留期限的记录，或在任务完成后自动清理，避免任务历史数据无限增长。
+- [x] 为 `knowledge_ingestion_jobs` 和 `knowledge_ingestion_pages` 增加数据清理策略：定时清理已完成/失败且超过保留期限的记录，避免任务历史数据无限增长。
 
 ## 使用 Celery 优化 Worker
 
@@ -45,6 +49,6 @@
 ## 接入知乎开放平台能力
 
 - [x] 知乎内容搜索；使用知乎搜索 API，并清理返回链接中的 `utm_medium`、`utm_source` 跟踪参数；涉及 `docs/zhihu/知乎搜索API.md`、`app/plugins/tools/builtin/zhihu_tool.py`、`app/plugins/sources/`、`frontend/src/features/chat/`。
-- [ ] 全网资料搜索；涉及 `docs/zhihu/全网搜索API.md`、`app/plugins/tools/`、`app/modules/conversation/`、`frontend/src/features/chat/`。
+- [x] 全网资料搜索；涉及 `docs/zhihu/全网搜索API.md`、`app/plugins/tools/`、`app/modules/conversation/`、`frontend/src/features/chat/`。
 - [ ] 知乎知识库管理；涉及 `docs/zhihu/知识库列表API.md`、`docs/zhihu/知识库内容列表 API.md`、`app/modules/knowledge/`、`frontend/src/features/knowledge/`。
 - [ ] 基于知乎知识库的 RAG 问答与写作辅助；涉及 `docs/zhihu/知识库检索 API.md`、`app/modules/knowledge/`、`app/modules/conversation/`、`app/modules/writing/`、`frontend/src/features/chat/`。
