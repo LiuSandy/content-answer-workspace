@@ -30,6 +30,17 @@ def test_zhihu_search_is_builtin_without_agent_reach_config(monkeypatch, tmp_pat
     assert "zhihu_search" in names
 
 
+def test_web_search_is_builtin_without_agent_reach_config(monkeypatch, tmp_path):
+    from app.plugins.tools import builtin as tools
+
+    monkeypatch.setattr(tools, "_AGENT_REACH_CONFIG", tmp_path / "missing.json")
+
+    names = {getattr(tool, "name", "") for tool in tools._build_all_tools()}
+
+    assert "web_search" in names
+    assert "zhihu_global_search" not in names
+
+
 def test_security_rejects_private_loopback_and_metadata():
     bad_urls = [
         "http://127.0.0.1:8080/admin",
