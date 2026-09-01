@@ -123,6 +123,23 @@ def evaluate_evidence_threshold(scores: List[float], threshold: float = 0.55) ->
     return any(score >= threshold for score in scores)
 
 
+def deduplicate_retrieval_candidates(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """按父分块去重，避免同一份父上下文重复进入回答和来源列表。"""
+
+    seen: set[tuple[str, str]] = set()
+    result: list[dict[str, Any]] = []
+    for item in items:
+        key = (
+            str(item.get("doc_id") or ""),
+            str(item.get("parent_chunk_id") or item.get("chunk_id") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+    return result
+
+
 @dataclass
 class RetrievalRequest:
     query: str
@@ -315,14 +332,19 @@ class KnowledgeRetrievalService:
             for i, item in enumerate(top_n):
                 item['rerank_score'] = rerank_scores[i]
             top_n.sort(key=lambda x: x['rerank_score'], reverse=True)
-            return evaluate_evidence_threshold(rerank_scores, threshold), notes
+            # 阈值不仅决定是否“有证据”，还必须真正过滤候选；否则一个达标
+            # 分数会把其余不相关的 Top N 一起注入上下文。
+            top_n[:] = [
+                item for item in top_n if item['rerank_score'] >= threshold
+            ]
+            return bool(top_n), notes
 
-        # rerank 不可用：保持 RRF 排序。RRF 分数与阈值量纲不同，
-        # 不做阈值判定——normal 模式视"有命中"为有证据；strict 模式因无法
-        # 校验阈值而拒绝，语义由调用方 retrieve() 处理。
+        # rerank 不可用：RRF 分数与证据阈值不在同一量纲，不能把“有召回”
+        # 当成“有证据”。normal 也必须拒绝注入，避免弱相关结果污染回答。
         for item in top_n:
             item['rerank_score'] = None
-        return bool(top_n), notes
+        top_n.clear()
+        return False, notes
 
     async def retrieve(self, request: RetrievalRequest) -> RetrievalResult:
         if request.mode == "off":
@@ -405,42 +427,34 @@ class KnowledgeRetrievalService:
         degradation_notes.extend(rerank_notes)
         rerank_unavailable = bool(rerank_notes)
         if rerank_unavailable:
-            recorder.add("rerank", "LLM 重排打分", "error", f"重排不可用（{'; '.join(rerank_notes)}），保持 RRF 排序")
+            recorder.add("rerank", "LLM 重排打分", "error", f"重排不可用（{'; '.join(rerank_notes)}），阻止证据注入")
         else:
             top_score = max((item['rerank_score'] for item in top_n), default=0.0)
-            recorder.add("rerank", "LLM 重排打分", "ok", f"对 {len(top_n)} 条候选逐条打分，最高 {top_score:.2f}")
+            recorder.add("rerank", "LLM 重排打分", "ok", f"过滤后保留 {len(top_n)} 条候选，最高 {top_score:.2f}")
 
         # ── 阶段 6：证据阈值判定 ──
-        if request.mode == "strict" and rerank_unavailable:
-            # strict 模式承诺"只依据达到阈值的证据作答"；rerank 不可用时
-            # 无法校验阈值，显式拒绝而非假装有证据。
-            recorder.add("evidence", "证据判定", "blocked", "strict 模式下重排不可用，无法校验阈值，拒绝作答")
-            return RetrievalResult(
-                False, "", [], [], rewritten_query,
-                fallback_reason="Reranker unavailable; cannot verify evidence threshold in strict mode",
-                degradation_notes=degradation_notes,
-                pipeline_steps=recorder.steps,
+        if not has_evidence:
+            reason = (
+                "Reranker unavailable; evidence injection blocked"
+                if rerank_unavailable
+                else f"No evidence above threshold {request.evidence_threshold}"
             )
-
-        if request.mode == "strict" and not has_evidence:
             recorder.add(
                 "evidence", "证据判定", "blocked",
-                f"最高重排分未达阈值 {request.evidence_threshold}，strict 模式拒绝作答",
+                reason,
             )
             return RetrievalResult(
                 False, "", [], [], rewritten_query,
-                fallback_reason="No evidence above threshold in strict mode",
+                fallback_reason=reason,
                 degradation_notes=degradation_notes,
                 pipeline_steps=recorder.steps,
             )
 
-        if rerank_unavailable:
-            recorder.add("evidence", "证据判定", "ok", "重排不可用，降级为『有召回即视为有证据』")
-        else:
-            recorder.add(
-                "evidence", "证据判定", "ok",
-                f"阈值 {request.evidence_threshold}：{'达标，判定有证据' if has_evidence else '未达标，判定证据不足'}",
-            )
+        top_n = deduplicate_retrieval_candidates(top_n)
+        recorder.add(
+            "evidence", "证据判定", "ok",
+            f"阈值 {request.evidence_threshold}：达标，去重后保留 {len(top_n)} 条证据",
+        )
 
         # 取 parent 上下文
         parent_ids = [item['parent_chunk_id'] for item in top_n if item['parent_chunk_id']]
