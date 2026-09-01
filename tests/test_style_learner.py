@@ -10,13 +10,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.services.memory.style_learning import (
+from app.modules.memory.application.style_learning import (
     learn_style_from_versions,
     analyze_document_versions,
 )
-from app.infrastructure.database import Base
-from app.infrastructure.database.models.documents import AnswerDocument, AnswerVersion
-from app.infrastructure.database.models.content import SourceItem
+from app.platform.database import Base
+from app.modules.documents.adapters.db.models import AnswerDocument, AnswerVersion
+from app.modules.acquisition.adapters.db.models import SourceItem
 
 
 @compiles(JSONB, "sqlite")
@@ -51,7 +51,7 @@ async def test_learn_style_ai_to_manual(monkeypatch):
         {"content": "偏好短句", "confidence": 0.85},
     ]))
     monkeypatch.setattr(
-        "app.services.llm_service.LLMServiceAdapter",
+        "app.modules.memory.application.style_learning.get_memory_llm",
         lambda: llm,
     )
 
@@ -96,7 +96,7 @@ async def test_idempotent_skip(monkeypatch):
     llm = MagicMock()
     llm.analyze = AsyncMock(return_value=json.dumps([{"content": "风格A"}]))
     monkeypatch.setattr(
-        "app.services.llm_service.LLMServiceAdapter",
+        "app.modules.memory.application.style_learning.get_memory_llm",
         lambda: llm,
     )
 

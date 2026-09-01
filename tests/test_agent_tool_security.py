@@ -8,9 +8,9 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.agents._shared import security
-from app.agents._shared.tools import ALL_TOOLS
-from app.infrastructure.files.ssrf import SSRFError
+from app.shared.agent import security
+from app.plugins.tools.builtin import ALL_TOOLS
+from app.platform.files.ssrf import SSRFError
 
 
 def test_code_interpreter_not_in_default_tools():
@@ -21,7 +21,7 @@ def test_code_interpreter_not_in_default_tools():
 
 
 def test_zhihu_search_is_builtin_without_agent_reach_config(monkeypatch, tmp_path):
-    from app.agents._shared import tools
+    from app.plugins.tools import builtin as tools
 
     monkeypatch.setattr(tools, "_AGENT_REACH_CONFIG", tmp_path / "missing.json")
 
@@ -54,7 +54,7 @@ def test_security_rejects_non_http_scheme():
 @pytest.mark.asyncio
 async def test_web_fetch_tool_refuses_internal_url_without_network():
     """web_fetch 对内网 URL 直接拒绝，不发起网络请求。"""
-    from app.agents._shared.tools.web_fetch import web_fetch
+    from app.plugins.tools.builtin.web_fetch import web_fetch
 
     result = await web_fetch.ainvoke({"url": "http://127.0.0.1:8080/admin"})
     assert "拒绝" in result or "forbidden" in result.lower() or "SSRF" in result
@@ -63,7 +63,7 @@ async def test_web_fetch_tool_refuses_internal_url_without_network():
 @pytest.mark.asyncio
 async def test_fetch_web_page_blocks_redirect_hop_to_internal(monkeypatch):
     """重定向的每一跳都重新做安全校验：公网 302 跳到内网必须被拒。"""
-    from app.infrastructure.files import ssrf as ssrf_mod
+    from app.platform.files import ssrf as ssrf_mod
 
     calls: list[str] = []
 

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.opportunity_service import (
+from app.modules.acquisition.application.opportunities import (
     OpportunityService,
     _compute_scores,
     W_HOT,
@@ -98,9 +98,9 @@ async def test_get_created_urls_uses_answer_document_join():
     def compile_jsonb_sqlite(type_, compiler, **kw):
         return "TEXT"
 
-    from app.infrastructure.database import Base
-    from app.infrastructure.database.models.content import SourceItem
-    from app.infrastructure.database.models.documents import AnswerDocument
+    from app.platform.database import Base
+    from app.modules.acquisition.adapters.db.models import SourceItem
+    from app.modules.documents.adapters.db.models import AnswerDocument
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:

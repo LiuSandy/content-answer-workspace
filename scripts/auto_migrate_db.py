@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Optional, Dict
 from sqlalchemy import text
-from app.infrastructure.database.session import get_engine
+from app.platform.database.session import get_engine
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_FLAG_FILE = ROOT_DIR / "output" / ".migration_completed"

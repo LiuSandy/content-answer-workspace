@@ -25,7 +25,7 @@
 docker-compose up -d            # 启动 PostgreSQL（首次必须）
 uv sync
 uv run alembic upgrade head     # 迁移（server 启动时也会自动迁移）
-uv run python -m app.server
+uv run python -m app.bootstrap.server
 uv run pytest tests/
 ```
 
@@ -53,23 +53,15 @@ bun run build
 
 ```text
 app/
-├── server.py                  # FastAPI 入口：路由挂载、静态托管、lifespan
-│                              # （自动迁移、SQLite checkpointer、scheduler、RAG ingestion）
-├── graph.py                   # re-export 门面；真实图在 agents/chat 与 agents/orchestrator
-├── context.py                 # 分支 checkpoint 续跑的输入组装
-├── cli.py                     # 命令行入口
-├── api/                       # routes/（11 个路由模块）、schemas/、streaming/sse.py
-├── agents/                    # chat、orchestrator、researcher、writer、reviewer、memory
-│                              # + _shared/（工具、安全、SSE 封装、共享 prompt）
-│                              # 除 memory（legacy 节点）外均为编译的 LangGraph 子图
-├── services/                  # workflow、answer、document、outline、quality、planning 等
-│                              # 用例编排 + rag/ memory/ llm/ context/ 子包
-├── infrastructure/            # database、collectors、llm（registry + providers/deepseek）、
-│                              # files、embeddings、rerankers、observability、scheduler
-├── contracts/                 # dto.py、ports.py（Protocol Port）、errors.py
-├── prompts/                   # Prompt 加载、校验与渲染
+├── bootstrap/                 # FastAPI composition root、依赖容器、路由与生命周期
+├── modules/                   # conversation、writing、memory、knowledge、acquisition、
+│                              # documents、publishing、settings 业务模块
+├── plugins/                   # LLM、采集源、Embedding、Reranker 与内置工具适配器
+├── platform/                  # config、database、files、http、observability、prompts、
+│                              # scheduler、tasking 系统基础设施
+├── shared/                    # 稳定 DTO、错误、Port、Agent 与 LLM 契约
 ├── evaluation/                # 检索评测 datasets/metrics/runners
-└── config/                    # loader、runtime、defaults/
+└── cli.py                     # 命令行入口
 
 frontend/src/
 ├── app/                       # App.tsx（路由）、providers.tsx（QueryClient 等）
@@ -84,17 +76,18 @@ frontend/src/
 
 ## 架构约定
 
-- 路由保持轻薄；采集、导入、生成、润色等编排放在 `WorkflowService` 或对应服务层。
+- 路由保持轻薄；采集、导入、生成、润色等编排放在对应模块的 `application/`。
 - Pydantic 模型使用 `alias="camelCase"` 和 `populate_by_name=True`；返回前端时使用
   `model_dump(by_alias=True)`。
-- 新增后端字段时同步更新 `app/api/schemas/workflow.py`、`frontend/src/types/workflow.ts`
+- 新增后端字段时同步更新对应模块的 API schema、`frontend/src/types/workflow.ts`
   和相关测试。
 - API 响应保持 `{"ok": true, "data": ...}`；异常由后端统一包装为
   `{"ok": false, "error": ...}`。
 - 不要在前端组件里直接写业务 `fetch`；通过 `lib/api.ts`、`lib/sse.ts` 或
   feature 专属 API 层（如 `settings-api.ts`）调用。
-- LLM 统一经 `app/infrastructure/llm/registry.py` 获取，默认 provider 为 deepseek
-  （`DEEPSEEK_*` 环境变量，见 `.env.example`）；不要在业务代码里直接构造 LLM 客户端。
+- Application 只能依赖 `app/shared/llm/port.py` 的 `LLMGatewayPort`；Provider、Resolver、
+  Registry 与 SDK 仅存在于 `app/plugins/llm/`。业务模型由 Prompt 的 `model.profile`
+  选择；Prompt 未指定时回退到 `LLMRuntimeConfig.default`。
 - Agent 子图失败只更新各自 `SubAgentState`，不抛到 orchestrator 父图；
   不要吞掉 `asyncio.CancelledError`。
 
@@ -112,14 +105,14 @@ feature API 层（settings-api.ts / knowledge-api.ts / quality-review-api.ts 等
 `selectedSourceItemId`、`activeLeafMessageId`）。
 
 流式响应统一走 `lib/sse.ts` 的 `streamPost()`，SSE 事件由
-`app/api/streaming/sse.py` 产生。
+`app/platform/http/sse.py` 产生。
 
 ## 平台扩展
 
 新增强类型平台 collector：
 
-1. 实现 `app/contracts/ports.py` 中的 collector port。
-2. 放入 `app/infrastructure/collectors/`。
+1. 实现 `app/shared/ports.py` 中的 collector port。
+2. 放入 `app/plugins/sources/`。
 3. 在 `CollectorFactory._collectors` 注册平台名，必要时注册 `platform:official`。
 4. 更新前端 `Platform` 类型、平台选择 UI 和测试。
 
@@ -137,7 +130,7 @@ feature API 层（settings-api.ts / knowledge-api.ts / quality-review-api.ts 等
 
 - 不提交 `.env`、cookie（`.secrets/`、`.data/`）、SQLite checkpoint、生成图片、
   输出会话和缓存目录。
-- 可提交的默认配置在 `app/config/defaults/`；密钥只写 `.env.example` 的占位说明。
+- 可提交的默认配置在 `app/platform/config/defaults/`；密钥只写 `.env.example` 的占位说明。
 - 回答配图输出到 `generated-images/`，Agent checkpoint 位于
   `output/agent_checkpoints.sqlite`，文件型会话位于 `output/sessions/`。
 

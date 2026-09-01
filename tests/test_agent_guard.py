@@ -6,19 +6,22 @@ from pathlib import Path
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.agents.chat.graph import build_chat_agent_graph
-from app.agents.chat.nodes.guard import guard_node
-from app.agents.writer.nodes.guard import writer_guard_node
+from app.modules.conversation.agent.graph import build_chat_agent_graph
+from app.modules.conversation.agent.nodes.guard import guard_node
+from app.modules.writing.agent.nodes.guard import writer_guard_node
 
 
 def test_agents_package_defines_exactly_two_state_graphs():
-    agents_dir = Path(__file__).parents[1] / "app" / "agents"
+    agents_dir = Path(__file__).parents[1] / "app" / "modules"
     definitions = []
     for path in agents_dir.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         if "StateGraph(" in text:
             definitions.append(path.relative_to(agents_dir).as_posix())
-    assert sorted(definitions) == ["chat/graph.py", "writer/graph.py"]
+    assert sorted(definitions) == [
+        "conversation/agent/graph.py",
+        "writing/agent/graph.py",
+    ]
 
 
 def test_chat_uses_branch_specific_memory_retrieval():
@@ -75,12 +78,12 @@ async def test_blocked_chat_stops_before_memory_and_router(monkeypatch):
     chat_memory = AsyncMock(return_value={"applied_memories": []})
     answer_memory = AsyncMock(return_value={"applied_memories": []})
     router = AsyncMock(return_value={"intent": "chat"})
-    monkeypatch.setattr("app.agents.chat.graph.chat_memory_retriever_node", chat_memory)
+    monkeypatch.setattr("app.modules.conversation.agent.graph.chat_memory_retriever_node", chat_memory)
     monkeypatch.setattr(
-        "app.agents.chat.graph.answer_preference_memory_retriever_node",
+        "app.modules.conversation.agent.graph.answer_preference_memory_retriever_node",
         answer_memory,
     )
-    monkeypatch.setattr("app.agents.chat.graph.route_intent_node", router)
+    monkeypatch.setattr("app.modules.conversation.agent.graph.route_intent_node", router)
 
     graph = build_chat_agent_graph(MemorySaver(), writer_graph=MagicMock())
     result = await graph.ainvoke(

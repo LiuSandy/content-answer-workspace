@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from app.prompts.composer import compose_writing_prompt, resolve_platform_pack_id
-from app.prompts.registry import PromptRegistry, prompt_registry
+from app.platform.prompts.composer import compose_writing_prompt, resolve_platform_pack_id
+from app.platform.prompts.registry import PromptRegistry, prompt_registry
 
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "app" / "agents"
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "app"
 
 
 @pytest.fixture(autouse=True)
@@ -75,3 +75,11 @@ def test_compose_is_immutable():
 def test_compose_without_word_count_omits_limit():
     rendered = compose_writing_prompt("writing.answer_generate", platform="zhihu")
     assert "字数要求" not in rendered.messages[0].content
+
+
+def test_rendered_prompt_carries_model_profile_route():
+    rendered = prompt_registry.render("writing.answer_generate")
+    request = rendered.to_llm_request()
+
+    assert request.provider == "deepseek"
+    assert request.model == "deepseek-v4-pro"

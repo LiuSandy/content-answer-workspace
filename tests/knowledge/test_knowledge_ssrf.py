@@ -1,5 +1,5 @@
 import pytest
-from app.infrastructure.files.ssrf import validate_url_security, SSRFError
+from app.platform.files.ssrf import validate_url_security, SSRFError
 
 
 def test_ssrf_validation():

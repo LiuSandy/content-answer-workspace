@@ -1,6 +1,6 @@
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.agents.chat.nodes.chat import _drop_orphaned_tool_messages
+from app.modules.conversation.agent.nodes.chat import _drop_orphaned_tool_messages
 
 
 def test_drops_legacy_orphaned_platform_tool_message():

@@ -7,12 +7,12 @@ DeepSeek profile 不错误假定原生 json_schema。
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
-from app.services.llm_service import LLMServiceAdapter
-from app.contracts.dto import (
+from app.shared.dto import (
     ConversationSummary,
     IntentRoute,
     LLMRequest,
@@ -21,7 +21,30 @@ from app.contracts.dto import (
     StructuredResult,
     TopicEvaluation,
 )
-from app.services.llm.structured_output import generate_structured
+from app.plugins.llm.structured import generate_structured as _generate_structured
+from app.shared.llm.dto import StructuredLLMRequest
+
+
+async def generate_structured(
+    *, provider, request, schema, structured_methods=None, retries=1
+):
+    provider._test_capabilities = SimpleNamespace(
+        structured_methods=tuple(
+            structured_methods or ("json_mode", "generic_parse")
+        )
+    )
+    provider.__class__.capabilities = property(lambda self: self._test_capabilities)
+    return await _generate_structured(
+        provider=provider,
+        model=request.model,
+        request=StructuredLLMRequest(
+            messages=[message.model_dump() for message in request.messages],
+            schema=schema,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            retries=retries,
+        ),
+    )
 
 
 def _quality_dimension_scores(score: int = 80) -> dict[str, int]:
@@ -350,7 +373,7 @@ def test_deepseek_profiles_do_not_assume_native_json_schema():
     from pathlib import Path
 
     profiles_file = (
-        Path(__file__).resolve().parent.parent / "app" / "agents" / "_shared" / "prompts" / "model_profiles.yml"
+        Path(__file__).resolve().parent.parent / "app" / "shared" / "prompts" / "model_profiles.yml"
     )
     raw = yaml.safe_load(profiles_file.read_text(encoding="utf-8"))
     assert "model_profiles" in raw
@@ -364,20 +387,16 @@ def test_deepseek_profiles_do_not_assume_native_json_schema():
 # ── LLMServiceAdapter 公共入口 ──────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_adapter_generate_structured_returns_metadata(monkeypatch):
-    from app.infrastructure.llm.registry import llm_provider_registry
-
+async def test_gateway_strategy_returns_metadata():
     provider = _FakeProvider([
         "这不是JSON",
         '{"intent": "chat", "knowledge_mode": "off"}',
     ])
-    monkeypatch.setattr(llm_provider_registry, "get", lambda key: provider)
-
-    adapter = LLMServiceAdapter()
-    result = await adapter.generate_structured(
+    result = await generate_structured(
+        provider=provider,
+        request=_request(),
         schema=IntentRoute,
-        system_prompt="sys",
-        user_prompt="user",
+        structured_methods=["json_mode", "generic_parse"],
         retries=1,
     )
     assert result.value is not None

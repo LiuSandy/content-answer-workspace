@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.infrastructure.collectors.factory import CollectorFactory
-from app.infrastructure.collectors.zhihu_collector import ZhihuCollector
+from app.plugins.sources.factory import CollectorFactory
+from app.plugins.sources.zhihu_collector import ZhihuCollector
 
 
 @pytest.mark.parametrize("source", ["auto", "web"])

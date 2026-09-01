@@ -8,13 +8,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.prompts.registry import PromptRegistry, RenderedPrompt
-from app.prompts.errors import PromptVariableMissingError, PromptNotFoundError
-from app.contracts.errors import DocumentConflictError, ValidationError
-from app.infrastructure.database import Base
-from app.infrastructure.database.models.content import SourceItem
-from app.services.document_service import DocumentService
-from app.contracts.dto import SelectionDTO
+from app.platform.prompts.registry import PromptRegistry, RenderedPrompt
+from app.platform.prompts.errors import PromptVariableMissingError, PromptNotFoundError
+from app.shared.errors import DocumentConflictError, ValidationError
+from app.platform.database import Base
+from app.modules.acquisition.adapters.db.models import SourceItem
+from app.modules.documents.application.documents import DocumentService
+from app.shared.dto import SelectionDTO
 
 
 def test_legacy_reflection_prompt_and_workflow_are_removed() -> None:

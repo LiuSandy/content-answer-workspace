@@ -1,0 +1,16 @@
+"""Persistence boundary owned by Knowledge."""
+
+from typing import Any, Protocol
+from uuid import UUID
+
+
+class KnowledgeRepositoryPort(Protocol):
+    async def create_document(self, document: Any) -> Any: ...
+    async def get_document_by_id(
+        self, document_id: UUID, workspace_id: str | None = None
+    ) -> Any | None: ...
+    async def list_documents(self, *args: Any, **kwargs: Any) -> list[Any]: ...
+    async def update_status(
+        self, document_id: UUID, status: str, error: str | None = None
+    ) -> None: ...
+    async def soft_delete_document(self, document_id: UUID) -> None: ...

@@ -1,0 +1,1 @@
+"""Memory inbound HTTP adapters."""

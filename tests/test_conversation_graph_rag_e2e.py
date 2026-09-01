@@ -17,9 +17,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.agents.chat.graph import build_chat_agent_graph
-from app.state import ChatAgentState
-from app.services.rag.retrieval_service import RetrievalResult
+from app.modules.conversation.agent.graph import build_chat_agent_graph
+from tests.llm_fakes import structured_gateway
+from app.modules.conversation.agent.state import ChatAgentState
+from app.modules.knowledge.application.retrieval_service import RetrievalResult
 
 
 # ── 公共夹具：构造一个编译后的图，所有外部依赖被 mock ────────────────────────
@@ -34,17 +35,14 @@ def compiled_graph(monkeypatch):
     # 1) route_intent：mock prompt_registry + llm_provider_registry，强制返回 chat
     fake_rendered = MagicMock()
     fake_rendered.to_llm_request.return_value = MagicMock()
-    fake_provider = MagicMock()
-    fake_provider.generate = AsyncMock(return_value=MagicMock(content='{"intent": "chat"}'))
-    fake_registry = MagicMock()
-    fake_registry.get_default.return_value = fake_provider
     fake_prompt_registry = MagicMock()
     fake_prompt_registry.render.return_value = fake_rendered
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.llm_provider_registry", fake_registry
+        "app.modules.conversation.agent.nodes.route_intent._get_intent_gateway",
+        lambda: structured_gateway('{"intent": "chat"}'),
     )
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.prompt_registry", fake_prompt_registry
+        "app.modules.conversation.agent.nodes.route_intent.prompt_registry", fake_prompt_registry
     )
 
     # 2) retrieve_knowledge：mock get_session_factory、KnowledgeRetrievalService、TraceService
@@ -53,7 +51,7 @@ def compiled_graph(monkeypatch):
     fake_factory = MagicMock()
     fake_factory.return_value.__aenter__ = AsyncMock(return_value=fake_session)
     fake_factory.return_value.__aexit__ = AsyncMock(return_value=None)
-    monkeypatch.setattr("app.infrastructure.database.session.get_session_factory", lambda: fake_factory)
+    monkeypatch.setattr("app.platform.database.session.get_session_factory", lambda: fake_factory)
 
     # 3) chat_node：mock Provider 返回可捕获 messages 的模型结果
     captured_messages = []
@@ -66,7 +64,7 @@ def compiled_graph(monkeypatch):
 
     fake_provider = FakeProvider()
     monkeypatch.setattr(
-        "app.agents.chat.nodes.chat._get_chat_provider", lambda: fake_provider
+        "app.modules.conversation.agent.nodes.chat._get_chat_provider", lambda: fake_provider
     )
 
     graph = build_chat_agent_graph(MemorySaver())
@@ -100,7 +98,7 @@ def _install_retriever(monkeypatch, result: RetrievalResult | None):
     fake_svc = MagicMock()
     fake_svc.retrieve = AsyncMock(return_value=result)
     monkeypatch.setattr(
-        "app.services.rag.retrieval_service.KnowledgeRetrievalService",
+        "app.modules.knowledge.application.retrieval_service.KnowledgeRetrievalService",
         lambda session: fake_svc,
     )
 
@@ -112,7 +110,7 @@ def _install_trace(monkeypatch):
     class FakeTrace:
         async def create_trace(self, **kwargs):
             calls["create"] += 1
-            from app.infrastructure.database.models.knowledge import RetrievalTraceModel
+            from app.modules.knowledge.adapters.db.models import RetrievalTraceModel
             import uuid
             t = RetrievalTraceModel(
                 id=uuid.uuid4(), workspace_id=kwargs.get("workspace_id", "default"),
@@ -130,7 +128,7 @@ def _install_trace(monkeypatch):
             calls["finalize"] += 1
 
     monkeypatch.setattr(
-        "app.services.rag.trace_service.TraceService", lambda session: FakeTrace()
+        "app.modules.knowledge.application.trace_service.TraceService", lambda session: FakeTrace()
     )
     return calls
 
@@ -251,7 +249,7 @@ async def test_path4_off_mode_skips_retrieval(compiled_graph, monkeypatch):
         return None
     fake_svc.retrieve = _retrieve
     monkeypatch.setattr(
-        "app.services.rag.retrieval_service.KnowledgeRetrievalService",
+        "app.modules.knowledge.application.retrieval_service.KnowledgeRetrievalService",
         lambda session: fake_svc,
     )
 

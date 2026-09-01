@@ -8,11 +8,12 @@ import pytest
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.agents.chat.graph import build_chat_agent_graph
+from app.modules.conversation.agent.graph import build_chat_agent_graph
+from tests.llm_fakes import structured_gateway
 
 
 def test_route_after_intent_selects_platform_collect_for_explicit_zhihu_search(monkeypatch):
-    from app.agents.chat import graph as conversation
+    from app.modules.conversation.agent import graph as conversation
 
     monkeypatch.setattr(conversation, "has_platform_search_route", lambda state: True)
 
@@ -28,21 +29,16 @@ def graph(monkeypatch):
     """编译图；mock route_intent 的 LLM 依赖与 memory retriever，避免真实调用。"""
     fake_rendered = MagicMock()
     fake_rendered.to_llm_request.return_value = MagicMock()
-    fake_provider = MagicMock()
-    fake_provider.generate = AsyncMock(
-        return_value=MagicMock(content='{"intent": "chat", "knowledge_mode": "normal"}')
-    )
-    fake_registry = MagicMock()
-    fake_registry.get.return_value = fake_provider
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.llm_provider_registry", fake_registry
+        "app.modules.conversation.agent.nodes.route_intent._get_intent_gateway",
+        lambda: structured_gateway('{"intent": "chat", "knowledge_mode": "normal"}'),
     )
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.prompt_registry",
+        "app.modules.conversation.agent.nodes.route_intent.prompt_registry",
         MagicMock(render=MagicMock(return_value=fake_rendered)),
     )
     monkeypatch.setattr(
-        "app.services.memory.service.retrieve_memories", AsyncMock(return_value=[])
+        "app.modules.memory.application.manage_memory.retrieve_memories", AsyncMock(return_value=[])
     )
     fake_writer = MagicMock()
     fake_writer.ainvoke = AsyncMock(
@@ -92,16 +88,14 @@ def _base_state(message: str) -> dict:
 async def test_graph_routes_task_plan_intent(graph, monkeypatch):
     """route_intent 判定 task_plan 时，自动路由到 task_plan 节点执行。"""
     # mock route_intent LLM 返回 task_plan
-    from app.agents.chat.nodes import route_intent as ri_mod
+    from app.modules.conversation.agent.nodes import route_intent as ri_mod
     fake_rendered = MagicMock()
     fake_rendered.to_llm_request.return_value = MagicMock()
-    fake_provider = MagicMock()
-    fake_provider.generate = AsyncMock(
-        return_value=MagicMock(content='{"intent": "task_plan", "knowledge_mode": "normal"}')
+    monkeypatch.setattr(
+        ri_mod,
+        "_get_intent_gateway",
+        lambda: structured_gateway('{"intent": "task_plan", "knowledge_mode": "normal"}'),
     )
-    fake_registry = MagicMock()
-    fake_registry.get.return_value = fake_provider
-    monkeypatch.setattr(ri_mod, "llm_provider_registry", fake_registry)
 
     final = await graph.ainvoke(
         _base_state("写一篇关于 RAG 的回答"),
@@ -115,16 +109,14 @@ async def test_graph_routes_task_plan_intent(graph, monkeypatch):
 @pytest.mark.asyncio
 async def test_graph_routes_multi_agent_intent(graph, monkeypatch):
     """route_intent 判定 multi_agent 时，自动路由到 multi_agent 节点执行。"""
-    from app.agents.chat.nodes import route_intent as ri_mod
+    from app.modules.conversation.agent.nodes import route_intent as ri_mod
     fake_rendered = MagicMock()
     fake_rendered.to_llm_request.return_value = MagicMock()
-    fake_provider = MagicMock()
-    fake_provider.generate = AsyncMock(
-        return_value=MagicMock(content='{"intent": "multi_agent", "knowledge_mode": "normal"}')
+    monkeypatch.setattr(
+        ri_mod,
+        "_get_intent_gateway",
+        lambda: structured_gateway('{"intent": "multi_agent", "knowledge_mode": "normal"}'),
     )
-    fake_registry = MagicMock()
-    fake_registry.get.return_value = fake_provider
-    monkeypatch.setattr(ri_mod, "llm_provider_registry", fake_registry)
 
     final = await graph.ainvoke(
         _base_state("调研并输出一份 AI Agent 行业分析报告"),

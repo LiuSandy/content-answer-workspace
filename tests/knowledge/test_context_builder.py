@@ -1,5 +1,5 @@
 import pytest
-from app.services.rag.context_builder import ContextBuilder, ContextBlock
+from app.modules.knowledge.application.context_builder import ContextBuilder, ContextBlock
 
 
 def test_context_builder_budget_and_labels():

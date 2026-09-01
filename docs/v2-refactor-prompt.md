@@ -1,4 +1,4 @@
-# Content Answer Workspace v2 架构重构提示词
+# Content Answer Workspace v3 架构重构提示词
 
 你是一名资深 Python / FastAPI / LangGraph / Clean Architecture / Hexagonal Architecture 架构师。
 
@@ -6,7 +6,7 @@
 
 ```text
 Repository: LiuSandy/content-answer-workspace
-Branch: v2
+Branch: v3
 ```
 
 ## 0. 强制范围
@@ -14,9 +14,9 @@ Branch: v2
 只允许：
 
 ```text
-分析 v2
-修改 v2
-测试 v2
+分析 v3
+修改 v3
+测试 v3
 ```
 
 禁止：
@@ -129,13 +129,13 @@ API Key
 
 ---
 
-# 2. Provider / Model 的唯一配置源
+# 2. Provider / Model 配置职责
 
-必须解决当前 Provider / Model 配置散落的问题。
+连接配置与业务模型选择必须分开：平台配置管理默认连接，Prompt 管理每次调用使用的模型。
 
 ## 2.1 唯一运行时配置对象
 
-整个系统只有一个 Provider / Model 路由配置对象：
+整个系统只有一个 Provider 连接与默认回退配置对象：
 
 ```text
 LLMRuntimeConfig
@@ -147,7 +147,8 @@ LLMRuntimeConfig
 app/shared/llm/config.py
 ```
 
-所有 LLM Provider / Model 路由都必须来自该对象。
+`LLMRuntimeConfig` 负责 Provider 的 API Key、Base URL、Timeout、Provider 默认模型与全局默认回退。
+具体业务调用的 Provider / Model 由该次调用对应 Prompt 的 `model.profile` 决定。
 
 禁止以下组件自行读取 Provider / Model 配置：
 
@@ -162,17 +163,16 @@ Conversation
 Knowledge
 ```
 
-它们不得自行读取：
+它们不得自行读取环境或平台配置：
 
 ```text
 os.getenv("LLM_PROVIDER")
 os.getenv("DEEPSEEK_MODEL")
 数据库 Settings
 TOML
-YAML
 ```
 
-Provider / Model 的配置读取只能发生在：
+Provider 连接与默认模型的配置读取只能发生在：
 
 ```text
 platform/config/llm.py
@@ -190,7 +190,7 @@ LLMRuntimeConfig
 
 ## 2.2 配置文件
 
-Provider / Model 的默认路由配置统一放在：
+Provider 连接与全局默认回退统一放在：
 
 ```text
 app/platform/config/defaults/llm.toml
@@ -202,33 +202,19 @@ app/platform/config/defaults/llm.toml
 [llm.default]
 provider = "deepseek"
 model = "deepseek-chat"
-
-[llm.purposes."conversation.chat"]
-provider = "deepseek"
-model = "deepseek-chat"
-
-[llm.purposes."memory.extraction"]
-provider = "glm"
-model = "glm-4-flash"
-
-[llm.purposes."writing.generate"]
-provider = "kimi"
-model = "kimi-k2"
-
-[llm.purposes."writing.planner"]
-provider = "kimi"
-model = "kimi-k2"
-
-[llm.purposes."writing.review"]
-provider = "deepseek"
-model = "deepseek-reasoner"
-
-[llm.purposes."knowledge.query_rewrite"]
-provider = "minimax"
-model = "MiniMax-M2.1"
 ```
 
-具体模型名必须根据项目真实可用配置迁移，不允许为了示例覆盖当前可工作的模型配置。
+`llm.toml` 不再配置 `llm.purposes.*`。Prompt 通过 `model.profile` 选择
+`app/shared/prompts/model_profiles.yml` 中的 Provider / Model：
+
+```yaml
+model:
+  profile: creative
+  temperature: 0.8
+  max_tokens: 4096
+```
+
+没有 `model` 配置的 Prompt 使用 `default` profile；没有可用 profile 的程序化调用回退到 `llm.default`。
 
 ---
 
@@ -237,7 +223,7 @@ model = "MiniMax-M2.1"
 Provider / Model 的最终解析优先级固定为：
 
 ```text
-Purpose Binding
+Prompt Model Profile
     ↓
 Default Binding
     ↓
@@ -249,27 +235,27 @@ Provider Default Model
 ### 第一优先级
 
 ```text
-llm.purposes.<purpose>
+Prompt 的 `model.profile`
 ```
 
 例如：
 
 ```text
-memory.extraction
+profile: reasoning
 ```
 
-明确配置：
+对应模型 Profile 明确配置：
 
 ```text
-provider = glm
-model = xxx
+provider: glm
+model: xxx
 ```
 
 则使用该配置。
 
 ### 第二优先级
 
-如果没有对应 Purpose：
+如果本次调用没有 Prompt 模型路由：
 
 ```text
 llm.default
@@ -277,7 +263,7 @@ llm.default
 
 ### 第三优先级
 
-如果已经确定 Provider，但 Purpose 没有声明 model：
+如果已经确定 Provider，但没有声明 model：
 
 ```text
 ProviderConfig.default_model
@@ -285,9 +271,9 @@ ProviderConfig.default_model
 
 ---
 
-## 2.4 禁止业务层覆盖模型
+## 2.4 业务模型只能由 Prompt 声明
 
-业务 Application 不允许：
+业务 Application 不允许硬编码：
 
 ```python
 llm.generate(
@@ -302,10 +288,11 @@ llm.generate(
 resolver.resolve(...)
 ```
 
-业务层只能声明：
+业务层渲染 Prompt，并将渲染结果携带的 Provider / Model 路由提示交给 Gateway：
 
 ```python
-purpose="memory.extraction"
+rendered = prompt_registry.render("memory.extract", ...)
+request = rendered.to_llm_request()
 ```
 
 例如：
@@ -317,7 +304,8 @@ await self._llm.generate_structured(
 )
 ```
 
-模型选择是基础设施策略，不是业务逻辑。
+`purpose` 只用于调用分类、日志与兼容，不再承担模型路由。模型选择属于 Prompt 策略；
+Prompt 不提供模型时由 Gateway 使用全局默认值。
 
 ---
 
@@ -357,13 +345,13 @@ LLM_PROVIDER=deepseek
 
 作为全系统模型选择机制。
 
-Provider / Model 路由统一由：
+Provider 连接与全局默认回退统一由：
 
 ```text
 LLMRuntimeConfig
 ```
 
-负责。
+负责；具体业务模型选择由 Prompt Model Profile 负责。
 
 ---
 
@@ -683,7 +671,7 @@ Conversation Summary
 
 # 6. LLM Provider 最终清单
 
-当前 `v2` 已经存在的 Provider：
+当前 `v3` 已经存在的 Provider：
 
 ```text
 DeepSeek
@@ -753,7 +741,7 @@ openai_compatible
 
 ## 6.2 OpenAI 不在本次 Provider 清单
 
-如果当前 `v2` 没有独立 `OpenAIProvider`，本次重构不要擅自新增。
+如果当前 `v3` 没有独立 `OpenAIProvider`，本次重构不要擅自新增。
 
 本次目标只包括：
 
@@ -1235,11 +1223,11 @@ platform/database/models/
 改成：
 
 ```text
-modules/conversation/adapters/persistence/
-modules/memory/adapters/persistence/
-modules/knowledge/adapters/persistence/
-modules/documents/adapters/persistence/
-modules/publishing/adapters/persistence/
+modules/conversation/adapters/db/
+modules/memory/adapters/db/
+modules/knowledge/adapters/db/
+modules/documents/adapters/db/
+modules/publishing/adapters/db/
 ```
 
 而：
@@ -1772,7 +1760,7 @@ flowchart TB
 首先输出：
 
 ```text
-1. v2 当前真实目录结构
+1. v3 当前真实目录结构
 
 2. 当前 Conversation / Writing / Memory / Knowledge /
    Acquisition / Documents / Publishing / Settings 的文件归属
@@ -1894,11 +1882,13 @@ MiniMax
 GLM
 ```
 
-Provider / Model 路由统一来自：
+Provider 连接与全局默认回退来自：
 
 ```text
 LLMRuntimeConfig
 ```
+
+具体业务模型选择来自 Prompt 的 `model.profile`。
 
 `generate_structured()` 统一由：
 

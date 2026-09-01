@@ -1,6 +1,6 @@
 import uuid
 import pytest
-from app.infrastructure.database.models.knowledge import (
+from app.modules.knowledge.adapters.db.models import (
     KnowledgeDocumentModel,
     KnowledgeChunkModel,
     RetrievalTraceModel,

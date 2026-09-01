@@ -34,11 +34,11 @@
 
 ## 2. Checkpoint 怎么配置的
 
-### 2.1 配置（`app/server.py` lifespan）
+### 2.1 配置（`app/bootstrap/lifecycle.py` lifespan）
 
 - **Saver**：`AsyncSqliteSaver.from_conn_string(output/agent_checkpoints.sqlite)`（server.py:38 路径定义，84-87 构建）。
 - **Serializer 白名单**（server.py:71-83）：`JsonPlusSerializer(allowed_msgpack_modules=[...])`，白名单显式列出：
-  `CollectionRequest` / `ChatResponsePayload` / `AgentError` / `ToolResult` / `SourceItemDTO`（+ 整个 `app.contracts.dto`）、`RetrievalResult` / `RetrievalRequest`、`ChatAgentState`（app.state）、`asyncpg.pgproto.pgproto`。
+  `CollectionRequest` / `ChatResponsePayload` / `AgentError` / `ToolResult` / `SourceItemDTO`（+ 整个 `app.shared.dto`）、`RetrievalResult` / `RetrievalRequest`、`ChatAgentState`（`app.modules.conversation.agent.state`）、`asyncpg.pgproto.pgproto`。
   **新增进入 checkpoint 的 DTO 时必须同步此白名单**（否则反序列化失败）。
 - **挂载**：仅 chat 图——server.py:87 → `build_conversation_graph`（chat/graph.py:155 兼容别名）→ `compile(checkpointer=...)`（:150）。生命周期由 `async with` 管理，无手动 close。
 - 测试统一用 `langgraph.checkpoint.memory.MemorySaver`（test_hitl_graph.py:12 等 5 个文件）；app/ 内无内存 saver。
@@ -51,7 +51,7 @@
 
 ## 3. SSE 推了哪些事件
 
-封装层 `app/api/streaming/sse.py`（31 行）：`sse_named_event(event, data)`（标准 `event:`/`data:`/可选 `id:`）与 `make_sse_response`（`text/event-stream`、`no-cache`、`X-Accel-Buffering: no`）。事件名与载荷由各路由生成器定义：
+封装层 `app/platform/http/sse.py`：`sse_named_event(event, data)`（标准 `event:`/`data:`/可选 `id:`）与 `make_sse_response`（`text/event-stream`、`no-cache`、`X-Accel-Buffering: no`）。事件名与载荷由各模块路由生成器定义：
 
 ### 3.1 对话主链路（`POST /api/chats/{id}/messages/stream`，chats.py:423-788）
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.context.composer import (
+from app.modules.conversation.application.context_composer import (
     ContextComposer,
     SimpleContextProfile,
     estimate_tokens,

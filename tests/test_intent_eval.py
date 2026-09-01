@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.agents.chat.nodes.intent_rules import detect_intent_by_rules
-from app.agents.chat.nodes.route_intent import route_intent_node
+from app.modules.conversation.agent.nodes.intent_rules import detect_intent_by_rules
+from app.modules.conversation.agent.nodes.route_intent import route_intent_node
+from tests.llm_fakes import structured_gateway
 from tests.intent_eval_cases import INTENT_EVAL_CASES
 
 
@@ -52,19 +53,17 @@ def test_rule_layer_llm_only_cases_not_shortcircuited():
 def _make_llm_mock(monkeypatch, content: str):
     fake_rendered = MagicMock()
     fake_rendered.to_llm_request.return_value = MagicMock()
-    fake_provider = MagicMock()
-    fake_provider.generate = AsyncMock(return_value=MagicMock(content=content))
-    fake_registry = MagicMock()
-    fake_registry.get_default.return_value = fake_provider
     fake_prompt_registry = MagicMock()
     fake_prompt_registry.render.return_value = fake_rendered
+    gateway = structured_gateway(content)
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.llm_provider_registry", fake_registry
+        "app.modules.conversation.agent.nodes.route_intent._get_intent_gateway",
+        lambda: gateway,
     )
     monkeypatch.setattr(
-        "app.agents.chat.nodes.route_intent.prompt_registry", fake_prompt_registry
+        "app.modules.conversation.agent.nodes.route_intent.prompt_registry", fake_prompt_registry
     )
-    return fake_provider
+    return gateway
 
 
 def _state(message: str) -> dict:
@@ -89,7 +88,7 @@ async def test_route_llm_used_when_rule_misses(monkeypatch):
     )
     out = await route_intent_node(_state("为什么天空是蓝色的"))
     assert out["intent"] == "chat"
-    provider.generate.assert_called_once()
+    provider.generate_structured.assert_awaited_once()
 
 
 @pytest.mark.asyncio

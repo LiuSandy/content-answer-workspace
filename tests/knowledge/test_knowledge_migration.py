@@ -1,5 +1,5 @@
 import pytest
-from app.infrastructure.database.models.knowledge import KnowledgeDocumentModel, KnowledgeChunkModel, RetrievalTraceModel, RetrievalHitModel
+from app.modules.knowledge.adapters.db.models import KnowledgeDocumentModel, KnowledgeChunkModel, RetrievalTraceModel, RetrievalHitModel
 
 
 def test_knowledge_models_schema():

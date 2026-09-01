@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.messages import AIMessage
 
-from app.agents._shared.runtime import run_agent_stream
+from app.shared.agent.runtime import run_agent_stream
 
 _RETRIEVAL_STATE = {
     "retrieval_result": SimpleNamespace(

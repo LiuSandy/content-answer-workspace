@@ -1,6 +1,6 @@
 import pytest
 from uuid import uuid4
-from app.services.rag.indexing_service import IndexingService
+from app.modules.knowledge.application.indexing_service import IndexingService
 
 
 def test_indexing_service_version():

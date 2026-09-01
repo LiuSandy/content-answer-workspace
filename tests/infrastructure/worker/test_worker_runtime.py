@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from app.infrastructure.worker import (
+from app.platform.tasking import (
     ExponentialBackoffRetryPolicy,
     InMemoryTaskQueue,
     LeaseLostError,

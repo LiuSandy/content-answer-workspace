@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import fitz
 
-from app.infrastructure.files.pdf_pages import PdfPageWorkspace, strip_markdown_front_matter
+from app.platform.files.pdf_pages import PdfPageWorkspace, strip_markdown_front_matter
 
 
 def _make_pdf(path: Path, pages: int = 3) -> None:

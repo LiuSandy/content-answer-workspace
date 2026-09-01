@@ -5,21 +5,21 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.agents.chat.graph import (
+from app.modules.conversation.agent.graph import (
     _route_after_intent,
     _route_after_knowledge_decision,
     _route_after_retrieval,
 )
-from app.agents.chat.nodes.memory_retriever import (
+from app.modules.conversation.agent.nodes.memory_retriever import (
     answer_preference_memory_retriever_node,
     chat_memory_retriever_node,
 )
-from app.agents.writer.nodes.memory_retriever import writer_memory_retriever_node
+from app.modules.writing.agent.nodes.memory_retriever import writer_memory_retriever_node
 
 
 def test_chat_intents_route_before_any_memory_lookup(monkeypatch):
     monkeypatch.setattr(
-        "app.agents.chat.graph.has_platform_search_route",
+        "app.modules.conversation.agent.graph.has_platform_search_route",
         lambda state: bool(state.get("intent_platform")),
     )
     assert _route_after_intent({"intent": "parse_url"}) == "parse_url"
@@ -47,7 +47,7 @@ def test_knowledge_routes_choose_memory_policy_after_retrieval():
 @pytest.mark.asyncio
 async def test_chat_and_knowledge_use_different_memory_scopes(monkeypatch):
     retrieve = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.services.memory.service.retrieve_memories", retrieve)
+    monkeypatch.setattr("app.modules.memory.application.manage_memory.retrieve_memories", retrieve)
     state = {"user_message": "如何写得更清楚", "workspace_id": "default"}
 
     await chat_memory_retriever_node(state)
@@ -65,7 +65,7 @@ async def test_chat_and_knowledge_use_different_memory_scopes(monkeypatch):
 @pytest.mark.asyncio
 async def test_writer_owns_writing_memory_retrieval(monkeypatch):
     retrieve = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.services.memory.service.retrieve_memories", retrieve)
+    monkeypatch.setattr("app.modules.memory.application.manage_memory.retrieve_memories", retrieve)
 
     await writer_memory_retriever_node(
         {
