@@ -502,13 +502,13 @@ class IngestionExecutor:
 
                 # Markdown 可以直接发布，然后异步派发切块和向量索引任务。
                 if extension in {".md", ".markdown"}:
-                    file_bytes = path.read_bytes()
                     await self._progress(session, job, "parsing", 25)
-                    markdown = file_bytes.decode("utf-8", errors="replace")
                     await self._progress(session, job, "saving_markdown", 80)
-                    published = storage.publish_markdown(doc.id, markdown)
+                    published, markdown_hash = storage.publish_markdown_from_file(
+                        doc.id, path, self.settings.source_file_buffer_bytes
+                    )
                     doc.markdown_path = str(published)
-                    doc.markdown_content_hash = None
+                    doc.markdown_content_hash = markdown_hash
                     doc.status = KnowledgeDocumentStatus.INDEXING.value
                     moved = self.files.move(source.current_relative_path, "archived", source.id)
                     source.current_relative_path = str(moved)

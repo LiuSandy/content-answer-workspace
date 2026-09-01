@@ -1,7 +1,6 @@
 from __future__ import annotations
 import uuid
 import logging
-import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
@@ -73,7 +72,9 @@ class IndexingService:
                 return IndexResult(document_id, "", 0, 0, False, "Markdown content not found")
 
             # 3. 通过 Markdown 内容哈希实现幂等：内容没有变化且已有索引时直接复用。
-            content_hash = hashlib.sha256(markdown.encode('utf-8')).hexdigest()
+            content_hash = self.storage.compute_file_hash(
+                self.storage.markdown_path(doc.id), get_knowledge_settings().source_file_buffer_bytes
+            )
             if doc.markdown_content_hash == content_hash and doc.active_index_version:
                 return IndexResult(document_id, doc.active_index_version, 0, 0, True)
 

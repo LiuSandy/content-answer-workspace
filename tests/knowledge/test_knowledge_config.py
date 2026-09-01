@@ -17,4 +17,6 @@ def test_knowledge_config_defaults():
     assert settings.ingestion_concurrency == 2
     assert settings.max_source_file_bytes == 2 * 1024 * 1024 * 1024
     assert settings.source_file_buffer_bytes == 4 * 1024 * 1024
+    assert settings.ingestion_job_retention_days == 30
+    assert settings.ingestion_cleanup_interval_seconds == 86400
     assert settings.pdf_page_concurrency == 1

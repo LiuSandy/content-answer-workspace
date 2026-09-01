@@ -130,6 +130,8 @@ class KnowledgeSettings:
     source_file_stable_seconds: int = 2
     max_source_file_bytes: int = 2 * 1024 * 1024 * 1024
     source_file_buffer_bytes: int = 4 * 1024 * 1024
+    ingestion_job_retention_days: int = 30
+    ingestion_cleanup_interval_seconds: int = 86400
     pdf_page_concurrency: int = 1
     pdf_page_max_attempts: int = 3
     embedding_dimensions: int = 1536
@@ -196,6 +198,12 @@ def get_knowledge_settings() -> KnowledgeSettings:
         ),
         source_file_buffer_bytes=parse_positive_int(
             os.getenv("KNOWLEDGE_SOURCE_FILE_BUFFER_BYTES"), 4 * 1024 * 1024
+        ),
+        ingestion_job_retention_days=parse_positive_int(
+            os.getenv("KNOWLEDGE_INGESTION_JOB_RETENTION_DAYS"), 30
+        ),
+        ingestion_cleanup_interval_seconds=parse_positive_int(
+            os.getenv("KNOWLEDGE_INGESTION_CLEANUP_INTERVAL_SECONDS"), 86400
         ),
         pdf_page_concurrency=parse_positive_int(os.getenv("KNOWLEDGE_PDF_PAGE_CONCURRENCY"), 1),
         pdf_page_max_attempts=parse_positive_int(os.getenv("KNOWLEDGE_PDF_PAGE_MAX_ATTEMPTS"), 3),

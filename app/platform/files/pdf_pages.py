@@ -72,6 +72,11 @@ class PdfPageWorkspace:
         if self.root.exists():
             shutil.rmtree(self.root)
 
+    @staticmethod
+    def cleanup_job(root: Path, job_id: UUID) -> None:
+        """清理指定任务目录，不为不存在的任务目录创建目录。"""
+        shutil.rmtree(root.resolve() / str(job_id), ignore_errors=True)
+
 
 def strip_markdown_front_matter(markdown: str) -> str:
     stripped = markdown.lstrip()
