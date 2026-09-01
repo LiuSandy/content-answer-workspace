@@ -18,7 +18,7 @@ def structured_gateway(content: str):
             reason = str(error)
         return StructuredLLMResponse(
             value=value,
-            method_used="generic_parse",
+            method_used="function_calling",
             attempts=1,
             degradation_reason=reason,
         )

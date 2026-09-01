@@ -7,6 +7,7 @@ DeepSeek profile 不错误假定原生 json_schema。
 from __future__ import annotations
 
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -15,14 +16,12 @@ from pydantic import ValidationError
 from app.shared.dto import (
     ConversationSummary,
     IntentRoute,
-    LLMRequest,
     MemoryExtraction,
     QualityReport,
-    StructuredResult,
     TopicEvaluation,
 )
 from app.plugins.llm.structured import generate_structured as _generate_structured
-from app.shared.llm.dto import StructuredLLMRequest
+from app.shared.llm.dto import LLMRequest, StructuredLLMRequest
 
 
 async def generate_structured(
@@ -30,7 +29,7 @@ async def generate_structured(
 ):
     provider._test_capabilities = SimpleNamespace(
         structured_methods=tuple(
-            structured_methods or ("json_mode", "generic_parse")
+            structured_methods or ("json_mode", "function_calling")
         )
     )
     provider.__class__.capabilities = property(lambda self: self._test_capabilities)
@@ -57,11 +56,6 @@ def _quality_dimension_scores(score: int = 80) -> dict[str, int]:
     }
 
 
-class _Resp:
-    def __init__(self, content: str) -> None:
-        self.content = content
-
-
 class _FakeProvider:
     """顺序返回内容的 fake provider；耗尽后返回空串。"""
 
@@ -71,28 +65,26 @@ class _FakeProvider:
         self._contents = list(contents)
         self.calls: list[LLMRequest | object] = []
 
-    async def generate(self, request: object) -> _Resp:
-        self.calls.append(request)
+    async def invoke_structured(self, request: object, *, schema, method):
+        self.calls.append(SimpleNamespace(request=request, method=method))
         content = self._contents.pop(0) if self._contents else ""
-        return _Resp(content)
+        match = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", content)
+        if match is None:
+            raise ValueError("no structured value")
+        return schema.model_validate(json.loads(match.group(1)))
 
 
-class _RejectingProvider:
-    """拒绝任何 response_format 的 fake provider；模拟不兼容端点。
-
-    json_mode/json_schema 调用直接抛错，仅无格式调用（通用解析）返回内容。
-    """
+class _RejectingProvider(_FakeProvider):
+    """拒绝 JSON mode，模拟端点降级到 function calling。"""
 
     def __init__(self, content: str) -> None:
-        self.content = content
-        self.calls: list[object] = []
+        super().__init__([content])
 
-    async def generate(self, request: object) -> _Resp:
-        fmt = getattr(request, "response_format", None)
-        self.calls.append(request)
-        if fmt:
-            raise RuntimeError("endpoint rejects json response_format")
-        return _Resp(self.content)
+    async def invoke_structured(self, request: object, *, schema, method):
+        if method == "json_mode":
+            self.calls.append(SimpleNamespace(request=request, method=method))
+            raise RuntimeError("endpoint rejects json mode")
+        return await super().invoke_structured(request, schema=schema, method=method)
 
 
 def _request() -> LLMRequest:
@@ -117,22 +109,14 @@ async def test_json_schema_priority_when_declared():
         provider=provider,
         request=_request(),
         schema=IntentRoute,
-        structured_methods=["json_schema", "json_mode", "generic_parse"],
+        structured_methods=["json_schema", "json_mode", "function_calling"],
     )
     assert result.method_used == "json_schema"
     assert result.attempts == 1
     assert result.value is not None
     assert result.value.intent == "chat"
     assert result.value.knowledge_mode == "off"
-    # json_schema 方法应携带 response_format
-    assert provider.calls[0].response_format == {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "IntentRoute",
-            "strict": True,
-            "schema": IntentRoute.model_json_schema(),
-        },
-    }
+    assert provider.calls[0].method == "json_schema"
 
 
 @pytest.mark.asyncio
@@ -143,16 +127,16 @@ async def test_json_mode_start_without_json_schema_capability():
         provider=provider,
         request=_request(),
         schema=IntentRoute,
-        structured_methods=["json_mode", "generic_parse"],
+        structured_methods=["json_mode", "function_calling"],
     )
     assert result.method_used == "json_mode"
     assert result.attempts == 1
-    assert provider.calls[0].response_format == {"type": "json_object"}
+    assert provider.calls[0].method == "json_mode"
 
 
 @pytest.mark.asyncio
 async def test_default_methods_when_profile_silent():
-    """profile 未声明 structured_methods 时使用保守默认（json_mode → generic_parse）。"""
+    """profile 未声明时使用 Provider 的保守默认顺序。"""
     provider = _FakeProvider(['{"intent": "chat", "knowledge_mode": "normal"}'])
     result = await generate_structured(provider=provider, request=_request(), schema=IntentRoute)
     assert result.method_used == "json_mode"
@@ -173,7 +157,7 @@ async def test_validation_failure_degrades_to_json_mode():
         provider=provider,
         request=_request(),
         schema=IntentRoute,
-        structured_methods=["json_schema", "json_mode", "generic_parse"],
+        structured_methods=["json_schema", "json_mode", "function_calling"],
     )
     assert result.method_used == "json_mode"
     assert result.attempts == 3
@@ -207,8 +191,8 @@ async def test_one_retry_before_degrade():
 # ── 通用解析降级 ─────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_generic_parse_degrades_when_endpoint_rejects_json_mode():
-    """端点拒绝 json_object → 重试后降级到通用解析，从杂质文本中恢复 JSON。"""
+async def test_function_calling_degrades_when_endpoint_rejects_json_mode():
+    """端点拒绝 JSON mode 后，重试并降级到 function calling。"""
     provider = _RejectingProvider(
         "好的，结果如下：\n```json\n{\"intent\": \"chat\", \"knowledge_mode\": \"off\"}\n```\n请查收。"
     )
@@ -216,9 +200,9 @@ async def test_generic_parse_degrades_when_endpoint_rejects_json_mode():
         provider=provider,
         request=_request(),
         schema=IntentRoute,
-        structured_methods=["json_mode", "generic_parse"],
+        structured_methods=["json_mode", "function_calling"],
     )
-    assert result.method_used == "generic_parse"
+    assert result.method_used == "function_calling"
     assert result.attempts == 3
     assert result.value is not None
     assert result.value.intent == "chat"
@@ -235,10 +219,10 @@ async def test_all_methods_fail_returns_none_value_without_raise():
         provider=provider,
         request=_request(),
         schema=IntentRoute,
-        structured_methods=["json_schema", "json_mode", "generic_parse"],
+        structured_methods=["json_schema", "json_mode", "function_calling"],
     )
     assert result.value is None
-    assert result.method_used == "generic_parse"
+    assert result.method_used == "function_calling"
     assert result.attempts == 6  # 3 方法 × (1 retry + 1)
     assert result.degradation_reason
 
@@ -255,7 +239,7 @@ async def test_structured_result_metadata_serializable_for_audit():
         provider=provider,
         request=_request(),
         schema=IntentRoute,
-        structured_methods=["json_mode", "generic_parse"],
+        structured_methods=["json_mode", "function_calling"],
     )
     model_parameters = {
         "structured_method": result.method_used,
@@ -384,7 +368,7 @@ def test_deepseek_profiles_do_not_assume_native_json_schema():
         )
 
 
-# ── LLMServiceAdapter 公共入口 ──────────────────────────────────────────
+# ── LLM Gateway 公共入口 ────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_gateway_strategy_returns_metadata():
@@ -396,7 +380,7 @@ async def test_gateway_strategy_returns_metadata():
         provider=provider,
         request=_request(),
         schema=IntentRoute,
-        structured_methods=["json_mode", "generic_parse"],
+        structured_methods=["json_mode", "function_calling"],
         retries=1,
     )
     assert result.value is not None

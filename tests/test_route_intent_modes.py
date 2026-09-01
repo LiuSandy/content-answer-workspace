@@ -16,7 +16,7 @@ from tests.llm_fakes import structured_gateway
 def _make_mock_deps(monkeypatch, llm_content: str):
     """mock prompt_registry 与 llm_provider_registry，让 LLM 返回指定 JSON。"""
     fake_rendered = MagicMock()
-    fake_rendered.structured_methods = ["json_mode", "generic_parse"]
+    fake_rendered.structured_methods = ["json_mode", "function_calling"]
     fake_rendered.to_llm_request.return_value = MagicMock()
     fake_prompt_registry = MagicMock()
     fake_prompt_registry.render.return_value = fake_rendered

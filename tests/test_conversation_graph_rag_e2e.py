@@ -56,15 +56,16 @@ def compiled_graph(monkeypatch):
     # 3) chat_node：mock Provider 返回可捕获 messages 的模型结果
     captured_messages = []
 
-    class FakeProvider:
-        async def ainvoke(self, messages, tools):
-            captured_messages.append(list(messages))
-            from langchain_core.messages import AIMessage
-            return AIMessage(content="mocked grounded answer")
+    class FakeGateway:
+        async def invoke_with_tools(self, *, purpose, request):
+            from app.shared.llm.dto import AgentLLMResponse
 
-    fake_provider = FakeProvider()
+            captured_messages.append(list(request.messages))
+            return AgentLLMResponse(content="mocked grounded answer")
+
+    fake_gateway = FakeGateway()
     monkeypatch.setattr(
-        "app.modules.conversation.agent.nodes.chat._get_chat_provider", lambda: fake_provider
+        "app.modules.conversation.agent.nodes.chat.get_llm_gateway", lambda: fake_gateway
     )
 
     graph = build_chat_agent_graph(MemorySaver())

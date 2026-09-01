@@ -62,6 +62,7 @@ class MemoryExtractionUseCase:
                     model=prompt.model,
                     temperature=prompt.temperature,
                     max_tokens=prompt.max_tokens,
+                    structured_methods=prompt.structured_methods,
                 ),
             )
             if structured.value is None:

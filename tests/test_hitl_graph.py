@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import ToolMessage
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
@@ -72,25 +72,23 @@ async def test_graph_native_interrupt_resumes_without_repeating_tool(graph, monk
     # mock chat LLM：第一轮调工具，第二轮不调工具
     calls = {"n": 0}
 
-    class FakeProvider:
-        async def ainvoke(self, messages, tools):
+    class FakeGateway:
+        async def invoke_with_tools(self, *, purpose, request):
+            from app.shared.llm.dto import AgentLLMResponse, LLMToolCall
+
             calls["n"] += 1
             if calls["n"] == 1:
-                # 第一次调用：请求调用 xiaohongshu_search
-                return AIMessage(
-                    content="",
-                    tool_calls=[{
-                        "name": "xiaohongshu_search",
-                        "args": {"query": "历史播客", "limit": 5},
-                        "id": "call-1",
-                        "type": "tool_call",
-                    }],
+                return AgentLLMResponse(
+                    tool_calls=[LLMToolCall(
+                        name="xiaohongshu_search",
+                        arguments={"query": "历史播客", "limit": 5},
+                        id="call-1",
+                    )],
                 )
-            # 第二次调用：直接回复
-            return AIMessage(content="done")
+            return AgentLLMResponse(content="done")
 
     from app.modules.conversation.agent.nodes import chat as chat_mod
-    monkeypatch.setattr(chat_mod, "_get_chat_provider", lambda: FakeProvider())
+    monkeypatch.setattr(chat_mod, "get_llm_gateway", lambda: FakeGateway())
 
     # mock 工具底层 _run 返回 YAML list（仅 1 条，触发 requested=5 但 total=1 的冲突）
     yaml_payload = "- rank: 1\n  author: 张三\n  likes: '150'\n  title: 唯一结果\n  url: https://xhs.com/n/1\n  published_at: '2026-07-25'\n"
@@ -122,13 +120,15 @@ async def test_graph_normal_chat_no_hitl(graph, monkeypatch):
     """正常对话（无工具冲突）不触发 HITL。"""
     calls = {"n": 0}
 
-    class FakeProvider:
-        async def ainvoke(self, messages, tools):
+    class FakeGateway:
+        async def invoke_with_tools(self, *, purpose, request):
+            from app.shared.llm.dto import AgentLLMResponse
+
             calls["n"] += 1
-            return AIMessage(content="普通回答")
+            return AgentLLMResponse(content="普通回答")
 
     from app.modules.conversation.agent.nodes import chat as chat_mod
-    monkeypatch.setattr(chat_mod, "_get_chat_provider", lambda: FakeProvider())
+    monkeypatch.setattr(chat_mod, "get_llm_gateway", lambda: FakeGateway())
 
     base = _base_state("你好")
     final = await graph.ainvoke(base, {"configurable": {"thread_id": "hitl2"}})

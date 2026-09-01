@@ -4,20 +4,12 @@
 """
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from typing import Any, Protocol
-
-from pydantic import BaseModel
 
 from .dto import (
     CollectionRequest,
-    LLMMessage,
-    LLMRequest,
-    LLMResponse,
-    LLMStreamEvent,
     ParseUrlRequest,
     SourceItemDTO,
-    StructuredResult,
     ToolContext,
 )
 
@@ -54,62 +46,6 @@ class ContentSource(Protocol):
         self, request: CollectionRequest, context: ToolContext
     ) -> list[SourceItemDTO]:
         """按主题/关键词采集帖子列表；仅当 capabilities 包含 "collect" 时调用。"""
-        ...
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# LLM Provider 接口
-# ─────────────────────────────────────────────────────────────────────────────
-
-class LLMProvider(Protocol):
-    """语言模型供应商统一接口；实现类放入 infrastructure/llm/providers/。
-
-    Agent 和 Workflow 只依赖此接口，不引用 DeepSeek SDK 或任何专有响应类型。
-    """
-
-    key: str  # 供应商唯一标识，如 "deepseek" / "openai"
-    default_model: str
-
-    # 声明结构化输出能力（roadmap R1）：不支持原生 json_schema 的兼容端点
-    # 不得声明它；结构化生成从声明的最高优先级方法开始，不做异常探测。
-    structured_methods: list[str] = ["json_mode", "generic_parse"]
-
-    async def generate(self, request: LLMRequest) -> LLMResponse:
-        """同步生成完整回复；适用于结构化输出和意图路由等场景。"""
-        ...
-
-    async def stream(self, request: LLMRequest) -> AsyncIterator[LLMStreamEvent]:
-        """流式生成回复；适用于聊天和长文本生成场景。"""
-        ...
-
-    async def ainvoke(
-        self,
-        messages: list[Any],
-        tools: list[Any],
-    ) -> Any:
-        """生成可包含工具调用的 Agent 消息。"""
-        ...
-
-    def model_for(self, purpose: str | None = None) -> str:
-        """返回默认模型，或指定用途的模型覆盖。"""
-        ...
-
-
-class StructuredGenerationPort(Protocol):
-    """结构化输出公共入口；实现类（LLMServiceAdapter）供质检/选题/记忆/摘要共用。
-
-    调用方拿到 StructuredResult 后，把 method_used/attempts/degradation_reason
-    审计到各自 AIOperation.model_parameters。
-    """
-
-    async def generate_structured(
-        self,
-        schema: type[BaseModel],
-        system_prompt: str,
-        user_prompt: str,
-        retries: int = 1,
-    ) -> StructuredResult[Any]:
-        """按 schema 生成结构化输出；三级降级，全部失败时 value 为 None 不抛异常。"""
         ...
 
 

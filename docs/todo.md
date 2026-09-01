@@ -22,21 +22,21 @@
 
 ## 联动 Prompt Model Profile 与 LLM Provider
 
-- [ ] 让 `PromptRegistry` 解析并返回 Model Profile 中的 `provider`，使 `RenderedPrompt` 同时携带 `provider` 和 `model`。
-- [ ] LLM 调用时根据 `rendered.provider` 从 `llm_provider_registry` 选择 Provider，避免始终使用 `get_default()`。
-- [ ] 校验 Profile 中的模型名称、结构化输出方式与 Provider 能力匹配。
-- [ ] 增加多 Provider 配置和错误配置的回归测试。
+- [x] 让 `PromptRegistry` 解析并返回 Model Profile 中的 `provider`，使 `RenderedPrompt` 同时携带 `provider` 和 `model`。
+- [x] LLM 调用时根据 `rendered.provider` 从 `llm_provider_registry` 选择 Provider，避免始终使用 `get_default()`。
+- [x] 校验 Profile 中的模型名称、结构化输出方式与 Provider 能力匹配。
+- [x] 增加多 Provider 配置和错误配置的回归测试。
 
-当前风险：`PromptRegistry` 会从 Model Profile 取得 `model`，但忽略 `provider`；调用方则独立通过 `LLM_PROVIDER` 选择默认 Provider。切换供应商后，可能把某个供应商的模型名称发送给另一个 Provider。
+完成状态：`RenderedPrompt` 已携带 `provider`、`model` 和结构化输出方式；`LLMResolver` 统一完成 Provider/模型选择，Gateway 会拒绝 Profile 声明但 Provider 不支持的结构化输出方式。
 
 ## 重新设计 LLM 与业务服务架构
 
-- [ ] 重新评估并设计项目的 LLM 调用分层，解除通用 `LLMServiceAdapter` 对业务相关 `AnswerGenerationService` 的反向依赖。
-- [ ] 将通用文本生成、结构化输出、流式调用等能力下沉到独立的 LLM Gateway/Completion Service 或明确的 Port，避免回答生成、记忆抽取、摘要、质检等业务模块互相依赖。
-- [ ] 明确 `LLMProvider`、Provider Registry、通用 LLM 服务与各业务服务的职责边界，统一依赖注入、Provider 选择、模型配置和测试替身方案。
-- [ ] 重新梳理 Adapter、Service、Port、Registry/Factory 的使用方式，形成清晰的依赖方向后再实施代码重构。
-- [ ] 记忆抽取必须改为结构化输出：使用明确的 Pydantic Schema 调用 `generate_structured()`，在通过 JSON 解析、Schema 校验和业务字段校验前不得写入 `user_memories`；校验失败需按统一策略重试或放弃本次保存，并记录失败原因。
-- [ ] 调整结构化输出方案：评估并使用 `from langchain_openai import ChatOpenAI` 构建统一模型客户端，结合 `with_structured_output()` 重新设计 Provider 适配、Schema 校验、降级策略和错误审计流程。
+- [x] 重新评估并设计项目的 LLM 调用分层，解除通用 `LLMServiceAdapter` 对业务相关 `AnswerGenerationService` 的反向依赖。
+- [x] 将通用文本生成、结构化输出、流式调用等能力下沉到独立的 LLM Gateway/Completion Service 或明确的 Port，避免回答生成、记忆抽取、摘要、质检等业务模块互相依赖。
+- [x] 明确 `LLMProvider`、Provider Registry、通用 LLM 服务与各业务服务的职责边界，统一依赖注入、Provider 选择、模型配置和测试替身方案。
+- [x] 重新梳理 Adapter、Service、Port、Registry/Factory 的使用方式，形成清晰的依赖方向后再实施代码重构。
+- [x] 记忆抽取必须改为结构化输出：使用明确的 Pydantic Schema 调用 `generate_structured()`，在通过 JSON 解析、Schema 校验和业务字段校验前不得写入 `user_memories`；校验失败需按统一策略重试或放弃本次保存，并记录失败原因。
+- [x] 调整结构化输出方案：评估并使用 `from langchain_openai import ChatOpenAI` 构建统一模型客户端，结合 `with_structured_output()` 重新设计 Provider 适配、Schema 校验、降级策略和错误审计流程。
 
 ## 重新设计 Writer 工作流
 

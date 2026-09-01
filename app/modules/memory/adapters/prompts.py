@@ -25,4 +25,5 @@ class PromptRegistryMemoryExtractionPrompt:
             model=rendered.model,
             temperature=rendered.temperature,
             max_tokens=rendered.max_tokens,
+            structured_methods=tuple(rendered.structured_methods),
         )

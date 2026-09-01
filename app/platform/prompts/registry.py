@@ -48,7 +48,7 @@ class RenderedPrompt:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.provider = provider
-        self.structured_methods = structured_methods or ["json_mode", "generic_parse"]
+        self.structured_methods = structured_methods or ["json_mode", "function_calling"]
 
     def to_llm_request(self) -> LLMRequest:
         return LLMRequest(
@@ -239,7 +239,7 @@ class PromptRegistry:
         provider: str | None = None
         temperature = 0.7
         max_tokens = 4096
-        structured_methods: list[str] = ["json_mode", "generic_parse"]
+        structured_methods: list[str] = ["json_mode", "function_calling"]
 
         if profile:
             provider = profile.provider

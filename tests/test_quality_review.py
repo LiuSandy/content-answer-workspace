@@ -20,7 +20,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.modules.documents.application.documents import DocumentService
 from app.modules.writing.application.review import QualityService, ReviewContext, evaluate_content
-from app.shared.dto import QualityReport, QualitySuggestion, StructuredResult
+from app.shared.dto import QualityReport, QualitySuggestion
+from app.shared.llm.dto import StructuredLLMResponse as StructuredResult
 from app.shared.errors import DocumentConflictError, LLMOutputError
 from app.platform.database import Base
 from app.modules.conversation.adapters.db.sources import SourceItem
@@ -189,7 +190,7 @@ async def test_review_structured_failure_records_failed_operation(monkeypatch):
     db, engine = await _make_db()
     doc_id, version_id, _ = await _make_document(db)
     fake = _FakeLLM(
-        StructuredResult(value=None, method_used="generic_parse", attempts=3, degradation_reason="json: boom")
+        StructuredResult(value=None, method_used="function_calling", attempts=3, degradation_reason="json: boom")
     )
     monkeypatch.setattr("app.modules.writing.application.review._get_llm", lambda: fake)
 

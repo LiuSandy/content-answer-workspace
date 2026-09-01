@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from app.shared.llm.dto import LLMMessage, LLMRequest, StructuredLLMRequest
+from app.shared.llm.dto import (
+    LLMMessage,
+    LLMRequest,
+    StructuredLLMRequest,
+    StructuredMethod,
+)
 from app.shared.llm.port import LLMGatewayPort
 
 
@@ -63,6 +68,7 @@ class WritingLLM:
         model: str | None = None,
         temperature: float = 0.1,
         max_tokens: int = 4096,
+        structured_methods: tuple[StructuredMethod, ...] | None = None,
     ):
         return await self._gateway.generate_structured(
             purpose="writing.review",
@@ -77,6 +83,7 @@ class WritingLLM:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 retries=retries,
+                structured_methods=structured_methods,
             ),
         )
 

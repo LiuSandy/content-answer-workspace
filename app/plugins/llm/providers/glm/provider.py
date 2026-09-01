@@ -11,5 +11,5 @@ class GLMProvider(OpenAICompatibleProvider):
         super().__init__(
             key="glm",
             config=config,
-            capabilities=LLMCapabilities(structured_methods=("generic_parse",)),
+            capabilities=LLMCapabilities(structured_methods=("function_calling",)),
         )

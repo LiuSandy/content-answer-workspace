@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
-
-StructuredMethod = Literal["json_schema", "json_mode", "generic_parse"]
+from app.shared.llm.dto import StructuredMethod
 
 
 @dataclass(frozen=True, slots=True)
 class LLMCapabilities:
-    structured_methods: tuple[StructuredMethod, ...] = ("generic_parse",)
+    structured_methods: tuple[StructuredMethod, ...] = ("function_calling",)
     tool_calling: bool = True
     streaming: bool = True

@@ -2,7 +2,9 @@ import asyncio
 import logging
 import math
 import random
-from openai import AsyncOpenAI
+
+from langchain_openai import OpenAIEmbeddings
+
 from app.platform.config.runtime import get_knowledge_settings
 from app.modules.knowledge.ports import EmbeddingNotConfiguredError, EmbeddingPort
 
@@ -60,9 +62,15 @@ class OpenAIEmbeddingProvider:
 
     def __init__(self):
         settings = get_knowledge_settings()
-        self.client = AsyncOpenAI(
+        self.client = OpenAIEmbeddings(
             api_key=settings.embedding_api_key,
-            base_url=settings.embedding_base_url
+            base_url=settings.embedding_base_url,
+            model=settings.embedding_model,
+            dimensions=settings.embedding_dimensions,
+            chunk_size=settings.embedding_batch_size,
+            timeout=30.0,
+            max_retries=0,
+            check_embedding_ctx_length=False,
         )
         self.model = settings.embedding_model
         self.dimensions = settings.embedding_dimensions
@@ -79,16 +87,11 @@ class OpenAIEmbeddingProvider:
         for attempt in range(4):
             try:
                 response = await asyncio.wait_for(
-                    self.client.embeddings.create(
-                        input=batch,
-                        model=self.model,
-                        dimensions=self.dimensions
-                    ),
+                    self.client.aembed_documents(batch),
                     timeout=30.0
                 )
                 results = []
-                for data in response.data:
-                    vec = data.embedding
+                for vec in response:
                     norm = sum(x * x for x in vec) ** 0.5
                     norm_vec = [x / norm for x in vec] if norm > 0 else vec
                     results.append(norm_vec)
