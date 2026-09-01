@@ -8,6 +8,20 @@ export type ChatMessage = {
   createdAt: string;
 };
 
+export function getAssistantDurationSeconds(
+  message: ChatMessage,
+  messageById: Map<string, ChatMessage>,
+): number | null {
+  if (message.role !== "assistant" || !message.parentMessageId) return null;
+  const userMessage = messageById.get(message.parentMessageId);
+  if (!userMessage || userMessage.role !== "user") return null;
+
+  const startedAt = new Date(userMessage.createdAt).getTime();
+  const finishedAt = new Date(message.createdAt).getTime();
+  if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt)) return null;
+  return Math.max(0, (finishedAt - startedAt) / 1000);
+}
+
 /** 为旧的线性消息补充父节点，同时保留真正的根级编辑分支。 */
 export function resolveParentIds(allMessages: ChatMessage[]): ChatMessage[] {
   const resolved = [...allMessages].sort(compareCreatedAt).map((message) => ({ ...message }));
