@@ -19,6 +19,7 @@ export interface MessageBubbleProps {
   siblings: ChatMessage[];
   onSwitchSibling: (message: ChatMessage, direction: "prev" | "next") => void;
   isStreaming: boolean;
+  durationSeconds?: number | null;
 }
 
 /** 单条历史消息的公共外壳，以及编辑、复制和分支操作。 */
@@ -34,6 +35,7 @@ function MessageBubble({
   siblings,
   onSwitchSibling,
   isStreaming,
+  durationSeconds,
 }: MessageBubbleProps) {
   const isUser = msg.role === "user";
   const [editText, setEditText] = useState(msg.content || "");
@@ -72,13 +74,18 @@ function MessageBubble({
   }
 
   return (
-    <div className={cn("flex w-full mb-2", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("group flex w-full mb-2", isUser ? "justify-end" : "justify-start")}>
       <div
         className={cn(
           "flex flex-col gap-1",
           isUser ? "max-w-[85%] items-end" : "max-w-[calc(100%-3rem)] w-full items-start mr-auto",
         )}
       >
+        {!isUser && durationSeconds != null && (
+          <div className="px-2.5 text-[11px] text-muted-foreground/60 select-none">
+            耗时：{formatDuration(durationSeconds)}
+          </div>
+        )}
         <Card
           className={cn(
             "border-none shadow-sm",
@@ -181,6 +188,7 @@ function MessageActions({
 
   return (
     <div className="flex items-center gap-2.5 px-2.5 mt-0.5 text-xs text-muted-foreground/60 select-none">
+      {isUser && <MessageTimestamp value={msg.createdAt} />}
       <button
         onClick={onCopy}
         className="cursor-pointer hover:text-muted-foreground transition-colors p-0.5"
@@ -192,6 +200,7 @@ function MessageActions({
           <Copy className="h-3.5 w-3.5" />
         )}
       </button>
+      {!isUser && <MessageTimestamp value={msg.createdAt} />}
       {isUser && (
         <button
           onClick={() => onStartEdit(msg.messageId)}
@@ -226,6 +235,45 @@ function MessageActions({
   );
 }
 
+function MessageTimestamp({ value }: { value: string }) {
+  return (
+    <time
+      dateTime={value}
+      title={formatMessageTimestamp(value)}
+      className="mr-0.5 whitespace-nowrap opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+    >
+      {formatMessageTimestamp(value)}
+    </time>
+  );
+}
+
+function formatDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+
+  if (hours > 0) return `${hours}小时${minutes}分${remainder}秒`;
+  if (minutes > 0) return `${minutes}分${remainder}秒`;
+  return `${remainder}秒`;
+}
+
+function formatMessageTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const pad = (part: number) => String(part).padStart(2, "0");
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  const now = new Date();
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (isToday) return time;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${time}`;
+}
+
 export const MemoizedMessageBubble = memo(
   MessageBubble,
   (previous, next) =>
@@ -236,6 +284,7 @@ export const MemoizedMessageBubble = memo(
     previous.isEditing === next.isEditing &&
     previous.selectedId === next.selectedId &&
     previous.isStreaming === next.isStreaming &&
+    previous.durationSeconds === next.durationSeconds &&
     previous.siblings.length === next.siblings.length &&
     previous.siblings.every(
       (sibling, index) => sibling.messageId === next.siblings[index]?.messageId,

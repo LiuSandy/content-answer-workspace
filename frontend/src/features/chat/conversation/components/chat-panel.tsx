@@ -11,6 +11,7 @@ import { getChatMarkdownComponents } from "./chat-markdown-components";
 import { MemoizedMessageBubble, SourceListCard } from "./chat-message-bubble";
 import {
   findActiveLeafDescendant,
+  getAssistantDurationSeconds,
   getActiveMessagePath,
   getUserMessageSiblings,
   resolveParentIds,
@@ -58,6 +59,10 @@ export function ChatPanel() {
     enabled: Boolean(currentChatId),
   });
   const resolvedMessages = useMemo(() => resolveParentIds(messages), [messages]);
+  const messageById = useMemo(
+    () => new Map(resolvedMessages.map((message) => [message.messageId, message])),
+    [resolvedMessages],
+  );
   const { path: selectedBranchMessages, leafId: calculatedLeafId } = useMemo(
     () => getActiveMessagePath(resolvedMessages, activeLeafMessageId),
     [activeLeafMessageId, resolvedMessages],
@@ -177,10 +182,11 @@ export function ChatPanel() {
                   onStartEdit={handleStartEdit}
                   onCancelEdit={handleCancelEdit}
                   onConfirmEdit={handleConfirmEdit}
-                  siblings={getUserMessageSiblings(resolvedMessages, message)}
-                  onSwitchSibling={handleSwitchSibling}
-                  isStreaming={isStreaming}
-                />
+                siblings={getUserMessageSiblings(resolvedMessages, message)}
+                onSwitchSibling={handleSwitchSibling}
+                isStreaming={isStreaming}
+                durationSeconds={getAssistantDurationSeconds(message, messageById)}
+              />
               ))
             )}
 
