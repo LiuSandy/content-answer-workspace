@@ -259,6 +259,7 @@ class VersionSummaryDTO(BaseModel):
     outline_status: str | None = None
     outline_sections: list[dict[str, Any]] = Field(default_factory=list)
     quality_review: dict[str, Any] | None = None
+    writing_settings: dict[str, Any] | None = None
     created_at: datetime
 
     model_config = {

@@ -187,6 +187,22 @@ class DocumentService:
                 .order_by(AIOperation.created_at.desc())
             )
         ).scalars().all()
+        writer_operations = (
+            await self._session.execute(
+                select(AIOperation)
+                .where(AIOperation.document_id == document_id)
+                .where(AIOperation.status == "completed")
+                .where(AIOperation.operation_type.in_(("generate", "full_rewrite")))
+                .where(AIOperation.result_version_id.is_not(None))
+            )
+        ).scalars().all()
+        settings_by_version = {
+            str(operation.result_version_id): (operation.input_metadata or {}).get(
+                "writingSettings"
+            )
+            for operation in writer_operations
+            if isinstance((operation.input_metadata or {}).get("writingSettings"), dict)
+        }
         reviews_by_version: dict[str, dict] = {}
         for operation in review_operations:
             if operation.operation_type == "generate":
@@ -249,6 +265,7 @@ class DocumentService:
                     else []
                 ),
                 quality_review=reviews_by_version.get(str(v.id)),
+                writing_settings=settings_by_version.get(str(v.id)),
                 created_at=v.created_at,
             )
             for v in versions

@@ -118,6 +118,11 @@ type VersionSummary = {
   }>;
   qualityReview: QualityReviewRecordDTO | null;
   contentSummary: string;
+  writingSettings: {
+    styleIds?: string[];
+    styleRules?: string;
+    wordCount?: number;
+  } | null;
   createdAt: string;
 };
 
@@ -321,6 +326,19 @@ export function EditorPanel() {
     enabled: !!docState?.documentId,
   });
 
+  // 创作参数属于版本，而不是编辑器组件的默认状态。切换/加载当前版本时回填，
+  // 旧版本没有记录参数则保留兼容默认值。
+  useEffect(() => {
+    if (isGenerating || !docState?.currentVersionId) return;
+    const currentVersion = versions.find((version) => version.id === docState.currentVersionId);
+    const settings = currentVersion?.writingSettings;
+    if (!settings) return;
+    if (Array.isArray(settings.styleIds)) setSelectedStyles(settings.styleIds);
+    if (typeof settings.wordCount === "number" && settings.wordCount > 0) {
+      setWordCount(settings.wordCount);
+    }
+  }, [docState?.currentVersionId, isGenerating, versions]);
+
   // 恢复历史版本
   const restoreVersionMutation = useMutation({
     mutationFn: (versionId: string) =>
@@ -358,9 +376,10 @@ export function EditorPanel() {
     const currentDocState = cachedDocState || docStateRef.current;
     if (!currentDocState || isGenerating || !editor) return;
     cancelDebouncedSave();
+    isGeneratingRef.current = true;
     setIsGenerating(true);
     setCreationProgress(reduceCreationProgress(initialCreationProgress, "run.started", {}));
-    editor.commands.setContent("");
+    let streamEditorCleared = false;
     let terminalEventReceived = false;
 
     try {
@@ -370,6 +389,7 @@ export function EditorPanel() {
           expectedLockVersion: currentDocState.lockVersion,
           platform: currentDocState.sourceItem?.platform || "zhihu",
           styleRules: getStyleRulesPayload(),
+          styleIds: selectedStyles,
           wordCount: wordCount,
           instruction: rewriteInstruction.trim() || undefined,
         },
@@ -378,6 +398,7 @@ export function EditorPanel() {
             if (
               [
                 "run.started",
+                "writer.progress",
                 "review.started",
                 "review.completed",
                 "rewrite.started",
@@ -389,6 +410,10 @@ export function EditorPanel() {
               setCreationProgress((state) => reduceCreationProgress(state, event, data));
             }
             if (event === "document.delta") {
+              if (!streamEditorCleared) {
+                editor.commands.setContent("");
+                streamEditorCleared = true;
+              }
               editor.commands.insertContent(data.delta);
             } else if (event === "document.completed") {
               queryClient.setQueryData(["document", selectedSourceItemId], data);
@@ -401,9 +426,11 @@ export function EditorPanel() {
             } else if (event === "run.completed") {
               terminalEventReceived = true;
               setIsGenerating(false);
+              isGeneratingRef.current = false;
             } else if (event === "run.failed") {
               terminalEventReceived = true;
               setIsGenerating(false);
+              isGeneratingRef.current = false;
               handleRunFailed(data, notify);
               queryClient.invalidateQueries({ queryKey: ["document", selectedSourceItemId] });
             }
@@ -420,6 +447,7 @@ export function EditorPanel() {
     } finally {
       if (!terminalEventReceived) {
         setIsGenerating(false);
+        isGeneratingRef.current = false;
         setCreationProgress((state) => reduceCreationProgress(state, "run.failed", {}));
       }
     }
@@ -452,6 +480,7 @@ export function EditorPanel() {
         : currentDocState.lockVersion;
 
     setIsGenerating(true);
+    isGeneratingRef.current = true;
     editor.commands.deleteRange({ from, to });
 
     try {
@@ -464,7 +493,9 @@ export function EditorPanel() {
         },
         {
           onEvent: (event, data) => {
-            if (event === "document.delta") {
+            if (event === "writer.progress") {
+              setCreationProgress((state) => reduceCreationProgress(state, event, data));
+            } else if (event === "document.delta") {
               editor.commands.insertContent(data.delta);
             } else if (event === "document.completed") {
               queryClient.setQueryData(["document", selectedSourceItemId], data);
@@ -490,6 +521,7 @@ export function EditorPanel() {
       );
     } finally {
       setIsGenerating(false);
+      isGeneratingRef.current = false;
     }
   };
 
@@ -521,7 +553,8 @@ export function EditorPanel() {
         : currentDocState.lockVersion;
 
     setIsGenerating(true);
-    editor.commands.setContent("");
+    isGeneratingRef.current = true;
+    let streamEditorCleared = false;
 
     try {
       await streamPost(
@@ -531,11 +564,18 @@ export function EditorPanel() {
           instruction: rewriteInstruction,
           platform: currentDocState.sourceItem?.platform || "zhihu",
           styleRules: getStyleRulesPayload(),
+          styleIds: selectedStyles,
           wordCount: wordCount,
         },
         {
           onEvent: (event, data) => {
-            if (event === "document.delta") {
+            if (event === "writer.progress") {
+              setCreationProgress((state) => reduceCreationProgress(state, event, data));
+            } else if (event === "document.delta") {
+              if (!streamEditorCleared) {
+                editor.commands.setContent("");
+                streamEditorCleared = true;
+              }
               editor.commands.insertContent(data.delta);
             } else if (event === "document.completed") {
               queryClient.setQueryData(["document", selectedSourceItemId], data);
@@ -557,6 +597,7 @@ export function EditorPanel() {
       );
     } finally {
       setIsGenerating(false);
+      isGeneratingRef.current = false;
       setRewriteInstruction("");
     }
   };

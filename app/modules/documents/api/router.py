@@ -65,6 +65,7 @@ class FullRewriteRequest(BaseModel):
     platform: str | None = Field(None, alias="platform")
     style_rules: str | None = Field(None, alias="styleRules")
     word_count: int = Field(1000, alias="wordCount")
+    style_ids: list[str] = Field(default_factory=list, alias="styleIds")
     
     model_config = {"populate_by_name": True}
 
@@ -75,6 +76,7 @@ class CreateCheckpointRequest(BaseModel):
     style_rules: str | None = Field(None, alias="styleRules")
     word_count: int = Field(1000, alias="wordCount")
     instruction: str | None = Field(None, alias="instruction")
+    style_ids: list[str] = Field(default_factory=list, alias="styleIds")
     
     model_config = {"populate_by_name": True}
 
@@ -338,7 +340,8 @@ async def generate_answer_stream(
             async with session_factory() as session:
                 async for graph_event in writer_graph.astream(
                     {
-                        "operation": "generate",
+                        "operation": "compose",
+                        "creation_mode": "initial",
                         "direct_stream": True,
                         "goal": req.instruction or title,
                         "workspace_id": "default",
@@ -352,6 +355,11 @@ async def generate_answer_stream(
                         "expected_lock_version": req.expected_lock_version,
                         "style_rules": req.style_rules,
                         "word_count": req.word_count,
+                        "writing_settings": {
+                            "styleIds": req.style_ids,
+                            "styleRules": req.style_rules or "",
+                            "wordCount": req.word_count,
+                        },
                         "instruction": req.instruction,
                         "outline": outline_sections,
                         "outline_operation_id": outline_operation_id,
@@ -456,7 +464,8 @@ async def rewrite_document_stream(
             async with session_factory() as session:
                 async for graph_event in writer_graph.astream(
                     {
-                        "operation": "full_rewrite",
+                        "operation": "compose",
+                        "creation_mode": "rewrite",
                         "direct_stream": True,
                         "goal": req.instruction,
                         "workspace_id": "default",
@@ -468,6 +477,11 @@ async def rewrite_document_stream(
                         "platform": req.platform,
                         "style_rules": req.style_rules,
                         "word_count": req.word_count,
+                        "writing_settings": {
+                            "styleIds": req.style_ids,
+                            "styleRules": req.style_rules or "",
+                            "wordCount": req.word_count,
+                        },
                         "rewrite_workflow": full_rewrite_workflow,
                     },
                     stream_mode="custom",
