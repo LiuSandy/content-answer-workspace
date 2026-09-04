@@ -29,6 +29,7 @@ async def full_rewrite_workflow(
     style_rules: str | None = None,
     word_count: int = 1000,
     extra_context: str | None = None,
+    writing_settings: dict | None = None,
 ) -> AsyncIterator[str]:
     result = await session.execute(
         select(AnswerDocument)
@@ -88,5 +89,6 @@ async def full_rewrite_workflow(
         outline_operation_id=(
             uuid.UUID(current_outline.operation_id) if current_outline else None
         ),
+        writing_settings=writing_settings,
     ):
         yield delta

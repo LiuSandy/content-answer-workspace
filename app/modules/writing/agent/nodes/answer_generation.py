@@ -31,6 +31,7 @@ async def generate_answer_workflow(
     extra_context: str | None = None,
     outline: list[dict] | None = None,
     outline_operation_id: uuid.UUID | None = None,
+    writing_settings: dict | None = None,
 ) -> AsyncIterator[str]:
     capture.outline_operation_id = outline_operation_id
     source_item = await session.get(SourceItem, source_item_id)
@@ -63,5 +64,6 @@ async def generate_answer_workflow(
         platform=platform, extra_context=extra_context,
         defer_version=True, capture=capture,
         outline_operation_id=outline_operation_id,
+        writing_settings=writing_settings,
     ):
         yield delta

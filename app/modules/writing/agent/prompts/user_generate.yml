@@ -14,7 +14,13 @@ variables:
 messages:
   - role: user
     content: |
-      {% if content_mode == 'imitate' %}
+      {% if instruction is defined and instruction %}
+      【本次创作目标（最高优先级）】：
+      {{ instruction }}
+
+      请严格围绕“本次创作目标”创作。下面的帖子标题和原文仅作为背景、素材或受众语境，
+      不要把原帖的问题当成最终写作主题；如果两者冲突，必须以本次创作目标为准。
+      {% elif content_mode == 'imitate' %}
       请参考下面这篇社交平台笔记的选题角度和写作风格，创作一篇全新的原创笔记，不要照抄原文内容，只学习其风格和结构。
       {% else %}
       请围绕下面这个社交平台问题写一篇适合发布到对应平台的原创回答。
@@ -26,11 +32,6 @@ messages:
       【问题描述/原文】：
       {{ content }}
       
-      {% if instruction is defined and instruction %}
-      【额外创作要求】：
-      {{ instruction }}
-      {% endif %}
-
       {% if outline is defined and outline and outline != '[]' %}
       【已确认的创作大纲】：
       {{ outline }}

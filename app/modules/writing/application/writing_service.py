@@ -73,6 +73,7 @@ async def run_writer_stream(
     defer_version: bool = False,
     capture: WriterRunCapture | None = None,
     outline_operation_id: uuid.UUID | None = None,
+    writing_settings: dict[str, Any] | None = None,
 ) -> AsyncIterator[str]:
     """统一的 LLM 执行引擎。
 
@@ -88,23 +89,27 @@ async def run_writer_stream(
 
     gateway = _get_llm_gateway()
 
-    system_text = next(
-        (m.content for m in rendered.to_llm_request().messages if m.role == "system"),
-        "",
-    )
     if extra_context:
         # 将 WritingBackground 注入 system prompt 末尾
+        messages = list(rendered.messages)
+        system_index = next(
+            (index for index, message in enumerate(messages) if message.role == "system"),
+            None,
+        )
+        if system_index is not None:
+            system_message = messages[system_index]
+            messages[system_index] = type(system_message)(
+                role="system",
+                content=system_message.content + extra_context,
+            )
+        else:
+            messages.insert(0, type(rendered.messages[0])(
+                role="system",
+                content=extra_context,
+            ))
         augmented = RenderedPrompt(
             prompt_id=rendered.prompt_id,
-            messages=[
-                *rendered.messages[:-1],
-                type(rendered.messages[0])(
-                    role="system",
-                    content=system_text + extra_context,
-                ),
-            ]
-            if rendered.messages
-            else [],
+            messages=messages,
             model=rendered.model,
             temperature=rendered.temperature,
             max_tokens=rendered.max_tokens,
@@ -129,7 +134,8 @@ async def run_writer_stream(
         input_metadata={
             "outlineOperationId": (
                 str(outline_operation_id) if outline_operation_id else None
-            )
+            ),
+            "writingSettings": writing_settings or {},
         },
     )
     session.add(ai_op)

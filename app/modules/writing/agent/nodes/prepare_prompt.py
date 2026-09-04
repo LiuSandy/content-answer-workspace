@@ -18,10 +18,23 @@ def prepare_prompt_node(state: WriterState) -> dict:
             f"- [{memory.get('memory_scope', 'general')}] {memory.get('content', '')}"
             for memory in memories
         )
+    outline = state.get("outline") or []
+    outline_context = ""
+    if outline:
+        outline_context = "\n\n文章大纲：\n" + "\n".join(
+            f"{item.get('order', index + 1)}. {item.get('heading', '')}"
+            + (
+                f"：{'；'.join(item.get('keyPoints') or [])}"
+                if item.get("keyPoints")
+                else ""
+            )
+            for index, item in enumerate(outline)
+        )
     prompt = (
         "你是一位内容写作专家。请基于研究报告生成结构化的初稿。\n\n"
         f"创作目标：{state['plan'].goal}\n\n"
         f"研究报告：\n{state.get('research_report') or '（无研究报告）'}\n\n"
+        f"{outline_context}"
         f"{memory_context}\n\n"
         "请输出完整的 Markdown 正文。"
     )

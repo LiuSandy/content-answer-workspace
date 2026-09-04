@@ -14,6 +14,12 @@ variables:
 messages:
   - role: user
     content: |
+      【本次全文重创作目标（最高优先级）】：
+      {{ instruction }}
+
+      必须围绕上述目标重新组织全文。当前文章和帖子标题仅作为背景材料；如果当前文章
+      与重创作目标冲突，必须以重创作目标为准。
+
       {% if content_mode == 'imitate' %}
       请对下面这篇社交平台笔记进行润色改写。要求：保留原有核心创意和结构，不要引入新观点；改善语言表达，消除 AI 腔，让行文更自然简洁，保留原有观点。
       {% else %}
@@ -25,8 +31,6 @@ messages:
       当前内容/回答：
       {{ current_answer }}
       
-      重写指令：{{ instruction }}
-
       {% if outline is defined and outline and outline != '[]' %}
       当前文章关联的大纲：
       {{ outline }}
