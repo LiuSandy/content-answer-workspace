@@ -49,9 +49,11 @@ def test_writer_is_the_only_compiled_content_graph():
     graph = getattr(writer_graph_module, "writer_graph", None)
     assert graph is not None
     assert set(graph.get_graph().nodes) >= {
-        "guard", "generate_plan", "assign_tasks", "research", "write",
+        "guard", "generate_plan", "assign_tasks", "research", "generate_outline", "write",
         "review", "memory", "finalize",
     }
+    assert "generate_document" not in graph.get_graph().nodes
+    assert "rewrite_document" not in graph.get_graph().nodes
 
 
 def test_business_modules_have_exactly_two_graph_modules():
@@ -224,6 +226,14 @@ async def test_run_writer_plan_end_to_end(monkeypatch):
     monkeypatch.setattr(
         "app.modules.writing.application.planning.execute_task_plan",
         fake_exec,
+    )
+    outline_llm = MagicMock()
+    outline_llm.analyze = AsyncMock(
+        return_value='{"outline": [{"order": 1, "heading": "开头", "keyPoints": []}]}'
+    )
+    monkeypatch.setattr(
+        "app.modules.writing.agent.nodes.outline_generation.get_writing_llm",
+        lambda: outline_llm,
     )
     # mock 统一创作评审，首轮达标时不会触发重写
     async def fake_evaluate(content, context):

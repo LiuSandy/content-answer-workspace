@@ -12,9 +12,11 @@ from app.modules.writing.application import planning as planning_service
 from app.modules.writing.application.creation_review import run_creation_review
 from app.modules.writing.application.llm import get_writing_llm
 from app.modules.writing.application.review import ReviewContext, evaluate_content
+from app.modules.writing.agent.progress import emit_progress
 
 
 async def research_node(state: WriterState) -> dict:
+    emit_progress(state, "research")
     states = dict(state.get("sub_agent_states") or {})
     sub = SubAgentState(name="research", status="running", started_at=time.monotonic())
     states["research"] = sub
@@ -28,7 +30,10 @@ async def research_node(state: WriterState) -> dict:
             tasks=tasks,
         )
         try:
-            results = await planning_service.execute_task_plan(partial_plan)
+            results = await planning_service.execute_task_plan(
+                partial_plan,
+                fail_fast=bool(state.get("direct_stream")),
+            )
         except Exception as exc:  # specialist failure is isolated
             error = str(exc)
 
@@ -62,6 +67,11 @@ async def research_node(state: WriterState) -> dict:
         report = state.get("research_report")
     else:
         report = "\n\n".join(f"## {task_id}\n{value}" for task_id, value in results.items())
+    if error and state.get("direct_stream"):
+        emit_progress(state, "research", "failed", error=error)
+        raise RuntimeError(f"研究资料失败：{error}")
+
+    emit_progress(state, "research", "completed", completed=len(results), total=len(tasks))
     return {
         "research_report": report,
         "research_tasks": tasks,
@@ -72,19 +82,60 @@ async def research_node(state: WriterState) -> dict:
 
 
 async def write_node(state: WriterState) -> dict:
+    emit_progress(state, "write")
+    # Document generation and full rewrite share the compose branch. Their
+    # existing document workflows remain the persistence/streaming adapters,
+    # while the graph still guarantees plan -> research -> outline first.
+    if state.get("direct_stream"):
+        from app.modules.writing.agent.nodes.document_pipeline import (
+            generate_document_node,
+            rewrite_document_node,
+        )
+
+        handler = (
+            rewrite_document_node
+            if state.get("creation_mode") == "rewrite"
+            else generate_document_node
+        )
+        result = await handler(state)
+        result = {
+            "draft": result.get("final_output"),
+            "final_output": result.get("final_output"),
+            "document_state": result.get("document_state") or {},
+            "writing_error": None,
+            "draft_metadata": {"document_completed": True},
+            "sub_agent_states": state.get("sub_agent_states") or {},
+        }
+        emit_progress(state, "write", "completed")
+        return result
+
     working = {**state, **prepare_prompt_node(state)}
     working.update(await generate_draft_node(working))
     working.update(finalize_draft_node(working))
-    return {
+    result = {
         "draft": working.get("draft"),
         "writing_prompt": working.get("writing_prompt", ""),
         "writing_error": working.get("writing_error"),
         "draft_metadata": working.get("draft_metadata") or {},
         "sub_agent_states": working.get("sub_agent_states") or {},
     }
+    emit_progress(state, "write", "completed")
+    return result
 
 
 async def review_node(state: WriterState) -> dict:
+    if state.get("direct_stream"):
+        states = dict(state.get("sub_agent_states") or {})
+        states["review"] = SubAgentState(
+            name="review",
+            status="done",
+            result={"handled_by": "document_creation_workflow"},
+        )
+        return {
+            "final_output": state.get("final_output") or state.get("draft") or "",
+            "sub_agent_states": states,
+        }
+    emit_progress(state, "review")
     states = dict(state.get("sub_agent_states") or {})
     sub = SubAgentState(name="review", status="running", started_at=time.monotonic())
     states["review"] = sub
@@ -122,7 +173,7 @@ async def review_node(state: WriterState) -> dict:
             "quality_score": score,
         }
         sub.status = "done"
-        return {
+        result = {
             "final_output": outcome.final_content,
             "quality_score": score,
             "review_context": context,
@@ -130,21 +181,34 @@ async def review_node(state: WriterState) -> dict:
             "review_error": None,
             "sub_agent_states": states,
         }
+        emit_progress(state, "review", "completed")
+        return result
     except Exception as exc:  # preserve draft when review fails
         sub.status = "failed"
         sub.error = str(exc)
-        return {
+        result = {
             "final_output": state.get("draft"),
             "review_context": context,
             "review_outcome": None,
             "review_error": str(exc),
             "sub_agent_states": states,
         }
+        emit_progress(state, "review", "failed")
+        return result
     finally:
         sub.completed_at = time.monotonic()
 
 
 async def writer_memory_node(state: WriterState) -> dict:
+    if state.get("direct_stream"):
+        states = dict(state.get("sub_agent_states") or {})
+        states["memory"] = SubAgentState(
+            name="memory",
+            status="done",
+            result={"skipped": "document_creation_workflow"},
+        )
+        return {"sub_agent_states": states}
+    emit_progress(state, "memory")
     from app.modules.memory.application import manage_memory as memory_service
 
     states = dict(state.get("sub_agent_states") or {})
@@ -167,10 +231,12 @@ async def writer_memory_node(state: WriterState) -> dict:
         sub.error = str(exc)
     finally:
         sub.completed_at = time.monotonic()
+    emit_progress(state, "memory", "completed" if sub.status == "done" else "failed")
     return {"sub_agent_states": states}
 
 
 def finalize_writer_node(state: WriterState) -> dict:
+    emit_progress(state, "finalize")
     return {
         "final_output": state.get("final_output") or state.get("draft") or "",
         "sub_agent_states": state.get("sub_agent_states") or {},

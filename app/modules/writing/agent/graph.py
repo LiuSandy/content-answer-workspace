@@ -9,12 +9,11 @@ from langgraph.graph import END, START, StateGraph
 
 from app.modules.writing.agent.nodes.guard import route_after_writer_guard, writer_guard_node
 from app.modules.writing.agent.nodes.document_pipeline import (
-    generate_document_node,
     inline_refine_document_node,
-    rewrite_document_node,
     route_writer_operation,
 )
 from app.modules.writing.agent.nodes.memory_retriever import writer_memory_retriever_node
+from app.modules.writing.agent.nodes.outline_generation import generate_outline_node
 from app.modules.writing.agent.nodes.pipeline import (
     finalize_writer_node,
     research_node,
@@ -30,9 +29,8 @@ def build_writer_graph():
     builder = StateGraph(WriterState)
     builder.add_node("guard", writer_guard_node)
     builder.add_node("retrieve_memory", writer_memory_retriever_node)
-    builder.add_node("generate_document", generate_document_node)
     builder.add_node("inline_refine_document", inline_refine_document_node)
-    builder.add_node("rewrite_document", rewrite_document_node)
+    builder.add_node("generate_outline", generate_outline_node)
     builder.add_node("generate_plan", plan_node)
     builder.add_node("assign_tasks", assign_node)
     builder.add_node("research", research_node)
@@ -52,9 +50,7 @@ def build_writer_graph():
         route_writer_operation,
         {
             "compose": "generate_plan",
-            "generate": "generate_document",
             "inline_refine": "inline_refine_document",
-            "full_rewrite": "rewrite_document",
         },
     )
     builder.add_edge("generate_plan", "assign_tasks")
@@ -63,14 +59,13 @@ def build_writer_graph():
         route_after_assignment,
         {"research": "research", "end": END},
     )
-    builder.add_edge("research", "write")
+    builder.add_edge("research", "generate_outline")
+    builder.add_edge("generate_outline", "write")
     builder.add_edge("write", "review")
     builder.add_edge("review", "memory")
     builder.add_edge("memory", "finalize")
     builder.add_edge("finalize", END)
-    builder.add_edge("generate_document", END)
     builder.add_edge("inline_refine_document", END)
-    builder.add_edge("rewrite_document", END)
     agent = builder.compile()
     # 输出实际编译后的 Writer Graph，便于核对节点和连线是否与代码一致。
     print(agent.get_graph().draw_mermaid())

@@ -63,6 +63,7 @@ class OutlineService:
         viewpoint_answers: dict[str, str] | None = None,
         *,
         based_on_operation_id: uuid.UUID | None = None,
+        additional_context: str | None = None,
     ) -> GenerateOutlineResult:
         doc = await self._session.get(AnswerDocument, document_id)
         if not doc:
@@ -75,9 +76,13 @@ class OutlineService:
         source = await self._session.get(SourceItem, source_item_id)
         source_content = source.content or "" if source else ""
 
-        questions, sections = await self._llm_generate(
-            source_content, viewpoint_answers
-        )
+        try:
+            questions, sections = await self._llm_generate(
+                source_content + (f"\n\n{additional_context}" if additional_context else ""),
+                viewpoint_answers,
+            )
+        except ValueError as exc:
+            raise OutlineError("generation_failed", f"大纲生成失败：{exc}") from exc
 
         version_number = await self._next_version_number(document_id)
         operation = AIOperation(
@@ -377,19 +382,26 @@ class OutlineService:
             max_tokens=rendered.max_tokens,
         )
         result = self._parse_outline_json(raw)
-        return result.get("viewpointQuestions"), result.get("outline") or []
+        sections = result.get("outline") or []
+        if not sections:
+            raise ValueError("大纲模型输出为空")
+        return result.get("viewpointQuestions"), sections
 
     @staticmethod
-    def _parse_outline_json(raw: str) -> dict:
+    def parse_outline_json(raw: str) -> dict:
         try:
             if "```json" in raw:
                 raw = raw.split("```json")[1].split("```")[0]
             elif "```" in raw:
                 raw = raw.split("```")[1].split("```")[0]
             data = json.loads(raw)
-        except (json.JSONDecodeError, IndexError):
-            return {"viewpoint_questions": None, "outline": []}
+        except (json.JSONDecodeError, IndexError) as exc:
+            raise ValueError("大纲模型输出不是有效 JSON") from exc
+        if not isinstance(data, dict) or not isinstance(data.get("outline"), list):
+            raise ValueError("大纲模型输出缺少有效 outline 字段")
         return data
+
+    _parse_outline_json = parse_outline_json
 
     @staticmethod
     def _section_id(existing: list[dict], idx: int) -> str:

@@ -39,7 +39,8 @@ class MultiAgentState:
 
 
 class WriterState(TypedDict, total=False):
-    operation: Literal["compose", "generate", "inline_refine", "full_rewrite"]
+    operation: Literal["compose", "inline_refine"]
+    creation_mode: Literal["initial", "rewrite"]
     goal: str
     workspace_id: str
     owner_id: str
@@ -75,6 +76,7 @@ class WriterState(TypedDict, total=False):
     instruction: str | None
     style_rules: str | None
     word_count: int
+    writing_settings: dict[str, Any] | None
     expected_lock_version: int
     selection: Any
     outline: list[dict] | None
