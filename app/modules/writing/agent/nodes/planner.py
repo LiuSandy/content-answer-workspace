@@ -5,13 +5,18 @@ import time
 
 from app.modules.writing.agent.state import SubAgentState, WriterState
 from app.modules.writing.application.planning import generate_plan
+from app.modules.writing.agent.progress import emit_progress
 
 
 async def plan_node(state: WriterState) -> dict:
-    return {"plan": await generate_plan(state["goal"])}
+    emit_progress(state, "generate_plan")
+    plan = await generate_plan(state["goal"])
+    emit_progress(state, "generate_plan", "completed", taskCount=len(plan.tasks))
+    return {"plan": plan}
 
 
 def assign_node(state: WriterState) -> dict:
+    emit_progress(state, "assign_tasks")
     states = dict(state.get("sub_agent_states") or {})
     sub = SubAgentState(name="orchestrator", status="running", started_at=time.monotonic())
     states["orchestrator"] = sub
@@ -29,6 +34,7 @@ def assign_node(state: WriterState) -> dict:
         sub.error = str(exc)
     finally:
         sub.completed_at = time.monotonic()
+    emit_progress(state, "assign_tasks", "completed" if sub.status == "done" else "failed")
     return {"sub_agent_states": states}
 
 

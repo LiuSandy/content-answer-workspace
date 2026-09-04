@@ -11,7 +11,7 @@ from app.shared.errors import LLMOutputError
 from .review import ReviewContext
 
 QUALITY_THRESHOLD = 75
-MAX_CREATION_ROUNDS = 20
+MAX_CREATION_ROUNDS = 3
 
 ReviewFn = Callable[[str, ReviewContext], Awaitable[QualityReport]]
 RewriteFn = Callable[[str, str], Awaitable[str]]

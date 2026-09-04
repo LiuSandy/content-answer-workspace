@@ -6,11 +6,13 @@ import logging
 from app.shared.agent.injection import detect_input_injection, validate_scope
 from app.modules.writing.agent.state import SubAgentState, WriterState
 from app.shared.errors import ValidationError
+from app.modules.writing.agent.progress import emit_progress
 
 logger = logging.getLogger(__name__)
 
 
 async def writer_guard_node(state: WriterState) -> dict:
+    emit_progress(state, "guard")
     blocked, reason = detect_input_injection(state.get("goal", ""))
     if not blocked:
         for field in ("workspace_id", "owner_id"):
@@ -20,9 +22,11 @@ async def writer_guard_node(state: WriterState) -> dict:
                 break
 
     if not blocked:
+        emit_progress(state, "guard", "completed")
         return {"guard_blocked": False, "guard_reason": None}
 
     logger.warning("Writer guard blocked request: reason=%s", reason)
+    emit_progress(state, "guard", "failed")
     if state.get("direct_stream"):
         raise ValidationError("该写作请求触发了安全策略，无法继续处理。")
     states = dict(state.get("sub_agent_states") or {})

@@ -33,6 +33,15 @@ export function reduceCreationProgress(
         maxIterations: numberValue(data.maxIterations, state.maxIterations),
         score: null,
       };
+    case "writer.progress": {
+      const label = typeof data.label === "string" ? data.label : state.label;
+      const status = data.status === "failed" ? "failed" : data.status;
+      return {
+        ...state,
+        running: status === "failed" ? false : true,
+        label: status === "failed" ? "创作失败" : label,
+      };
+    }
     case "review.started": {
       const iteration = numberValue(data.iteration, state.iteration);
       const maxIterations = numberValue(data.maxIterations, state.maxIterations);

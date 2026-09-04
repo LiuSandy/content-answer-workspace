@@ -94,17 +94,17 @@ def test_topological_order_separates_layers():
 
 
 @pytest.mark.asyncio
-async def test_execute_subtask_falls_back_when_prompt_missing(monkeypatch):
-    fake_llm = MagicMock()
-    fake_llm.analyze = AsyncMock(return_value="fallback result")
-    monkeypatch.setattr(
-        "app.modules.writing.application.planning._get_planner_llm",
-        lambda: fake_llm,
-    )
-    # 不预热 prompt registry，触发异常回退分支
+async def test_execute_subtask_search_uses_search_tool(monkeypatch):
+    import importlib
+
+    fake_search = MagicMock()
+    fake_search.ainvoke = AsyncMock(return_value="search result")
+    web_search_module = importlib.import_module("app.plugins.tools.builtin.web_search")
+    monkeypatch.setattr(web_search_module, "web_search", fake_search)
     sub = SubTask("t1", "search", "搜索资料", [])
     r = await execute_subtask(sub, {})
-    assert r == "fallback result"
+    assert r == "search result"
+    fake_search.ainvoke.assert_awaited_once_with({"query": "搜索资料", "count": 8})
 
 
 @pytest.mark.asyncio

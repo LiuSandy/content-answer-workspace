@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from app.modules.writing.agent.state import WriterState
+from app.modules.writing.agent.progress import emit_progress
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,12 @@ def _writer_memory_query(state: WriterState) -> str:
 
 
 async def writer_memory_retriever_node(state: WriterState) -> dict:
+    emit_progress(state, "retrieve_memory")
     from app.modules.memory.application.manage_memory import retrieve_memories
 
     query = _writer_memory_query(state).strip()
     if not query:
+        emit_progress(state, "retrieve_memory", "completed")
         return {"applied_memories": []}
     try:
         snippets = await retrieve_memories(
@@ -46,7 +49,7 @@ async def writer_memory_retriever_node(state: WriterState) -> dict:
             top_k=5,
             scopes=_WRITER_SCOPES,
         )
-        return {
+        result = {
             "applied_memories": [
                 {
                     "id": item.id,
@@ -58,8 +61,11 @@ async def writer_memory_retriever_node(state: WriterState) -> dict:
                 for item in snippets
             ]
         }
+        emit_progress(state, "retrieve_memory", "completed")
+        return result
     except Exception as exc:  # Writer memory remains non-blocking
         logger.warning("Writer memory retrieval failed (non-blocking): %s", exc)
+        emit_progress(state, "retrieve_memory", "completed", detail="记忆召回不可用，继续创作")
         return {"applied_memories": []}
 
 

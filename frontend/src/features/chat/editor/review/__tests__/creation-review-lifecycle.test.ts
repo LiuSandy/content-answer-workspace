@@ -3,6 +3,15 @@ import { describe, expect, test } from "bun:test";
 import { initialCreationProgress, reduceCreationProgress } from "../creation-review-lifecycle";
 
 describe("creation review lifecycle", () => {
+  test("shows writer graph phases", () => {
+    const state = reduceCreationProgress(
+      initialCreationProgress,
+      "writer.progress",
+      { phase: "generate_outline", status: "started", label: "正在生成文章大纲" },
+    );
+    expect(state.running).toBe(true);
+    expect(state.label).toBe("正在生成文章大纲");
+  });
   test("maps review and rewrite events to user-facing progress", () => {
     let state = initialCreationProgress;
     state = reduceCreationProgress(state, "review.started", {

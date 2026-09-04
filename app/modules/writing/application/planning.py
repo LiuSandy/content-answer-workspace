@@ -155,6 +155,15 @@ async def execute_subtask(subtask: SubTask, prior_results: dict[str, str]) -> st
         f"[{tid}]: {text}" for tid, text in prior_results.items() if tid in subtask.depends_on
     )
 
+    if subtask.type == "search":
+        # search 子任务必须使用搜索能力，不能再让通用 LLM 凭空编造“资料摘要”。
+        from app.plugins.tools.builtin.web_search import web_search
+
+        result = await web_search.ainvoke({"query": subtask.description, "count": 8})
+        if not result or not str(result).strip():
+            raise RuntimeError(f"研究搜索未返回结果：{subtask.description}")
+        return str(result)
+
     from app.platform.prompts.registry import prompt_registry
     prompt_id = f"planning.{subtask.type}_subtask"
     try:
@@ -186,7 +195,7 @@ async def execute_subtask(subtask: SubTask, prior_results: dict[str, str]) -> st
         )
 
 
-async def execute_task_plan(plan: TaskPlan) -> dict[str, str]:
+async def execute_task_plan(plan: TaskPlan, *, fail_fast: bool = False) -> dict[str, str]:
     """按 DAG 并行执行整个 plan，返回 task_id → result。
 
     失败的子任务不阻断已完成；返回 dict 只含完成的结果。
@@ -201,6 +210,8 @@ async def execute_task_plan(plan: TaskPlan) -> dict[str, str]:
                 return t.task_id, r
             except Exception as e:
                 logger.error("Subtask %s failed: %s", t.task_id, e)
+                if fail_fast:
+                    raise
                 return t.task_id, None
 
         layer_results = await asyncio.gather(*(_exec_one(t) for t in layer))
